@@ -1,28 +1,90 @@
-# TypeScript Skeleton Project
+# Practice Field Configurator
 
-A basic TypeScript project skeleton with common configurations and scripts.
+A web interface for configuring practice field access points.
 
 ## Setup
 
-1. Install dependencies:
+1. Install dependencies for both backend and frontend:
+
 ```bash
 npm install
 ```
 
-2. Build the project:
+## Development
+
+You'll need two terminal windows to run the development servers:
+
+1. Start the backend API server:
+
 ```bash
-npm run build
+npm run dev
 ```
 
-## Available Scripts
+2. In another terminal, start the frontend development server:
 
-- `npm run build` - Compiles TypeScript to JavaScript
-- `npm start` - Runs the compiled JavaScript
-- `npm run dev` - Runs TypeScript directly using tsx (for development)
+```bash
+npm run dev -w frontend
+```
+
+The frontend will be available at http://localhost:5173.
+
+The backend will be available at http://localhost:3000, however it is also proxied by the frontend dev server so no configuration should be necessary.
 
 ## Project Structure
 
-- `src/` - Source TypeScript files
-- `dist/` - Compiled JavaScript files (generated after build)
+- `src/` - Backend TypeScript files
+- `frontend/` - React frontend application
+- `dist/` - Compiled backend JavaScript files (generated after build)
 - `tsconfig.json` - TypeScript configuration
-- `package.json` - Project dependencies and scripts 
+- `package.json` - Project dependencies and scripts
+
+## Deployment
+
+To deploy this in a production environment:
+
+1. Run `npm run build`
+2. Run `npm start`
+3. Configure Webserver to server static files and proxy to backend for /api paths
+
+### Caddy Example Config
+
+```Caddyfile
+practice.example.com {
+    root * /path/to/frontend/dist
+
+    # Serve static files
+    try_files {path} {path}.html {path}/ /index.html
+    file_server
+
+    # Proxy /api requests to backend
+    handle /api/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Enable compression
+    encode gzip
+}
+```
+
+### Nginx Example Config
+
+```conf
+server {
+    listen 80;
+    server_name practice.example.com;
+    root /path/to/frontend/dist;
+
+    location / {
+        try_files $uri $uri.html $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
