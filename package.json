@@ -1,19 +1,34 @@
 {
   "name": "practice-field-configurator",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "dev": "tsx --watch src/index.ts",
+    "start": "node dist/index.js"
   },
-  "keywords": [],
+  "keywords": [
+    "FMS",
+    "Practice Field",
+    "Field Management System",
+    "VH-113",
+    "VH-109",
+    "Cheesy Arena"
+  ],
   "author": "Cameron Tacklind <cameron@tacklind.com> (https://github.com/cinderblock)",
   "license": "ISC",
   "description": "",
   "dependencies": {
     "@koa/router": "^13.1.0",
+    "koa": "^2.16.0"
+  },
+  "devDependencies": {
     "@types/koa": "^2.15.0",
     "@types/koa__router": "^12.0.4",
-    "koa": "^2.16.0",
+    "@types/node": "^22.13.13",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "eslint": "^9.23.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }
