@@ -22,17 +22,10 @@ export default defineConfig({
   plugins: [react(), stationRoutes()],
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
+      '/ws': {
+        target: 'ws://localhost:3000',
+        ws: true,
         changeOrigin: true,
-      },
-    },
-  },
-  build: {
-    rollupOptions: {
-      input: {
-        main: '/index.html',
-        station: '/station.html',
       },
     },
   },

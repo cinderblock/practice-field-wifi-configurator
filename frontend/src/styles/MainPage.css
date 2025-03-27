@@ -1,0 +1,151 @@
+.main-page {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.station-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.station-group {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.station-group.blue {
+  background: linear-gradient(to bottom right, #1a237e10, #1a237e05);
+  border: 1px solid #1a237e20;
+}
+
+.station-group.red {
+  background: linear-gradient(to bottom right, #b7131310, #b7131305);
+  border: 1px solid #b7131320;
+}
+
+.station-group h2 {
+  margin: 0 0 1.5rem;
+  color: #2c3e50;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.station-group-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.station-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.2s;
+}
+
+.station-card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.station-card h3 {
+  margin: 0 0 1rem;
+  color: #2c3e50;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.station-card .status {
+  font-weight: 500;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #eee;
+}
+
+.station-card .detail {
+  color: #666;
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.system-info {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.system-info h2 {
+  margin: 0 0 1.25rem;
+  color: #2c3e50;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.system-info p {
+  margin: 0.75rem 0;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+  padding-right: 25%;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .main-page {
+    background: #1a1a1a;
+    color: #e0e0e0;
+  }
+
+  .station-group {
+    background: #25252580;
+  }
+
+  .station-group.blue {
+    background: linear-gradient(to bottom right, #1a237e15, #1a237e08);
+    border-color: #1a237e30;
+  }
+
+  .station-group.red {
+    background: linear-gradient(to bottom right, #b7131315, #b7131308);
+    border-color: #b7131330;
+  }
+
+  .station-card,
+  .system-info {
+    background: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .station-card h3,
+  .system-info h2,
+  .station-group h2 {
+    color: #e0e0e0;
+  }
+
+  .station-card .status {
+    border-bottom-color: #333;
+  }
+
+  .station-card .detail,
+  .system-info p {
+    color: #bbb;
+  }
+}

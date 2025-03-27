@@ -4,6 +4,7 @@ words:
   - Cameron
   - cinderblock
   - Tacklind
+  - Mbps
 ignorePaths:
   - node_modules
   - dist
