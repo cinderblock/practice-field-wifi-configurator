@@ -5,6 +5,12 @@ words:
   - cinderblock
   - Tacklind
   - Mbps
+  - Rssi
+  - minrssi
+  - maxrssi
+  - nbss
+  - bssid
 ignorePaths:
   - node_modules
   - dist
+  - samples/
