@@ -223,3 +223,88 @@ export interface StatusEntry {
   timestamp: number;
   radioUpdate: RadioUpdate;
 }
+
+export type SmallChannels =
+  | 1
+  | 9
+  | 17
+  | 25
+  | 33
+  | 41
+  | 49
+  | 57
+  | 65
+  | 73
+  | 81
+  | 89
+  | 97
+  | 105
+  | 113
+  | 121
+  | 129
+  | 137
+  | 145
+  | 153
+  | 161
+  | 169
+  | 177
+  | 185
+  | 193
+  | 201
+  | 209
+  | 217
+  | 225
+  | 233;
+
+export type AllChannels = RadioChannel | SmallChannels;
+
+export type ScanResults = LoadingScanResults | ReadyScanResults;
+
+export interface LoadingScanResults {
+  progressDots: number; // Number of dots received so far
+}
+
+export interface ReadyScanResults {
+  channels: Record<AllChannels, ChannelScanDetails>;
+  additionalStatistics: AdditionalChannelStatistic[];
+}
+
+export type ChannelScanDetails = {
+  bss: number; // Number of BSS
+  minRssi: number; // Minimum RSSI
+  maxRssi: number; // Maximum RSSI
+  nf: number; // Noise Floor
+  channelLoad: number; // Channel Load
+  spectralLoad: number; // Spectral Load
+  secondaryChannel: number; // Secondary Channel
+  spatialReuseBss: number; // Spatial Reuse BSS
+  spatialReuseLoad: number; // Spatial Reuse Load
+  channelAvailability: number; // Channel Availability
+  channelEfficiency: number; // Channel Efficiency
+  nearBss: number; // Near BSS
+  mediumBss: number; // Medium BSS
+  farBss: number; // Far BSS
+  effectiveBss: number; // Effective BSS
+  grade: number; // Grade
+  rank: number; // Rank
+  unused: string[]; // "Unused" field
+  radar: number; // Radar detection
+};
+
+export type AdditionalChannelStatistic = {
+  index: number; // Index of the statistic
+  channel: AllChannels; // Channel number
+  nbss: number; // Number of BSS
+  ssid: string; // SSID
+  bssid: string; // BSSID
+  rssi: number; // RSSI
+  phyMode: number; // PHY Mode
+};
+
+export function isLoadingScanResults(results: ScanResults): results is LoadingScanResults {
+  return 'progressDots' in results;
+}
+
+export function isReadyScanResults(results: ScanResults): results is ReadyScanResults {
+  return !('progressDots' in results);
+}
