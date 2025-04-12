@@ -141,6 +141,11 @@ class RadioManager {
         }
       }
 
+      // Wait for status to become "CONFIGURING"
+      while (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'CONFIGURING') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       this.configuring = false;
     } catch (error) {
       if (this.connected) {
