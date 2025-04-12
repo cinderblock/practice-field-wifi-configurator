@@ -3,7 +3,7 @@ export interface StationDetails {
   hashedWpaKey: string;
   wpaKeySalt: string;
   isLinked: boolean;
-  macAddress: MacAddress;
+  macAddress: MacAddress | '';
   dataAgeMs: number;
   signalDbm: number;
   noiseDbm: number;
@@ -15,7 +15,7 @@ export interface StationDetails {
   txPackets: number;
   txBytes: number;
   bandwidthUsedMbps: number;
-  connectionQuality: ConnectionQuality;
+  connectionQuality: ConnectionQuality | '';
 }
 
 export type RadioChannel =
@@ -118,9 +118,9 @@ export function isStationDetails(details: unknown): details is StationDetails {
   if (!hashedWpaKey) return false;
   if (!wpaKeySalt) return false;
 
-  if (!isMacAddress(macAddress)) return false;
+  if (macAddress !== '' && !isMacAddress(macAddress)) return false;
 
-  if (!isConnectionQuality(connectionQuality)) return false;
+  if (connectionQuality !== '' && !isConnectionQuality(connectionQuality)) return false;
 
   return true;
 }
@@ -178,7 +178,10 @@ function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<
   if (!arrayCompare(Object.keys(stationStatuses).sort(), ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'].sort()))
     return false;
 
-  for (const station in stationStatuses) {
+  const statuses = stationStatuses as Record<string, StationDetails | null>;
+
+  for (const stationId in statuses) {
+    const station = statuses[stationId];
     if (station === null) continue;
     if (!isStationDetails(station)) return false;
   }
