@@ -11,14 +11,7 @@ class RadioManager {
   private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 30000; // 30 seconds default
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
-  private activeConfig = {
-    red1: { ssid: '1', wpaKey: 'asdfasdfasdf' },
-    red2: { ssid: '2', wpaKey: 'asdfasdfasdf' },
-    red3: { ssid: '3', wpaKey: 'asdfasdfasdf' },
-    blue1: { ssid: '4', wpaKey: 'asdfasdfasdf' },
-    blue2: { ssid: '5', wpaKey: 'asdfasdfasdf' },
-    blue3: { ssid: '6', wpaKey: 'asdfasdfasdf' },
-  };
+  private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
 
   constructor(private readonly apiBaseUrl: string) {
     this.startPolling();
