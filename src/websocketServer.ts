@@ -25,6 +25,7 @@ export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
       console.log('Received message:', data);
       if (data.type === 'station') {
         radioManager.configure(data.station, data);
+        // TODO: handle multiple simultaneous configurations gracefully
       }
     });
   });
