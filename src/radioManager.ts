@@ -112,6 +112,7 @@ class RadioManager {
   stopPolling() {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
+      this.updateInterval = null;
     }
   }
 
