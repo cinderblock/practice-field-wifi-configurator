@@ -18,7 +18,7 @@ export function StationPage({ stationId }: StationPageProps) {
     return <div className="loading">Loading...</div>;
   }
 
-  const details = latest.radioStatus.stationStatuses[stationId];
+  const details = latest.radioUpdate.stationStatuses[stationId];
   const side = stationId.slice(0, -1) as Side;
   const sidePretty = side[0].toUpperCase() + side.slice(1);
   const stationNumber = stationId.slice(-1);

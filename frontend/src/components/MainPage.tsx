@@ -15,7 +15,7 @@ export function MainPage() {
     return <div className="loading">Loading...</div>;
   }
 
-  const { radioStatus } = latest;
+  const { radioUpdate: radioStatus } = latest;
   const { stationStatuses } = radioStatus;
 
   // Group stations by side

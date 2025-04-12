@@ -1,4 +1,4 @@
-import { RadioStatus, StationName, StatusEntry } from '../src/types';
+import { isValidRadioUpdate, RadioUpdate, StationName, StatusEntry } from '../src/types';
 
 type StatusListener = (entry: StatusEntry) => void;
 
@@ -40,9 +40,14 @@ class RadioManager {
 
       const timestamp = Date.now();
 
-      const radioStatus: RadioStatus = await response.json();
+      const radioUpdate: RadioUpdate = await response.json();
 
-      // TODO: Validate radioStatus
+      if (!isValidRadioUpdate(radioUpdate)) {
+        console.error('Invalid radio status:');
+        console.error(radioUpdate);
+
+        throw new Error('Invalid radio status');
+      }
 
       // const lastStatus = this.entries[this.entries.length - 1]?.radioStatus.status;
       // if (lastStatus !== radioStatus.status) {
@@ -87,7 +92,7 @@ class RadioManager {
       try {
         await this.updateStatus();
       } catch (error) {
-        // Error already logged in fetchStatus
+        console.error('Error in polling:', error);
       }
     }, interval);
   }

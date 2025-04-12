@@ -18,22 +18,59 @@ export interface StationDetails {
   connectionQuality: ConnectionQuality;
 }
 
+export type RadioChannel =
+  | 5
+  | 13
+  | 21
+  | 29
+  | 37
+  | 45
+  | 53
+  | 61
+  | 69
+  | 77
+  | 85
+  | 93
+  | 101
+  | 109
+  | 117
+  | 125
+  | 133
+  | 141
+  | 149
+  | 157
+  | 165
+  | 173
+  | 181
+  | 189
+  | 197
+  | 205
+  | 213
+  | 221
+  | 229;
 export type Side = 'red' | 'blue';
 export type StationNumber = 1 | 2 | 3;
 export type StationName = `${Side}${StationNumber}`;
 export const StationNameRegex = /^(red|blue)[123]$/;
-export type Status = string; // 'BOOTING' | 'ACTIVE' | 'CONFIGURING';
+export type Status = 'BOOTING' | 'CONFIGURING' | 'ACTIVE' | 'ERROR';
 export type VLAN = '10_20_30' | '40_50_60' | '70_80_90';
-export type ConnectionQuality = string; // 'warning' | ...;
+export type ConnectionQuality = 'excellent' | 'good' | 'caution' | 'warning';
+
+export function isConnectionQuality(quality: unknown): quality is ConnectionQuality {
+  if (typeof quality !== 'string') return false;
+  return ['excellent', 'good', 'caution', 'warning'].includes(quality);
+}
 
 type HexDigit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 type HexByte = `${HexDigit}${HexDigit}`;
 export type MacAddress = `${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}`;
-export function isMacAddress(mac: string): mac is MacAddress {
+export function isMacAddress(mac: unknown): mac is MacAddress {
+  if (typeof mac !== 'string') return false;
   return /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac);
 }
 
-export function isVLAN(vlan: string): vlan is VLAN {
+export function isVLAN(vlan: unknown): vlan is VLAN {
+  if (typeof vlan !== 'string') return false;
   return ['10_20_30', '40_50_60', '70_80_90'].includes(vlan);
 }
 
@@ -65,7 +102,6 @@ export function isStationDetails(details: unknown): details is StationDetails {
   if (typeof hashedWpaKey !== 'string') return false;
   if (typeof wpaKeySalt !== 'string') return false;
   if (typeof isLinked !== 'boolean') return false;
-  if (typeof macAddress !== 'string') return false;
   if (typeof dataAgeMs !== 'number') return false;
   if (typeof signalDbm !== 'number') return false;
   if (typeof noiseDbm !== 'number') return false;
@@ -77,7 +113,6 @@ export function isStationDetails(details: unknown): details is StationDetails {
   if (typeof txPackets !== 'number') return false;
   if (typeof txBytes !== 'number') return false;
   if (typeof bandwidthUsedMbps !== 'number') return false;
-  if (typeof connectionQuality !== 'string') return false;
 
   if (!ssid) return false;
   if (!hashedWpaKey) return false;
@@ -85,12 +120,88 @@ export function isStationDetails(details: unknown): details is StationDetails {
 
   if (!isMacAddress(macAddress)) return false;
 
-  if (!isVLAN(connectionQuality)) return false;
+  if (!isConnectionQuality(connectionQuality)) return false;
 
   return true;
 }
 
-export interface RadioStatus {
+export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
+  if (typeof update !== 'object') return false;
+  if (!update) return false;
+
+  const { channel, channelBandwidth, redVlans, blueVlans, status, stationStatuses, syslogIpAddress, version } =
+    update as RadioUpdate;
+
+  if (!isRadioChannel(channel)) return false;
+  if (!isChannelBandwidth(channelBandwidth)) return false;
+  if (!isVLAN(redVlans)) return false;
+  if (!isVLAN(blueVlans)) return false;
+  if (!isStatus(status)) return false;
+  if (!isStationStatuses(stationStatuses)) return false;
+  if (!isSyslogIpAddress(syslogIpAddress)) return false;
+  if (!isVersion(version)) return false;
+
+  if (redVlans === blueVlans) return false;
+
+  return true;
+}
+
+function isRadioChannel(channel: unknown): channel is RadioChannel {
+  return [
+    // TODO: DRY
+    5, 13, 21, 29, 37, 45, 53, 61, 69, 77, 85, 93, 101, 109, 117, 125, 133, 141, 149, 157, 165, 173, 181, 189, 197, 205,
+    213, 221, 229,
+  ].includes(channel as number);
+}
+
+function isChannelBandwidth(bandwidth: unknown): bandwidth is `${number}MHz` {
+  if (typeof bandwidth !== 'string') return false;
+  return /^[1-9][0-9]*MHz$/.test(bandwidth);
+}
+
+function isStatus(status: unknown): status is Status {
+  return ['BOOTING', 'CONFIGURING', 'ACTIVE', 'ERROR'].includes(status as string);
+}
+
+function arrayCompare<T>(a: T[], b: T[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<StationName, StationDetails | null> {
+  if (typeof stationStatuses !== 'object') return false;
+  if (!stationStatuses) return false;
+
+  if (!arrayCompare(Object.keys(stationStatuses).sort(), ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'].sort()))
+    return false;
+
+  for (const station in stationStatuses) {
+    if (station === null) continue;
+    if (!isStationDetails(station)) return false;
+  }
+
+  return true;
+}
+
+function isSyslogIpAddress(syslogIpAddress: unknown): syslogIpAddress is string {
+  if (typeof syslogIpAddress !== 'string') return false;
+  return isIpAddress(syslogIpAddress);
+}
+
+function isIpAddress(ipAddress: string): ipAddress is string {
+  if (typeof ipAddress !== 'string') return false;
+  return /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/.test(ipAddress);
+}
+
+function isVersion(version: unknown): version is string {
+  if (typeof version !== 'string') return false;
+  return true;
+}
+
+export interface RadioUpdate {
   channel: number;
   channelBandwidth: `${number}MHz`;
   redVlans: VLAN;
@@ -107,7 +218,8 @@ export interface RadioStatus {
   syslogIpAddress: string;
   version: string;
 }
+
 export interface StatusEntry {
   timestamp: number;
-  radioStatus: RadioStatus;
+  radioUpdate: RadioUpdate;
 }
