@@ -1,0 +1,49 @@
+{
+  "channel": 13,
+  "channelBandwidth": "40MHz",
+  "redVlans": "10_20_30",
+  "blueVlans": "40_50_60",
+  "status": "ACTIVE",
+  "stationStatuses": {
+    "red1": {
+      "ssid": "1234-COMP",
+      "hashedWpaKey": "85f904f51dc1b8db89d4f853d516cf66c992ef4436708074ea08d143eb09e921",
+      "wpaKeySalt": "JgxPyirsyPNS1LLb",
+      "isLinked": true,
+      "macAddress": "80:A9:97:49:46:E0",
+      "dataAgeMs": 0,
+      "signalDbm": -77,
+      "noiseDbm": -95,
+      "signalNoiseRatio": 18,
+      "rxRateMbps": 34.4,
+      "rxPackets": 4095,
+      "rxBytes": 80070,
+      "txRateMbps": 103.2,
+      "txPackets": 0,
+      "txBytes": 70674,
+      "bandwidthUsedMbps": 0.011,
+      "connectionQuality": "warning"
+    },
+    "red3": {
+      "ssid": "5940-gamma",
+      "hashedWpaKey": "2e1605c128b6f0d26e23a89d661eef26b1470b65d59280a4febd7de94f30e005",
+      "wpaKeySalt": "qTeyVltYI0IJtVf5",
+      "isLinked": true,
+      "macAddress": "48:DA:35:B1:99:3F",
+      "dataAgeMs": 0,
+      "signalDbm": -56,
+      "noiseDbm": -95,
+      "signalNoiseRatio": 39,
+      "rxRateMbps": 516.2,
+      "rxPackets": 4095,
+      "rxBytes": 183075549,
+      "txRateMbps": 154.9,
+      "txPackets": 0,
+      "txBytes": 7325207,
+      "bandwidthUsedMbps": 10.199,
+      "connectionQuality": "excellent"
+    }
+  },
+  "syslogIpAddress": "10.0.100.40",
+  "version": "VH-109_AP_PRACTICE_1.2.9-02102025"
+}
