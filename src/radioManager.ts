@@ -55,9 +55,9 @@ class RadioManager {
       //   this.lastStatusChangeTime = timestamp;
       // }
 
-      // Add to history and notify listeners
-      const entry: StatusEntry = { timestamp, radioStatus };
+      const entry: StatusEntry = { timestamp, radioUpdate };
 
+      // Add to history and notify listeners
       this.entries.push(entry);
       this.notifyListeners(entry);
 
