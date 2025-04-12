@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StationName, StatusEntry } from '../../../src/types.js';
+import { StationName, StatusEntry } from '../../../src/types';
 
 let ws: WebSocket | null = null;
 

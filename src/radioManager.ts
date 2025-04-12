@@ -9,7 +9,7 @@ import {
   ScanResults,
   StationName,
   StatusEntry,
-} from '../src/types';
+} from './types';
 
 type StatusListener = (entry: StatusEntry) => void;
 

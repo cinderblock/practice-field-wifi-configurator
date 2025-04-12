@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
-import { StationName, Side, StatusEntry } from '../../../src/types';
+import { StationName, Side } from '../../../src/types';
 import '../styles/StationPage.css';
 
 interface StationPageProps {
