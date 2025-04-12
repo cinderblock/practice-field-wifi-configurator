@@ -184,13 +184,36 @@ class RadioManager {
     return () => this.updateListeners.splice(this.updateListeners.indexOf(listener), 1);
   }
 
+  private static parseShorthand(shorthand: string): string {
+    const table = {
+      SC: 'Secondary Channel',
+      WR: 'Weather Radar',
+      DFS: 'DFS Channel',
+      HN: 'High Noise',
+      RS: 'Low RSSI',
+      CL: 'High Channel Load',
+      RP: 'Regulatory Power',
+      N2G: 'Not selected 2G',
+      P80X: 'Primary 80X80',
+      NS80X: 'Only for primary 80X80',
+      NP80X: 'Only for Secondary 80X80',
+      SR: 'Spacial reuse',
+      NF: 'Run-time average NF_dBr',
+    } as Record<string, string>;
+    if (shorthand in table) {
+      return shorthand + ': ' + table[shorthand];
+    }
+
+    return shorthand;
+  }
+
   private static parseScanResults(response: string): ScanResults {
     const lines = response
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0);
 
-    const channels = {} as Record<AllChannels, ChannelScanDetails>;
+    const channels: ChannelScanDetails[] = [];
     const additionalStatistics: AdditionalChannelStatistic[] = [];
 
     let parsingChannels = false;
@@ -236,42 +259,29 @@ class RadioManager {
         const groups = line.match(regex)?.groups;
         if (!groups) continue;
 
-        const channel = parseInt(groups.channel, 10) as AllChannels;
-
-        channels[channel] = { unused: [] as string[] } as ChannelScanDetails;
-
-        function parseShorthand(shorthand: string): string {
-          const table = {
-            SC: 'Secondary Channel',
-            WR: 'Weather Radar',
-            DFS: 'DFS Channel',
-            HN: 'High Noise',
-            RS: 'Low RSSI',
-            CL: 'High Channel Load',
-            RP: 'Regulatory Power',
-            N2G: 'Not selected 2G',
-            P80X: 'Primary 80X80',
-            NS80X: 'Only for primary 80X80',
-            NP80X: 'Only for Secondary 80X80',
-            SR: 'Spacial reuse',
-            NF: 'Run-time average NF_dBr',
-          } as Record<string, string>;
-          if (shorthand in table) {
-            return shorthand + ': ' + table[shorthand];
-          }
-
-          return shorthand;
-        }
-
-        for (const key in groups) {
-          const k = key as keyof ChannelScanDetails;
-
-          if (k === 'unused') {
-            channels[channel][k] = groups[key].split(' ').map(parseShorthand);
-          } else {
-            channels[channel][k] = parseInt(groups[key], 10);
-          }
-        }
+        channels.push({
+          channel: parseInt(groups.channel, 10) as AllChannels,
+          channelFrequency: parseInt(groups.channelFrequency, 10),
+          bss: parseInt(groups.bss, 10),
+          minRssi: parseInt(groups.minRssi, 10),
+          maxRssi: parseInt(groups.maxRssi, 10),
+          nf: parseInt(groups.nf, 10),
+          channelLoad: parseInt(groups.chLoad, 10),
+          spectralLoad: parseInt(groups.spectLoad, 10),
+          secondaryChannel: parseInt(groups.secChan, 10),
+          spatialReuseBss: parseInt(groups.srBss, 10),
+          spatialReuseLoad: parseInt(groups.srLoad, 10),
+          channelAvailability: parseInt(groups.chAvil, 10),
+          channelEfficiency: parseInt(groups.chanEff, 10),
+          nearBss: parseInt(groups.nearBss, 10),
+          mediumBss: parseInt(groups.medBss, 10),
+          farBss: parseInt(groups.farBss, 10),
+          effectiveBss: parseInt(groups.effBss, 10),
+          grade: parseInt(groups.grade, 10),
+          rank: parseInt(groups.rank, 10),
+          unused: groups.unused.split(' ').map(RadioManager.parseShorthand),
+          radar: parseInt(groups.radar, 10),
+        });
       }
 
       if (parsingAdditionalStats) {
@@ -293,7 +303,7 @@ class RadioManager {
       }
     }
 
-    if (!channels[1]) {
+    if (!channels.length) {
       return { progressDots };
     }
 

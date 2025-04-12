@@ -272,15 +272,17 @@ export interface LoadingScanResults {
 }
 
 export interface ReadyScanResults {
-  channels: Record<AllChannels, ChannelScanDetails>;
+  channels: ChannelScanDetails[];
   additionalStatistics: AdditionalChannelStatistic[];
 }
 
 export type ChannelScanDetails = {
+  channel: AllChannels; // Channel number
+  channelFrequency: number; // Channel frequency in MHz
   bss: number; // Number of BSS
   minRssi: number; // Minimum RSSI
   maxRssi: number; // Maximum RSSI
-  nf: number; // Noise Floor
+  nf: number; // Noise Floor. Run-time average NF_dBr
   channelLoad: number; // Channel Load
   spectralLoad: number; // Spectral Load
   secondaryChannel: number; // Secondary Channel
