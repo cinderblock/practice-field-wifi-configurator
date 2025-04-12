@@ -20,7 +20,9 @@ export function StationPage({ stationId }: StationPageProps) {
 
   const details = latest.radioStatus.stationStatuses[stationId];
   const side = stationId.slice(0, -1) as Side;
-  const displayName = `${side[0].toUpperCase()}${side.slice(1)} ${stationId.slice(-1)}`;
+  const sidePretty = side[0].toUpperCase() + side.slice(1);
+  const stationNumber = stationId.slice(-1);
+  const displayName = `${sidePretty} ${stationNumber}`;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
