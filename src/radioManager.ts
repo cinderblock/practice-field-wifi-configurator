@@ -5,6 +5,7 @@ type StatusListener = (entry: StatusEntry) => void;
 class RadioManager {
   private updateInterval: NodeJS.Timeout | null = null;
   private connected: boolean = false;
+  private configuring = false;
   private readonly timeout = 1000;
   private readonly pollInterval = 250;
   private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 30000; // 30 seconds default
@@ -105,6 +106,13 @@ class RadioManager {
   }
 
   async configure(stationId: StationName, { ssid, wpaKey }: { ssid: string; wpaKey: string }): Promise<void> {
+    if (this.configuring) {
+      console.log('Already configuring');
+      return;
+    }
+
+    this.configuring = true;
+
     console.log('Configuring station:', stationId, { ssid, wpaKey });
 
     this.activeConfig[stationId] = { ssid, wpaKey };
@@ -132,6 +140,8 @@ class RadioManager {
           throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
         }
       }
+
+      this.configuring = false;
     } catch (error) {
       if (this.connected) {
         this.connected = false;
