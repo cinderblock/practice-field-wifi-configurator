@@ -183,7 +183,11 @@ function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<
   for (const stationId in statuses) {
     const station = statuses[stationId];
     if (station === null) continue;
-    if (!isStationDetails(station)) return false;
+    if (!isStationDetails(station)) {
+      // console.log(`bad station ${stationId}`);
+      // console.log(station);
+      return false;
+    }
   }
 
   return true;
