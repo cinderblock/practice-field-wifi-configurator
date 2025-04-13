@@ -157,6 +157,11 @@ class RadioManager {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      // Wait for status to not be "CONFIGURING"
+      while (this.entries[this.entries.length - 1]?.radioUpdate.status === 'CONFIGURING') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       if (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'ACTIVE') {
         console.error('Error configuring station: Radio status is not ACTIVE after configuration');
         throw new Error('Radio status is not ACTIVE after configuration');
