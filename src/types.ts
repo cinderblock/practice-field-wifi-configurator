@@ -63,7 +63,7 @@ export function isConnectionQuality(quality: unknown): quality is ConnectionQual
 
 type HexDigit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 type HexByte = `${HexDigit}${HexDigit}`;
-export type MacAddress = `${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}`;
+export type MacAddress = string; // `${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}:${HexByte}`;
 export function isMacAddress(mac: unknown): mac is MacAddress {
   if (typeof mac !== 'string') return false;
   return /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac);
