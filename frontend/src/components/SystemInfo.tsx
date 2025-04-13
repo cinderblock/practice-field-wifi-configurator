@@ -1,0 +1,27 @@
+import Typography from '@mui/material/Typography';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import { useLatest } from '../hooks/useBackend';
+
+export function SystemInfo() {
+  const latest = useLatest();
+
+  if (!latest) {
+    return <Typography>Loading...</Typography>;
+  }
+
+  const { status, version, channel, channelBandwidth } = latest.radioUpdate;
+
+  return (
+    <Card style={{ marginBottom: '1rem' }}>
+      <CardContent>
+        <Typography variant="h6">System Information</Typography>
+        <Typography>Status: {status}</Typography>
+        <Typography>Version: {version}</Typography>
+        <Typography>
+          Channel: {channel} ({channelBandwidth})
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}

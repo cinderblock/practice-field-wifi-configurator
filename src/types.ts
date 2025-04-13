@@ -48,9 +48,9 @@ export type RadioChannel =
   | 213
   | 221
   | 229;
-export type Side = 'red' | 'blue';
+export type Alliance = 'red' | 'blue';
 export type StationNumber = 1 | 2 | 3;
-export type StationName = `${Side}${StationNumber}`;
+export type StationName = `${Alliance}${StationNumber}`;
 export const StationNameRegex = /^(red|blue)[123]$/;
 export type Status = 'BOOTING' | 'CONFIGURING' | 'ACTIVE' | 'ERROR';
 export type VLAN = '10_20_30' | '40_50_60' | '70_80_90';
