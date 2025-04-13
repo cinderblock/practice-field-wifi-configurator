@@ -66,12 +66,16 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const pretty = prettyStationName(station);
 
+  const borderStyle = {
+    borderLeft: `0.5em solid ${station.startsWith('red') ? 'red' : 'blue'}`,
+  };
+
   return (
     <Card
       style={{
         marginBottom: full ? undefined : '1rem',
         height: full ? '100vh' : '20em',
-        borderLeft: `0.5em solid ${station.startsWith('red') ? 'red' : 'blue'}`,
+        ...borderStyle,
       }}
     >
       <CardContent>
@@ -130,6 +134,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         }}
       >
         <form
+          style={borderStyle}
           onSubmit={e => {
             e.preventDefault();
             if (!isSaveDisabled && !isSSIDEmpty) {
