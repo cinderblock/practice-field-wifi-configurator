@@ -131,7 +131,7 @@ class RadioManager {
     const stationConfigurations = this.activeConfig;
 
     const body = JSON.stringify({ stationConfigurations });
-    console.log('Configuring station:', body);
+    // console.log('Configuring station:', body);
 
     try {
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
