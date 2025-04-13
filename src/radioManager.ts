@@ -173,6 +173,8 @@ class RadioManager {
         this.connected = false;
       }
       throw error;
+    } finally {
+      this.configuring = false;
     }
   }
 
