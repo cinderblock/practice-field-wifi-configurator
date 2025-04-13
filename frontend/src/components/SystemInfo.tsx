@@ -13,7 +13,7 @@ export function SystemInfo() {
   const { status, version, channel, channelBandwidth } = latest.radioUpdate;
 
   return (
-    <Card style={{ marginBottom: '1rem' }}>
+    <Card style={{ marginBottom: '1rem', borderLeft: '0.5em solid green' }}>
       <CardContent>
         <Typography variant="h6">System Information</Typography>
         <Typography>Status: {status}</Typography>

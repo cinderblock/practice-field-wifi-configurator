@@ -73,7 +73,13 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const pretty = prettyStationName(station);
 
   return (
-    <Card style={{ marginBottom: full ? undefined : '1rem', height: full ? '100vh' : '20em' }}>
+    <Card
+      style={{
+        marginBottom: full ? undefined : '1rem',
+        height: full ? '100vh' : '20em',
+        borderLeft: `0.5em solid ${station.startsWith('red') ? 'red' : 'blue'}`,
+      }}
+    >
       <CardContent>
         <Typography variant="h6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {pretty}
