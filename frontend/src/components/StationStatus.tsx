@@ -60,14 +60,23 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     setOpen(false);
   };
 
+  const ssidRegex = /^[a-zA-Z0-9-]{0,14}$/;
+  const ssidFormatRegex = /^\d{1,6}(?:-.*)?$/; // FIRST SSID format
+  const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
+
   const isSaveDisabled: boolean =
-    !/^[a-zA-Z0-9]{8,16}$/.test(passphrase) || !/^[a-zA-Z0-9-]{0,14}$/.test(ssid) || !/^\d{1,5}(?:-.*)?$/.test(ssid);
+    !passphraseRegex.test(passphrase) || !ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid);
   const isSSIDEmpty = ssid === '';
 
   const pretty = prettyStationName(station);
 
   const borderStyle = {
     borderLeft: `0.5em solid ${station.startsWith('red') ? 'red' : 'blue'}`,
+  };
+
+  const modalStyle = {
+    minHeight: '5em',
+    minWidth: '30em',
   };
 
   return (
@@ -149,16 +158,34 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               value={ssid}
               onChange={e => setSsid(e.target.value)}
               fullWidth
+              style={modalStyle}
               margin="normal"
               inputRef={ssidInputRef} // Attach the ref here
+              helperText={
+                isSSIDEmpty
+                  ? 'Empty SSID will clear the configuration.'
+                  : !ssidRegex.test(ssid)
+                  ? 'SSID must be alphanumeric and up to 14 characters.'
+                  : !ssidFormatRegex.test(ssid)
+                  ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
+                  : ''
+              }
+              error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
             />
             <TextField
               label="Passphrase"
               value={passphrase}
               onChange={e => setPassphrase(e.target.value)}
               fullWidth
+              style={modalStyle}
               disabled={isSSIDEmpty}
               margin="normal"
+              helperText={
+                !isSSIDEmpty && !passphraseRegex.test(passphrase)
+                  ? 'Passphrase must be alphanumeric and between 8-16 characters.'
+                  : ''
+              }
+              error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
             />
           </DialogContent>
           <DialogActions>
