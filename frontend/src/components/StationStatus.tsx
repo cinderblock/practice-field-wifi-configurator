@@ -66,7 +66,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     setOpen(false);
   };
 
-  const isSaveDisabled: boolean = !/^[a-zA-Z0-9]{8,16}$/.test(passphrase) || !/^[a-zA-Z0-9-]{0,14}$/.test(ssid);
+  const isSaveDisabled: boolean =
+    !/^[a-zA-Z0-9]{8,16}$/.test(passphrase) || !/^[a-zA-Z0-9-]{0,14}$/.test(ssid) || !/^\d{1,5}(?:-.*)?$/.test(ssid);
   const isSSIDEmpty = ssid === '';
 
   const pretty = prettyStationName(station);
