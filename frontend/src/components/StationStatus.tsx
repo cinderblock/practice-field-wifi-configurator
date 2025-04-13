@@ -14,7 +14,7 @@ import { StationName } from '../../../src/types';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
 import { prettyStationName } from '../utils';
 
-export function StationStatus({ station }: { station: StationName }) {
+export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
   const [ssid, setSsid] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -59,7 +59,7 @@ export function StationStatus({ station }: { station: StationName }) {
   const isSSIDEmpty = ssid === '';
 
   return (
-    <Card style={{ marginBottom: '1rem' }}>
+    <Card style={{ marginBottom: full ? undefined : '1rem', height: full ? '100vh' : '20em' }}>
       <CardContent>
         <Typography variant="h6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {prettyStationName(station)}
