@@ -27,12 +27,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     return <Typography>Loading...</Typography>;
   }
 
-  const { stationStatuses, status } = latest.radioUpdate;
-
-  const configuring = status === 'CONFIGURING';
-
-  const stationDetails = stationStatuses[station];
-
   const {
     ssid: stationSsid,
     isLinked,
@@ -49,7 +43,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     txBytes,
     bandwidthUsedMbps,
     connectionQuality,
-  } = stationDetails || {};
+  } = latest.radioUpdate.stationStatuses[station] || {};
 
   const handleOpen = () => {
     setSsid(stationSsid || '');
