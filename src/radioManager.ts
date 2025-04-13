@@ -144,35 +144,32 @@ class RadioManager {
       });
 
       if (!response.ok) {
-        // console.error('Error configuring station:', response);
-        if (response.status === 400) {
-          console.error('Error configuring station:', await response.text());
-        } else {
-          throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
+        throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
+      }
+
+      await new Promise<void>(async (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Configuration timed out'));
+        }, 45 * 1000);
+
+        // Wait for status to become "CONFIGURING"
+        while (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'CONFIGURING') {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
-      }
 
-      // Wait for status to become "CONFIGURING"
-      while (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'CONFIGURING') {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+        // Wait for status to not be "CONFIGURING"
+        while (this.entries[this.entries.length - 1]?.radioUpdate.status === 'CONFIGURING') {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
 
-      // Wait for status to not be "CONFIGURING"
-      while (this.entries[this.entries.length - 1]?.radioUpdate.status === 'CONFIGURING') {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+        if (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'ACTIVE') {
+          console.error('Error configuring station: Radio status is not ACTIVE after configuration');
+          throw new Error('Radio status is not ACTIVE after configuration');
+        }
 
-      if (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'ACTIVE') {
-        console.error('Error configuring station: Radio status is not ACTIVE after configuration');
-        throw new Error('Radio status is not ACTIVE after configuration');
-      }
-
-      this.configuring = false;
-    } catch (error) {
-      if (this.connected) {
-        this.connected = false;
-      }
-      throw error;
+        clearTimeout(timeout);
+        resolve();
+      });
     } finally {
       this.configuring = false;
     }

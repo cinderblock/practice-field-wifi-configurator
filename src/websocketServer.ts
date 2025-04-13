@@ -24,7 +24,10 @@ export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
       const data = JSON.parse(message);
       console.log('Received message:', data);
       if (data.type === 'station') {
-        radioManager.configure(data.station, data);
+        radioManager.configure(data.station, data).catch(err => {
+          console.error('Error configuring station:', err);
+          ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
+        });
         // TODO: handle multiple simultaneous configurations gracefully
       }
     });

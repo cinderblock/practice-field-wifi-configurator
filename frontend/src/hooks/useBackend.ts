@@ -13,7 +13,7 @@ function connect() {
     processHistory(history.data);
     // Subsequent messages are updates
     nws!.onmessage = update => {
-      appendHistory(update.data);
+      receiveMessage(update.data);
     };
   };
 
@@ -80,8 +80,35 @@ export function useUpdateCallback(cb: StatusUpdateCallback) {
 
 const MaxHistoryAge = 1000 * 60 * 5; // 5 minutes
 
-function appendHistory(entry: string) {
-  const detail = JSON.parse(entry) as StatusEntry;
+function isStatusEntry(entry: unknown): entry is StatusEntry {
+  if (typeof entry !== 'object') return false;
+  if (!entry) return false;
+  if (!('timestamp' in entry)) return false;
+  if (!('radioUpdate' in entry)) return false;
+  return true;
+}
+
+function isErrorEntry(entry: unknown): entry is { error: string; details: string } {
+  if (typeof entry !== 'object') return false;
+  if (!entry) return false;
+  if (!('error' in entry)) return false;
+  if (!('details' in entry)) return false;
+  return true;
+}
+
+function receiveMessage(entry: string) {
+  const detail = JSON.parse(entry) as StatusEntry | { error: string; details: string };
+
+  if (isErrorEntry(detail)) {
+    console.error('Invalid status entry:', detail);
+    return;
+  }
+
+  if (!isStatusEntry(detail)) {
+    console.error('Invalid status entry:', detail);
+    return;
+  }
+
   // TODO: Validate
   history.push(detail);
 
