@@ -7,9 +7,6 @@ import { SystemInfo } from './SystemInfo';
 export function MainPage() {
   return (
     <Container>
-      <Typography variant="h2" gutterBottom>
-        Practice Field WiFi Status
-      </Typography>
       <Grid container spacing={2}>
         <AllianceStatus alliance="red" />
         <AllianceStatus alliance="blue" />
