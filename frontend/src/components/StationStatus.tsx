@@ -135,33 +135,42 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           },
         }}
       >
-        <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="SSID"
-            value={ssid}
-            onChange={e => setSsid(e.target.value)}
-            fullWidth
-            margin="normal"
-            inputRef={ssidInputRef} // Attach the ref here
-          />
-          <TextField
-            label="Passphrase"
-            value={passphrase}
-            onChange={e => setPassphrase(e.target.value)}
-            fullWidth
-            disabled={isSSIDEmpty}
-            margin="normal"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClose} color="secondary">
-            Cancel
-          </Button>
-          <Button onClick={handleSave} color="primary" disabled={isSaveDisabled && !isSSIDEmpty}>
-            {isSSIDEmpty ? 'Clear' : 'Save'}
-          </Button>
-        </DialogActions>
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            if (!isSaveDisabled && !isSSIDEmpty) {
+              handleSave();
+            }
+          }}
+        >
+          <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="SSID"
+              value={ssid}
+              onChange={e => setSsid(e.target.value)}
+              fullWidth
+              margin="normal"
+              inputRef={ssidInputRef} // Attach the ref here
+            />
+            <TextField
+              label="Passphrase"
+              value={passphrase}
+              onChange={e => setPassphrase(e.target.value)}
+              fullWidth
+              disabled={isSSIDEmpty}
+              margin="normal"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClose} color="secondary">
+              Cancel
+            </Button>
+            <Button type="submit" color="primary" disabled={isSaveDisabled && !isSSIDEmpty}>
+              {isSSIDEmpty ? 'Clear' : 'Save'}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Card>
   );
