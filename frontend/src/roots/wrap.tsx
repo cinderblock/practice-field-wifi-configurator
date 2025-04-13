@@ -38,7 +38,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               <CircularProgress style={{ width: '25vw', height: '25vw' }} />
               {lastActive && (
                 <Typography variant="h3" style={{ marginTop: '1rem', userSelect: 'none' }}>
-                  Estimated remaining time:{' '}
+                  Estimated time remaining:{' '}
                   {(estimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds
                 </Typography>
               )}
