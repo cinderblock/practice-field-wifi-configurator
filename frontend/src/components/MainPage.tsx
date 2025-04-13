@@ -9,7 +9,7 @@ export function MainPage() {
     <Container>
       <Grid container spacing={2}>
         <AllianceStatus alliance="red" />
-        <AllianceStatus alliance="blue" />
+        <AllianceStatus alliance="blue" reverse />
         <Grid size={{ xs: 12 }}>
           <SystemInfo />
         </Grid>
