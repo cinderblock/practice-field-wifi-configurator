@@ -13,6 +13,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { StationName } from '../../../src/types';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
 import { prettyStationName } from '../utils';
+import { Grid } from '@mui/material';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -28,17 +29,27 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const { stationStatuses, status } = latest.radioUpdate;
 
-  if (status !== 'ACTIVE') {
-    return <Typography>System is not active</Typography>;
-  }
+  const configuring = status === 'CONFIGURING';
 
   const stationDetails = stationStatuses[station];
 
-  if (!stationDetails) {
-    return <Typography>Station {station} is not available</Typography>;
-  }
-
-  const { ssid: stationSsid, isLinked } = stationDetails;
+  const {
+    ssid: stationSsid,
+    isLinked,
+    macAddress,
+    dataAgeMs,
+    signalDbm,
+    noiseDbm,
+    signalNoiseRatio,
+    rxRateMbps,
+    rxPackets,
+    rxBytes,
+    txRateMbps,
+    txPackets,
+    txBytes,
+    bandwidthUsedMbps,
+    connectionQuality,
+  } = stationDetails || {};
 
   const handleOpen = () => {
     setSsid(stationSsid || '');
@@ -58,17 +69,51 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const isSaveDisabled: boolean = !/^[a-zA-Z0-9]{8,16}$/.test(passphrase) || !/^[a-zA-Z0-9-]{0,14}$/.test(ssid);
   const isSSIDEmpty = ssid === '';
 
+  const pretty = prettyStationName(station);
+
   return (
     <Card style={{ marginBottom: full ? undefined : '1rem', height: full ? '100vh' : '20em' }}>
       <CardContent>
         <Typography variant="h6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {prettyStationName(station)}
+          {pretty}
           <IconButton onClick={handleOpen} size="small">
             <SettingsIcon />
           </IconButton>
         </Typography>
-        <Typography>Status: {isLinked}</Typography>
-        <Typography>SSID: {stationSsid}</Typography>
+        {stationSsid ? (
+          <Grid container style={{ marginTop: '1rem' }}>
+            <DataUnit name="SSID" value={stationSsid} />
+            <DataUnit name="Passphrase" value={passphrase ? '********' : 'not set'} />
+            {/* TODO: ability to test if user knows wpakey */}
+            {isLinked ? (
+              <>
+                <DataUnit name="MAC Address" value={macAddress!} />
+                <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
+                <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
+                <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
+                <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
+                <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
+                <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
+                <DataUnit name="RX" value={rxPackets!} unit="Packets" />
+                <DataUnit name="TX" value={txPackets!} unit="Packets" />
+                <DataUnit name="RX" value={rxBytes!} unit="Bytes" />
+                <DataUnit name="TX" value={txBytes!} unit="Bytes" />
+                <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
+                <DataUnit name="Connection Quality" value={connectionQuality!} />
+              </>
+            ) : (
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography noWrap style={{ fontStyle: 'italic' }}>
+                  not linked
+                </Typography>
+              </Grid>
+            )}
+          </Grid>
+        ) : (
+          <Typography noWrap style={{ fontStyle: 'italic' }}>
+            not configured
+          </Typography>
+        )}
       </CardContent>
 
       <Dialog
@@ -83,7 +128,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           },
         }}
       >
-        <DialogTitle>Configure SSID and Passphrase</DialogTitle>
+        <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
         <DialogContent>
           <TextField
             label="SSID"
@@ -116,3 +161,24 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 }
 
 export default StationStatus;
+
+function DataUnit({
+  name,
+  value,
+  unit,
+  cols = 2,
+}: {
+  name: string;
+  value: number | string;
+  unit?: string;
+  cols?: number;
+}) {
+  return (
+    <Grid size={{ xs: 12, md: 12 / cols }}>
+      <Typography noWrap>
+        {name}: {value}
+        {unit ? ` ${unit}` : ''}
+      </Typography>
+    </Grid>
+  );
+}
