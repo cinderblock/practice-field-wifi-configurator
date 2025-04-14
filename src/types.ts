@@ -317,3 +317,24 @@ export function isLoadingScanResults(results: ScanResults): results is LoadingSc
 export function isReadyScanResults(results: ScanResults): results is ReadyScanResults {
   return !('progressDots' in results);
 }
+
+export function isStationUpdate(update: unknown): update is StationUpdate {
+  if (typeof update !== 'object') return false;
+  if (!update) return false;
+
+  const { type, station, ssid, wpaKey } = update as StationUpdate;
+
+  if (type !== 'station') return false;
+  if (!StationNameRegex.test(station)) return false;
+  if (typeof ssid !== 'string') return false;
+  if (typeof wpaKey !== 'string') return false;
+
+  return true;
+}
+
+export type StationUpdate = {
+  type: 'station';
+  station: StationName;
+  ssid: string;
+  wpaKey: string;
+};

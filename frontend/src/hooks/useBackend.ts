@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StationName, StatusEntry } from '../../../src/types';
+import { StationName, StationUpdate, StatusEntry } from '../../../src/types';
 
 let ws: WebSocket | null = null;
 
@@ -49,14 +49,13 @@ function processHistory(json: string) {
 }
 
 export function sendNewConfig(station: StationName, ssid: string, wpaKey: string) {
-  ws?.send(
-    JSON.stringify({
-      type: 'station',
-      station,
-      ssid,
-      wpaKey,
-    }),
-  );
+  const update: StationUpdate = {
+    type: 'station',
+    station,
+    ssid,
+    wpaKey,
+  };
+  ws?.send(JSON.stringify(update));
 }
 
 const events = new EventTarget();

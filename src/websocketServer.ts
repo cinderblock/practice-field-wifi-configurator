@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager';
+import { isStationUpdate } from './types';
 
 const DefaultPort = Number(process.env.SERVER_PORT) || 3000;
 
@@ -23,7 +24,8 @@ export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
     ws.on('message', (message: string) => {
       const data = JSON.parse(message);
       console.log('Received message:', data);
-      if (data.type === 'station') {
+
+      if (isStationUpdate(data)) {
         radioManager.configure(data.station, data).catch(err => {
           console.error('Error configuring station:', err);
           ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
