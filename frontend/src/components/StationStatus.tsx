@@ -64,9 +64,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const ssidFormatRegex = /^\d{1,6}(?:-.*)?$/; // FIRST SSID format
   const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
 
-  const isSaveDisabled: boolean =
-    !passphraseRegex.test(passphrase) || !ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid);
   const isSSIDEmpty = ssid === '';
+  const isSaveEnabled: boolean =
+    isSSIDEmpty || (passphraseRegex.test(passphrase) && ssidRegex.test(ssid) && ssidFormatRegex.test(ssid));
 
   const pretty = prettyStationName(station);
 
@@ -146,7 +146,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           style={borderStyle}
           onSubmit={e => {
             e.preventDefault();
-            if (!isSaveDisabled) handleSave();
+            if (isSaveEnabled) handleSave();
           }}
         >
           <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
@@ -190,7 +190,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             <Button onClick={handleClose} color="secondary">
               Cancel
             </Button>
-            <Button type="submit" color="primary" disabled={isSaveDisabled}>
+            <Button type="submit" color="primary" disabled={!isSaveEnabled}>
               {isSSIDEmpty ? 'Clear' : 'Save'}
             </Button>
           </DialogActions>
