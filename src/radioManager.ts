@@ -124,13 +124,17 @@ class RadioManager {
 
     this.configuring = true;
 
-    console.log('Configuring station:', stationId, { ssid, wpaKey });
+    const config = ssid ? { ssid, wpaKey } : null;
 
-    this.activeConfig[stationId] = { ssid, wpaKey };
+    console.log('Configuring station:', stationId, config);
 
-    const stationConfigurations = this.activeConfig;
+    if (config) {
+      this.activeConfig[stationId] = config;
+    } else {
+      delete this.activeConfig[stationId];
+    }
 
-    const body = JSON.stringify({ stationConfigurations });
+    const body = JSON.stringify({ stationConfigurations: this.activeConfig });
     // console.log('Configuring station:', body);
 
     try {

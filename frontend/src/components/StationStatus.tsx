@@ -146,9 +146,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           style={borderStyle}
           onSubmit={e => {
             e.preventDefault();
-            if (!isSaveDisabled && !isSSIDEmpty) {
-              handleSave();
-            }
+            if (!isSaveDisabled) handleSave();
           }}
         >
           <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
@@ -192,7 +190,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             <Button onClick={handleClose} color="secondary">
               Cancel
             </Button>
-            <Button type="submit" color="primary" disabled={isSaveDisabled && !isSSIDEmpty}>
+            <Button type="submit" color="primary" disabled={isSaveDisabled}>
               {isSSIDEmpty ? 'Clear' : 'Save'}
             </Button>
           </DialogActions>
