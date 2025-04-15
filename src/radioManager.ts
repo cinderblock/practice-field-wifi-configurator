@@ -126,7 +126,7 @@ class RadioManager {
 
     const config = ssid ? { ssid, wpaKey } : null;
 
-    console.log('Configuring station:', stationId, config);
+    // console.log('Configuring station:', stationId, config);
 
     if (config) {
       this.activeConfig[stationId] = config;
@@ -135,7 +135,7 @@ class RadioManager {
     }
 
     const body = JSON.stringify({ stationConfigurations: this.activeConfig });
-    // console.log('Configuring station:', body);
+    console.log('Configuring stations:', body);
 
     try {
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
