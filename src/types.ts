@@ -232,7 +232,7 @@ export interface RadioUpdate {
 
 export interface StatusEntry {
   timestamp: number;
-  radioUpdate: RadioUpdate;
+  radioUpdate?: RadioUpdate;
 }
 
 export type SmallChannels =

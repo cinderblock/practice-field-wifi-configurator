@@ -10,7 +10,7 @@ export function SystemInfo() {
     return <Typography>Loading...</Typography>;
   }
 
-  const { status, version, channel, channelBandwidth } = latest.radioUpdate;
+  const { status, version, channel, channelBandwidth } = latest.radioUpdate || {};
 
   return (
     <>

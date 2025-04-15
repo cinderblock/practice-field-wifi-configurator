@@ -84,6 +84,7 @@ class RadioManager {
       if (this.connected) {
         console.error('Error fetching radio status:', error);
         this.connected = false;
+        submit();
       }
       throw error;
     } finally {
@@ -161,16 +162,16 @@ class RadioManager {
         }, 45 * 1000);
 
         // Wait for status to become "CONFIGURING"
-        while (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'CONFIGURING') {
+        while (this.entries[this.entries.length - 1]?.radioUpdate!.status !== 'CONFIGURING') {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
         // Wait for status to not be "CONFIGURING"
-        while (this.entries[this.entries.length - 1]?.radioUpdate.status === 'CONFIGURING') {
+        while (this.entries[this.entries.length - 1]?.radioUpdate?.status === 'CONFIGURING') {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        if (this.entries[this.entries.length - 1]?.radioUpdate.status !== 'ACTIVE') {
+        if (this.entries[this.entries.length - 1]?.radioUpdate?.status !== 'ACTIVE') {
           console.error('Error configuring station: Radio status is not ACTIVE after configuration');
           throw new Error('Radio status is not ACTIVE after configuration');
         }
