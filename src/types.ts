@@ -132,16 +132,20 @@ export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
   const { channel, channelBandwidth, redVlans, blueVlans, status, stationStatuses, syslogIpAddress, version } =
     update as RadioUpdate;
 
-  if (!isRadioChannel(channel)) return false;
-  if (!isChannelBandwidth(channelBandwidth)) return false;
+  if (!isStatus(status)) return false;
+
+  if (status !== 'BOOTING') {
+    if (!isRadioChannel(channel)) return false;
+    if (!isChannelBandwidth(channelBandwidth)) return false;
+    if (!isSyslogIpAddress(syslogIpAddress)) return false;
+
+    // if (redVlans === blueVlans) return false;
+  }
+
   if (!isVLAN(redVlans)) return false;
   if (!isVLAN(blueVlans)) return false;
-  if (!isStatus(status)) return false;
   if (!isStationStatuses(stationStatuses)) return false;
-  if (!isSyslogIpAddress(syslogIpAddress)) return false;
   if (!isVersion(version)) return false;
-
-  if (redVlans === blueVlans) return false;
 
   return true;
 }
