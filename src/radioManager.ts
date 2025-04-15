@@ -20,7 +20,7 @@ class RadioManager {
   private scanning: null | Promise<ReadyScanResults> = null;
   private readonly timeout = 1000;
   private readonly pollInterval = 250;
-  private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 30000; // 30 seconds default
+  private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 60000; // 60 seconds default
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
