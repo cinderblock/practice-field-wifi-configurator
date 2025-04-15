@@ -27,6 +27,7 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
+    "syslog-server": "github:cinderblock/syslog-server",
     "ws": "^8.18.1"
   },
   "devDependencies": {
