@@ -33,7 +33,7 @@ class RadioManager {
 
   private async updateStatus(): Promise<void> {
     if (this.updateBusy) {
-      console.log('Update already in progress');
+      // console.log('Update already in progress');
       return;
     }
 
@@ -104,7 +104,7 @@ class RadioManager {
       try {
         await this.updateStatus();
       } catch (error) {
-        console.error('Error in polling:', error);
+        // console.error('Error in polling:', error);
       }
     }, interval);
   }
