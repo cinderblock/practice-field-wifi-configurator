@@ -38,6 +38,21 @@ class RadioManager {
     }
 
     this.updateBusy = true;
+    const timestamp = Date.now();
+
+    const submit = (radioUpdate?: RadioUpdate) => {
+      const entry: StatusEntry = { timestamp, radioUpdate };
+
+      // Add to history and notify listeners
+      this.entries.push(entry);
+
+      // Remove old entries
+      while (this.entries[0]?.timestamp < timestamp - this.historyDuration) {
+        this.entries.shift();
+      }
+
+      this.notifyListeners(entry);
+    };
 
     try {
       const response = await fetch(`${this.apiBaseUrl}/status`, {
@@ -49,8 +64,6 @@ class RadioManager {
       }
 
       this.connected = true;
-
-      const timestamp = Date.now();
 
       const radioUpdate: RadioUpdate = await response.json();
 
@@ -66,16 +79,7 @@ class RadioManager {
       //   this.lastStatusChangeTime = timestamp;
       // }
 
-      const entry: StatusEntry = { timestamp, radioUpdate };
-
-      // Add to history and notify listeners
-      this.entries.push(entry);
-      this.notifyListeners(entry);
-
-      // Remove old entries
-      while (this.entries[0]?.timestamp < timestamp - this.historyDuration) {
-        this.entries.shift();
-      }
+      submit(radioUpdate);
     } catch (error) {
       if (this.connected) {
         console.error('Error fetching radio status:', error);
