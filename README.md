@@ -68,19 +68,19 @@ An update script is provided to update the backend and frontend dependencies. To
 
 ```Caddyfile
 practice.example.com {
-    root * /path/to/frontend/dist
-
-    # Serve static files
-    try_files {path} {path}.html {path}/ /index.html
-    file_server
-
-    # Proxy /api requests to backend
-    handle /api/* {
-        reverse_proxy localhost:3000
+    @stations {
+        path_regexp ^/(red|blue)[123]$
     }
 
-    # Enable compression
-    encode gzip
+    reverse_proxy /ws localhost:9002
+
+    # Prevent direct access to html files
+    rewrite /index.html /non-existent-path
+    rewrite /station.html /non-existent-path
+
+    rewrite @stations /station.html
+    root /path/to/frontend/dist
+    file_server
 }
 ```
 
@@ -92,11 +92,11 @@ server {
     server_name practice.example.com;
     root /path/to/frontend/dist;
 
-    location / {
-        try_files $uri $uri.html $uri/ /index.html;
+    location ~^/(red|blue)[123]$ {
+        rewrite ^ /station.html break;
     }
 
-    location /api {
+    location /ws {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
