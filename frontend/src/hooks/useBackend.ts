@@ -67,39 +67,30 @@ const events = new EventTarget();
 type StatusUpdateCallback = (e: StatusEntry) => void;
 
 export function useUpdateCallback(cb: StatusUpdateCallback) {
-  const updateLatest: EventListener = useCallback(
-    event => {
-      const { detail, type } = event as CustomEvent<StatusEntry | RadioMessage>;
-      if (type === 'update') {
-        cb(detail as StatusEntry);
-      }
-    },
-    [cb],
-  );
-
-  useEffect(() => {
-    events.addEventListener('update', updateLatest);
-    return () => events.removeEventListener('update', updateLatest);
-  }, [updateLatest]);
+  useEventListener('update', cb);
 }
 
 type RadioMessageCallback = (e: RadioMessage) => void;
 
 export function useRadioMessageCallback(cb: RadioMessageCallback) {
-  const updateLatest: EventListener = useCallback(
+  useEventListener('radio', cb);
+}
+
+function useEventListener(type: 'update', cb: StatusUpdateCallback): void;
+function useEventListener(type: 'radio', cb: RadioMessageCallback): void;
+function useEventListener(type: 'update' | 'radio', callback: StatusUpdateCallback | RadioMessageCallback) {
+  const cb: EventListener = useCallback(
     event => {
-      const { detail, type } = event as CustomEvent<StatusEntry | RadioMessage>;
-      if (type === 'radio') {
-        cb(detail as RadioMessage);
-      }
+      const { detail } = event as CustomEvent;
+      callback(detail);
     },
-    [cb],
+    [callback],
   );
 
   useEffect(() => {
-    events.addEventListener('update', updateLatest);
-    return () => events.removeEventListener('update', updateLatest);
-  }, [updateLatest]);
+    events.addEventListener(type, cb);
+    return () => events.removeEventListener(type, cb);
+  }, [type, cb]);
 }
 
 const MaxHistoryAge = 1000 * 60 * 5; // 5 minutes
