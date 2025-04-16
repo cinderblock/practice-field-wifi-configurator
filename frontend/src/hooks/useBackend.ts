@@ -137,32 +137,43 @@ function isRadioMessage(entry: unknown): entry is RadioMessage {
   return true;
 }
 
-function receiveMessage(entry: string) {
-  const detail = JSON.parse(entry) as Message;
+function handleErrorEntry(detail: { error: string; details: string }) {
+  console.error('Error returned from radio:', detail);
+}
 
-  if (isErrorEntry(detail)) {
-    console.error('Invalid status entry:', detail);
-    return;
-  }
-
-  if (isRadioMessage(detail)) {
-    radioMessages.push(detail);
-    events.dispatchEvent(new CustomEvent('radio', { detail }));
-    return;
-  }
-
-  if (!isStatusEntry(detail)) {
-    console.error('Invalid status entry:', detail);
-    return;
-  }
-
-  // TODO: Validate
+function handleStatusEntry(detail: StatusEntry) {
   history.push(detail);
 
   // Remove old history
   while (history[0].timestamp < Date.now() - MaxHistoryAge) history.shift();
 
   events.dispatchEvent(new CustomEvent('update', { detail }));
+}
+
+function handleRadioMessage(detail: RadioMessage) {
+  radioMessages.push(detail);
+  events.dispatchEvent(new CustomEvent('radio', { detail }));
+}
+
+function receiveMessage(entry: string) {
+  const detail = JSON.parse(entry) as Message;
+
+  if (isErrorEntry(detail)) {
+    handleErrorEntry(detail);
+    return;
+  }
+
+  if (isRadioMessage(detail)) {
+    handleRadioMessage(detail);
+    return;
+  }
+
+  if (isStatusEntry(detail)) {
+    handleStatusEntry(detail);
+    return;
+  }
+
+  console.error('Invalid status entry:', detail);
 }
 
 export function useHistory() {
