@@ -15,13 +15,10 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
 
   const estimatedReconfigurationTime = 31; // seconds
 
-  if (!latest) {
-    return <Typography>Loading...</Typography>;
-  }
-
-  const { status } = latest.radioUpdate || {};
+  const isLoading = latest === undefined || latest.radioUpdate === undefined;
+  const { status } = latest?.radioUpdate || {};
   const isConfiguring = status === 'CONFIGURING';
-  const isConnected = latest.radioUpdate !== undefined;
+  const isConnected = latest?.radioUpdate !== undefined;
 
   // Enable dark mode for the entire app (system default)
   const theme = createTheme({ colorSchemes: { dark: true } });
@@ -34,10 +31,10 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
           <Backdrop open={isConfiguring || !isConnected} style={{ zIndex: 9999 }}>
             <Grid container direction="column" justifyContent="center" alignItems="center" style={{ height: '100%' }}>
               <Typography variant="h2" style={{ marginBottom: '1rem', userSelect: 'none' }}>
-                {isConnected ? 'Reconfiguration in progress' : 'Radio connecting'}...
+                {isLoading ? 'Loading' : isConnected ? 'Reconfiguration in progress' : 'Radio connecting'}...
               </Typography>
               <CircularProgress style={{ width: '25vw', height: '25vw' }} />
-              {isConnected && lastActive && (
+              {!isLoading && isConnected && lastActive && (
                 <Typography variant="h3" style={{ marginTop: '1rem', userSelect: 'none' }}>
                   Estimated time remaining:{' '}
                   {(estimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds
