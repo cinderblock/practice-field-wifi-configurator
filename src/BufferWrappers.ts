@@ -32,7 +32,7 @@ export class BufferReader {
     }
     if (this.offset + size > this.buffer.length) throw new BufferOverflowError('Reading number past end of buffer');
 
-    const value = this.buffer.readUIntBE(this.offset, size);
+    const value: number = this.buffer.readUIntBE(this.offset, size);
     this.offset += size;
     return value;
   }

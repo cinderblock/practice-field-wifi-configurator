@@ -12,9 +12,12 @@
     "preserveConstEnums": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
-    "declaration": true,
-    "noUnusedLocals": true,
+    "declaration": false,
+    // "noUnusedLocals": true,
     "removeComments": true,
     "esModuleInterop": true
-  }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
 }
