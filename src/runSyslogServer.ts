@@ -7,9 +7,15 @@ export async function startSyslogServer(address = DefaultAddress) {
   return new Promise<SyslogServer>(async (resolve, reject) => {
     const s = new SyslogServer();
     s.on('error', reject);
-    await s.start({ address });
+    await s.start({ address }, err => {
+      if (err) {
+        console.error('Failed to start Syslog server:', err);
+        reject(err);
+        return;
+      }
+      console.log(`Syslog server started on ${address}`);
+    });
 
-    console.log(`Syslog server started on ${address}`);
     resolve(s);
   });
 }
