@@ -76,6 +76,7 @@ User=www-data
 WorkingDirectory=/path/to/practice-field-configurator
 ExecStart=/usr/bin/node dist
 Restart=on-failure
+Environment=WEBSOCKET_PORT=9001
 
 [Install]
 WantedBy=multi-user.target

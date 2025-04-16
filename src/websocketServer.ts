@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager';
 import { isStationUpdate } from './types';
 
-const DefaultPort = Number(process.env.SERVER_PORT) || 3000;
+const DefaultPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
 export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
   const wss = new WebSocketServer({ port });
