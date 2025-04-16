@@ -2,7 +2,12 @@
 
 git pull
 
-npm ci
+if [ -d node_modules ]; then
+  npm i
+else
+  npm ci
+fi
+
 npm run build
 
 # Synchronize the internal directory with the frontend build output
