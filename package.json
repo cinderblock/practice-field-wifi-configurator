@@ -6,7 +6,7 @@
     "frontend"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build --workspaces",
     "dev": "tsx --watch src/index.ts",
     "once": "tsx src/index.ts",
     "start": "node dist"
