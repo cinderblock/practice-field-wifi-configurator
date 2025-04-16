@@ -10,14 +10,20 @@ const API_BASE_URL = process.env.API_BASE_URL || 'http://10.0.100.2';
 const radioManager = new RadioManager(API_BASE_URL);
 
 // Initialize WebSocket server
-setupWebSocket(radioManager);
+const wss = setupWebSocket(radioManager);
 
 runSyslogServer().then(syslogServer => {
   if (!syslogServer) return;
 
   syslogServer.on('message', msg => {
-    console.log('Message from VH-113:');
-    console.log(msg);
+    console.log(`Radio: ${msg.message}`);
+
+    const data = JSON.stringify(msg);
+
+    wss.clients.forEach(client => {
+      if (client.readyState !== WebSocket.OPEN) return;
+      client.send(data);
+    });
   });
 });
 

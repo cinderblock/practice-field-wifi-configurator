@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StationName, StationUpdate, StatusEntry } from '../../../src/types';
+import SyslogServer from 'syslog-server';
 
 let ws: WebSocket | null = null;
 
@@ -43,6 +44,8 @@ function connect() {
 connect();
 const history: StatusEntry[] = [];
 
+const radioMessages: RadioMessage[] = [];
+
 function processHistory(json: string) {
   const entry = JSON.parse(json) as StatusEntry[];
   // TODO: Validate
@@ -66,8 +69,29 @@ type StatusUpdateCallback = (e: StatusEntry) => void;
 export function useUpdateCallback(cb: StatusUpdateCallback) {
   const updateLatest: EventListener = useCallback(
     event => {
-      const { detail } = event as CustomEvent<StatusEntry>;
-      cb(detail);
+      const { detail, type } = event as CustomEvent<StatusEntry | RadioMessage>;
+      if (type === 'update') {
+        cb(detail as StatusEntry);
+      }
+    },
+    [cb],
+  );
+
+  useEffect(() => {
+    events.addEventListener('update', updateLatest);
+    return () => events.removeEventListener('update', updateLatest);
+  }, [updateLatest]);
+}
+
+type RadioMessageCallback = (e: RadioMessage) => void;
+
+export function useRadioMessageCallback(cb: RadioMessageCallback) {
+  const updateLatest: EventListener = useCallback(
+    event => {
+      const { detail, type } = event as CustomEvent<StatusEntry | RadioMessage>;
+      if (type === 'radio') {
+        cb(detail as RadioMessage);
+      }
     },
     [cb],
   );
@@ -96,12 +120,35 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
   return true;
 }
 
+type Message = StatusEntry | ErrorMessage | RadioMessage;
+type ErrorMessage = { error: string; details: string };
+type RadioMessage = SyslogServer.SyslogMessage;
+
+function isRadioMessage(entry: unknown): entry is RadioMessage {
+  if (typeof entry !== 'object') return false;
+  if (!entry) return false;
+
+  const { host, message, date, protocol } = entry as RadioMessage;
+
+  if (typeof host !== 'string') return false;
+  if (typeof message !== 'string') return false;
+  if (!(date instanceof Date)) return false;
+  if (typeof protocol !== 'string') return false;
+
+  return true;
+}
+
 function receiveMessage(entry: string) {
-  const detail = JSON.parse(entry) as StatusEntry | { error: string; details: string };
+  const detail = JSON.parse(entry) as Message;
 
   if (isErrorEntry(detail)) {
     console.error('Invalid status entry:', detail);
     return;
+  }
+
+  if (isRadioMessage(detail)) {
+    radioMessages.push(detail);
+    events.dispatchEvent(new CustomEvent('radio', { detail }));
   }
 
   if (!isStatusEntry(detail)) {
@@ -132,4 +179,12 @@ export function useLatest() {
   useUpdateCallback(setLatest);
 
   return latest;
+}
+
+export function useRadioMessages() {
+  const [messages, setMessages] = useState<RadioMessage[]>([...radioMessages]);
+
+  useRadioMessageCallback(useCallback(_ => setMessages([...radioMessages]), [setMessages]));
+
+  return messages;
 }
