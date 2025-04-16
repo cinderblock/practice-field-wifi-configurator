@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { StationName, StationUpdate, StatusEntry } from '../../../src/types';
-import SyslogServer from 'syslog-server';
+import { Message as RadioMessage } from 'syslog-server';
 
 let ws: WebSocket | null = null;
 
@@ -122,7 +122,6 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 
 type Message = StatusEntry | ErrorMessage | RadioMessage;
 type ErrorMessage = { error: string; details: string };
-type RadioMessage = SyslogServer.SyslogMessage;
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
   if (typeof entry !== 'object') return false;
