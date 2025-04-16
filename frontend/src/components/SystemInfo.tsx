@@ -6,11 +6,7 @@ import { useLatest } from '../hooks/useBackend';
 export function SystemInfo() {
   const latest = useLatest();
 
-  if (!latest) {
-    return <Typography>Loading...</Typography>;
-  }
-
-  const { status, version, channel, channelBandwidth } = latest.radioUpdate || {};
+  const { status, version, channel, channelBandwidth } = latest?.radioUpdate || {};
 
   return (
     <>
