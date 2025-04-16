@@ -148,6 +148,7 @@ function receiveMessage(entry: string) {
   if (isRadioMessage(detail)) {
     radioMessages.push(detail);
     events.dispatchEvent(new CustomEvent('radio', { detail }));
+    return;
   }
 
   if (!isStatusEntry(detail)) {
