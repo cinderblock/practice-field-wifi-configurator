@@ -6,7 +6,8 @@ let ws: WebSocket | null = null;
 function connect() {
   console.log('Connecting to backend');
 
-  const nws = new WebSocket(`ws://${window.location.host}/ws`);
+  const schema = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const nws = new WebSocket(`${schema}://${window.location.host}/ws`);
 
   // First message is history
   nws.onmessage = history => {
