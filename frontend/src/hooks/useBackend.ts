@@ -131,7 +131,7 @@ function isRadioMessage(entry: unknown): entry is RadioMessage {
 
   if (typeof host !== 'string') return false;
   if (typeof message !== 'string') return false;
-  if (!(date instanceof Date)) return false;
+  if (typeof date !== 'string') return false;
   if (typeof protocol !== 'string') return false;
 
   return true;
