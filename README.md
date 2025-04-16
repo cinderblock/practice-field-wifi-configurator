@@ -56,6 +56,14 @@ To deploy this in a production environment:
 
 - Alternatively, you can copy the `dist/` folder to a different location and serve it from there.
 
+### Update Script
+
+An update script is provided to update the backend and frontend dependencies. To run it, execute:
+
+```bash
+./update.sh
+```
+
 ### Caddy Example Config
 
 ```Caddyfile
