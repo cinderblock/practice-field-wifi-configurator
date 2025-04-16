@@ -118,12 +118,14 @@ function isRadioMessage(entry: unknown): entry is RadioMessage {
   if (typeof entry !== 'object') return false;
   if (!entry) return false;
 
-  const { host, message, date, protocol } = entry as RadioMessage;
+  const { host, message, date, protocol } = entry as Omit<RadioMessage, 'date'> & { date: string };
 
   if (typeof host !== 'string') return false;
   if (typeof message !== 'string') return false;
   if (typeof date !== 'string') return false;
   if (typeof protocol !== 'string') return false;
+
+  (entry as RadioMessage).date = new Date(date); // Convert date to Date object
 
   return true;
 }

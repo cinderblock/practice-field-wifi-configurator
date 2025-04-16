@@ -23,7 +23,7 @@ export function SystemInfo() {
           </Typography>
           <Box sx={{ fontFamily: 'Monospace' }}>
             {useRadioMessages().map(msg => (
-              <Typography key={msg.date} variant="body2">
+              <Typography key={msg.date.valueOf()} variant="body2">
                 {msg.message}
               </Typography>
             ))}
