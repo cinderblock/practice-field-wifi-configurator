@@ -43,8 +43,18 @@ The backend will be available at http://localhost:3000, however it is also proxi
 To deploy this in a production environment:
 
 1. Run `npm run build`
+
+- Backend will be compiled to JavaScript and placed in the `dist/` folder
+- Frontend will be built and placed in the `frontend/dist/` folder
+
 2. Run `npm start`
-3. Configure Webserver to server static files and proxy to backend for /api paths
+
+- This will start the backend server using the compiled JavaScript files in `dist/`
+- Alternative, you can run `node dist` directly to start the backend server, or copy the `dist/` folder to a different location and run it from there.
+
+3. Configure Webserver to server static files and proxy to backend for websocket connections
+
+- Alternatively, you can copy the `dist/` folder to a different location and serve it from there.
 
 ### Caddy Example Config
 
