@@ -1,5 +1,10 @@
 #!/bin/bash -e
 
+if [ "$1" == "clean" ]; then
+  shift
+  rm -rf node_modules
+fi
+
 # Run the latest version of this script after updating
 if [ "$1" != "continue" ]; then
   git pull
