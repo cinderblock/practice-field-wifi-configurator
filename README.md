@@ -64,6 +64,23 @@ An update script is provided to update the backend and frontend dependencies. To
 ./update.sh
 ```
 
+### Systemd Service
+
+```service
+[Unit]
+Description=Practice Field Configurator Backend
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/practice-field-configurator
+ExecStart=/usr/bin/node dist
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ### Caddy Example Config
 
 ```Caddyfile
