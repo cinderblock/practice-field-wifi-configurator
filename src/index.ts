@@ -31,7 +31,7 @@ runFMS().then(fms => {
   if (!fms) return;
 
   fms.on('message', msg => {
-    console.log('Message from FMS:');
+    console.log('Message from DS:');
     console.log(msg);
   });
 });
