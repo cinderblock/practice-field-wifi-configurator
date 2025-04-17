@@ -12,7 +12,7 @@ import Button from '@mui/material/Button';
 import SettingsIcon from '@mui/icons-material/Settings';
 import { StationName } from '../../../src/types';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
-import { prettyStationName } from '../utils';
+import { prettyStationName } from '../../../src/utils';
 import { Grid } from '@mui/material';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {

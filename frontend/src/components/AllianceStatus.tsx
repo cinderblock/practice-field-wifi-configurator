@@ -1,7 +1,7 @@
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
 import { Alliance } from '../../../src/types';
-import { capitalizeFirstLetter } from '../utils';
+import { capitalizeFirstLetter } from '../../../src/utils';
 import StationStatus from './StationStatus';
 
 export function AllianceStatus({ alliance, reverse }: { alliance: Alliance; reverse?: boolean }) {

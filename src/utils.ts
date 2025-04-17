@@ -1,4 +1,4 @@
-import { StationName } from '../../src/types';
+import { StationName } from './types';
 
 export function capitalizeFirstLetter(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
