@@ -108,10 +108,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
                 <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
                 <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
-                <DataUnit name="RX" value={rxPackets!} unit="Packets" />
-                <DataUnit name="TX" value={txPackets!} unit="Packets" />
-                <DataUnit name="RX" value={rxBytes!} unit="Bytes" />
-                <DataUnit name="TX" value={txBytes!} unit="Bytes" />
+                <DataUnit name="RX Packets" value={rxPackets!} />
+                <DataUnit name="TX Packets" value={txPackets!} />
+                <DataUnit name="RX Bytes" value={rxBytes!} />
+                <DataUnit name="TX Bytes" value={txBytes!} />
                 <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
                 <DataUnit name="Connection Quality" value={connectionQuality!} />
               </>
