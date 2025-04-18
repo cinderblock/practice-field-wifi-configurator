@@ -27,6 +27,8 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
+    "dhcp": "github:cinderblock/node-dhcp",
+    "set-ip-address": "^1.2.3",
     "syslog-server": "github:cinderblock/syslog-server",
     "ws": "^8.18.1"
   },

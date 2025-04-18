@@ -1,3 +1,4 @@
+import { configureNetwork } from './networkManager';
 import {
   AdditionalChannelStatistic,
   AllChannels,
@@ -25,7 +26,7 @@ class RadioManager {
   private updateListeners: StatusListener[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
 
-  constructor(private readonly apiBaseUrl: string) {
+  constructor(private readonly apiBaseUrl: string, private readonly controlNetwork?: string) {
     this.startPolling();
   }
 
@@ -139,6 +140,15 @@ class RadioManager {
       delete this.activeConfig[stationId];
     }
 
+    const teamsConfig = {} as Record<StationName, number | undefined>;
+
+    for (const station in this.activeConfig) {
+      const { ssid } = this.activeConfig[station as StationName];
+      if (ssid) teamsConfig[station as StationName] = parseInt(ssid.split('-', 2)[0]) || undefined;
+    }
+
+    const network = this.controlNetwork && configureNetwork(teamsConfig, this.controlNetwork);
+
     const body = JSON.stringify({ stationConfigurations: this.activeConfig });
     console.log('Configuring stations:', body);
 
@@ -180,6 +190,7 @@ class RadioManager {
         resolve();
       });
     } finally {
+      await network;
       this.configuring = false;
     }
   }

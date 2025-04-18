@@ -4,10 +4,11 @@ import { setupWebSocket } from './websocketServer';
 import { runFMS } from './fmsServer';
 
 // Configuration
-const API_BASE_URL = process.env.API_BASE_URL || 'http://10.0.100.2';
+const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';
+const VlanInterface = process.env.VLAN_INTERFACE;
 
 // Initialize radio manager
-const radioManager = new RadioManager(API_BASE_URL);
+const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
 // Initialize WebSocket server
 const wss = setupWebSocket(radioManager);
