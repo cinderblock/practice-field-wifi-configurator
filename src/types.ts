@@ -51,6 +51,7 @@ export type RadioChannel =
 export type Alliance = 'red' | 'blue';
 export type StationNumber = 1 | 2 | 3;
 export type StationName = `${Alliance}${StationNumber}`;
+export const StationNameList = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'] as const;
 export const StationNameRegex = /^(red|blue)[123]$/;
 export type Status = 'BOOTING' | 'CONFIGURING' | 'ACTIVE' | 'ERROR';
 export type VLAN = '10_20_30' | '40_50_60' | '70_80_90';
@@ -179,8 +180,7 @@ function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<
   if (typeof stationStatuses !== 'object') return false;
   if (!stationStatuses) return false;
 
-  if (!arrayCompare(Object.keys(stationStatuses).sort(), ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'].sort()))
-    return false;
+  if (!arrayCompare(Object.keys(stationStatuses).sort(), [...StationNameList].sort())) return false;
 
   const statuses = stationStatuses as Record<string, StationDetails | null>;
 
