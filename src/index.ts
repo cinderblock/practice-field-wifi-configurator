@@ -17,8 +17,6 @@ runSyslogServer().then(syslogServer => {
   if (!syslogServer) return;
 
   syslogServer.on('message', msg => {
-    console.log(`Radio: ${msg.message}`);
-
     const data = JSON.stringify(msg);
 
     wss.clients.forEach(client => {
