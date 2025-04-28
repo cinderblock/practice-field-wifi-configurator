@@ -2,8 +2,8 @@ import net from 'net';
 import dgram, { Socket } from 'dgram';
 import { EventEmitter } from 'events';
 import { Transform, TransformCallback } from 'stream';
-import { BufferOverflowError, BufferReader, BufferWriter } from './BufferWrappers';
-import { StationName } from './types';
+import { BufferOverflowError, BufferReader, BufferWriter } from './BufferWrappers.js';
+import { StationName } from './types.js';
 
 const DefaultTcpPort = 1750;
 const DefaultUdpPort = 1160;

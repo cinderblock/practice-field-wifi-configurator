@@ -1,5 +1,5 @@
 import { createServer } from 'dhcp';
-import { StationName, StationNameList } from './types';
+import { StationName, StationNameList } from './types.js';
 import { configure as configureOSNetwork, restartService as applyNetworkConfig, NetworkConfig } from 'set-ip-address';
 
 function teamIp(team: number, end: number | string = '') {

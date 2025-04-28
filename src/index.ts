@@ -1,7 +1,7 @@
-import RadioManager from './radioManager';
-import { runSyslogServer } from './runSyslogServer';
-import { setupWebSocket } from './websocketServer';
-import { runFMS } from './fmsServer';
+import RadioManager from './radioManager.js';
+import { runSyslogServer } from './runSyslogServer.js';
+import { setupWebSocket } from './websocketServer.js';
+import { runFMS } from './fmsServer.js';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';

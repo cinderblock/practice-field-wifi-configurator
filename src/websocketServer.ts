@@ -1,6 +1,6 @@
 import { WebSocket, WebSocketServer } from 'ws';
-import RadioManager from './radioManager';
-import { isStationUpdate } from './types';
+import RadioManager from './radioManager.js';
+import { isStationUpdate } from './types.js';
 
 const DefaultPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 

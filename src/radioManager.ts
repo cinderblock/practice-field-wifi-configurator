@@ -1,4 +1,4 @@
-import { configureNetwork } from './networkManager';
+import { configureNetwork } from './networkManager.js';
 import {
   AdditionalChannelStatistic,
   AllChannels,
@@ -10,7 +10,7 @@ import {
   ScanResults,
   StationName,
   StatusEntry,
-} from './types';
+} from './types.js';
 
 type StatusListener = (entry: StatusEntry) => void;
 
