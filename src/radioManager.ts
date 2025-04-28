@@ -28,6 +28,9 @@ class RadioManager {
 
   constructor(private readonly apiBaseUrl: string, private readonly radioManagementInterface?: string) {
     this.startPolling();
+    if (this.radioManagementInterface) {
+      console.log('Radio management interface:', this.radioManagementInterface);
+    }
   }
 
   private updateBusy: boolean = false;
@@ -113,13 +116,17 @@ class RadioManager {
         // console.error('Error in polling:', error);
       }
     }, interval);
+
+    console.log(`RadioManager polling started with interval: ${interval}ms`);
   }
 
   stopPolling() {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
+    if (!this.updateInterval) return;
+
+    clearInterval(this.updateInterval);
+    this.updateInterval = null;
+
+    console.log('RadioManager polling stopped');
   }
 
   async configure(

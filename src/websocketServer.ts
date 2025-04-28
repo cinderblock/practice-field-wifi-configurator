@@ -17,6 +17,8 @@ export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
   });
 
   wss.on('connection', (ws: WebSocket) => {
+    console.log(`[${new Date().toISOString()}] Client connected`);
+
     // Send initial history
     const history = radioManager.getStatusHistory();
     ws.send(JSON.stringify(history));
