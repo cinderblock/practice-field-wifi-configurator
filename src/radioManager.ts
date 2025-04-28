@@ -26,7 +26,7 @@ class RadioManager {
   private updateListeners: StatusListener[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
 
-  constructor(private readonly apiBaseUrl: string, private readonly controlNetwork?: string) {
+  constructor(private readonly apiBaseUrl: string, private readonly radioManagementInterface?: string) {
     this.startPolling();
   }
 
@@ -143,21 +143,23 @@ class RadioManager {
       delete this.activeConfig[stationId];
     }
 
+    let network: Promise<void> | undefined | '' = undefined;
+
     try {
       // Bail if just staging the change
       if (stage) return;
 
-    const teamsConfig = {} as Record<StationName, number | undefined>;
+      const teamsConfig = {} as Record<StationName, number | undefined>;
 
-    for (const station in this.activeConfig) {
-      const { ssid } = this.activeConfig[station as StationName];
-      if (ssid) teamsConfig[station as StationName] = parseInt(ssid.split('-', 2)[0]) || undefined;
-    }
+      for (const station in this.activeConfig) {
+        const { ssid } = this.activeConfig[station as StationName];
+        if (ssid) teamsConfig[station as StationName] = parseInt(ssid.split('-', 2)[0]) || undefined;
+      }
 
-    const network = this.controlNetwork && configureNetwork(teamsConfig, this.controlNetwork);
+      network = this.radioManagementInterface && configureNetwork(teamsConfig, this.radioManagementInterface);
 
-    const body = JSON.stringify({ stationConfigurations: this.activeConfig });
-    console.log('Configuring stations:', body);
+      const body = JSON.stringify({ stationConfigurations: this.activeConfig });
+      console.log('Configuring stations:', body);
 
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
         method: 'POST',
