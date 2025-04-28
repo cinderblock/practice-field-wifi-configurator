@@ -122,7 +122,10 @@ class RadioManager {
     }
   }
 
-  async configure(stationId: StationName, { ssid, wpaKey }: { ssid: string; wpaKey: string }): Promise<void> {
+  async configure(
+    stationId: StationName,
+    { ssid, wpaKey, stage }: { ssid: string; wpaKey: string; stage?: boolean },
+  ): Promise<void> {
     if (this.configuring) {
       console.log('Already configuring');
       return;
@@ -140,6 +143,10 @@ class RadioManager {
       delete this.activeConfig[stationId];
     }
 
+    try {
+      // Bail if just staging the change
+      if (stage) return;
+
     const teamsConfig = {} as Record<StationName, number | undefined>;
 
     for (const station in this.activeConfig) {
@@ -152,7 +159,6 @@ class RadioManager {
     const body = JSON.stringify({ stationConfigurations: this.activeConfig });
     console.log('Configuring stations:', body);
 
-    try {
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
         method: 'POST',
         headers: {

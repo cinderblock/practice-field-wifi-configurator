@@ -55,8 +55,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     setOpen(false);
   };
 
-  const handleSave = () => {
-    sendNewConfig(station, ssid, passphrase);
+  const handleSave = (stage: boolean) => {
+    sendNewConfig(station, ssid, passphrase, stage);
     setOpen(false);
   };
 
@@ -146,7 +146,14 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           style={borderStyle}
           onSubmit={e => {
             e.preventDefault();
-            if (isSaveEnabled) handleSave();
+            if (isSaveEnabled) handleSave(false); // Save or Clear on submit
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && e.shiftKey) {
+              // Shift+Enter: Stage
+              if (isSaveEnabled) handleSave(true);
+              e.preventDefault(); // Prevent form submit
+            }
           }}
         >
           <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
@@ -189,6 +196,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           <DialogActions>
             <Button onClick={handleClose} color="secondary">
               Cancel
+            </Button>
+            <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
+              Stage
             </Button>
             <Button type="submit" color="primary" disabled={!isSaveEnabled}>
               {isSSIDEmpty ? 'Clear' : 'Save'}

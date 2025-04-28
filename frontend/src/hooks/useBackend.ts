@@ -52,12 +52,13 @@ function processHistory(json: string) {
   history.push(...entry);
 }
 
-export function sendNewConfig(station: StationName, ssid: string, wpaKey: string) {
+export function sendNewConfig(station: StationName, ssid: string, wpaKey: string, stage = false) {
   const update: StationUpdate = {
     type: 'station',
     station,
     ssid,
     wpaKey,
+    stage,
   };
   ws?.send(JSON.stringify(update));
 }

@@ -326,12 +326,13 @@ export function isStationUpdate(update: unknown): update is StationUpdate {
   if (typeof update !== 'object') return false;
   if (!update) return false;
 
-  const { type, station, ssid, wpaKey } = update as StationUpdate;
+  const { type, station, ssid, wpaKey, stage } = update as StationUpdate;
 
   if (type !== 'station') return false;
   if (!StationNameRegex.test(station)) return false;
   if (typeof ssid !== 'string') return false;
   if (typeof wpaKey !== 'string') return false;
+  if (typeof stage !== 'undefined' && typeof stage !== 'boolean') return false;
 
   return true;
 }
@@ -341,4 +342,5 @@ export type StationUpdate = {
   station: StationName;
   ssid: string;
   wpaKey: string;
+  stage?: boolean;
 };
