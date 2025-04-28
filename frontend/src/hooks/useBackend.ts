@@ -5,10 +5,14 @@ import { Message as RadioMessage } from 'syslog-server';
 let ws: WebSocket | null = null;
 
 function connect() {
-  console.log('Connecting to backend');
-
   const schema = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const nws = new WebSocket(`${schema}://${window.location.host}/ws`);
+
+  const url = `${schema}://${window.location.host}/ws`;
+
+  console.log(`Connecting to backend: ${url}`);
+
+  // TODO: Reconnect
+  const nws = new WebSocket(url);
 
   // First message is history
   nws.onmessage = history => {
