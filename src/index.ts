@@ -5,7 +5,7 @@ import { runFMS } from './fmsServer.js';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';
-const VlanInterface = process.env.VLAN_INTERFACE;
+const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1' or 'eth2'
 
 // Initialize radio manager
 const radioManager = new RadioManager(RadioUrl, VlanInterface);
