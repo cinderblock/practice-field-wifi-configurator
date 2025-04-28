@@ -34,12 +34,15 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                 {isLoading ? 'Loading' : isConnected ? 'Reconfiguration in progress' : 'Radio connecting'}...
               </Typography>
               <CircularProgress style={{ width: '25vw', height: '25vw' }} />
-              {!isLoading && isConnected && lastActive && (
-                <Typography variant="h3" style={{ marginTop: '1rem', userSelect: 'none' }}>
-                  Estimated time remaining:{' '}
-                  {(estimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds
-                </Typography>
-              )}
+              <Typography style={{ marginTop: '1rem', userSelect: 'none' }}>
+                {!latest
+                  ? 'Connecting to backend...'
+                  : !isLoading &&
+                    isConnected &&
+                    lastActive &&
+                    `Estimated time remaining:
+                  ${(estimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds`}
+              </Typography>
             </Grid>
           </Backdrop>
           {children}
