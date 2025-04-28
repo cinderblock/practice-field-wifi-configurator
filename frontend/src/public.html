@@ -506,6 +506,37 @@
     Cloudflare
   </p>
   <p>Refresh your browser once connected</p>
+  <script>
+    (function () {
+      var retryDelay = 1_000; // 1 second
+      var timeout;
+      function doTimeout() {
+        clearTimeout(timeout);
+        retryDelay = Math.min(retryDelay * 1.2, 60_000); // max 60 seconds
+        timeout = setTimeout(tryConnect, retryDelay);
+      }
+      function tryConnect() {
+        try {
+          var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+          ws.onopen = function () {
+            ws.close();
+            location.reload();
+          };
+          ws.onerror = ws.onclose = function () {
+            ws.close();
+            doTimeout()
+          };
+        } catch (e) {
+          doTimeout()
+        }
+      }
+      window.addEventListener('online', function () {
+        retryDelay = 1_000; // reset to 1 second
+        tryConnect();
+      });
+      tryConnect();
+    })();
+  </script>
 </body>
 <!-- Do the math, save the world. -->
 
