@@ -78,6 +78,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
       ifname: `${physical_interface}.${station}`,
       physical_interface,
       optional: true,
+      manual: true,
     };
 
     if (!team) return base;
@@ -90,7 +91,6 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
       ip_address: us,
       prefix: 24,
       gateway: upstream,
-      manual: true,
       nameservers: [us, upstream],
     };
   });
