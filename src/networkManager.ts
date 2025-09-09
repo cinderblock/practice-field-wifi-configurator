@@ -1,6 +1,7 @@
 import { createServer } from 'dhcp';
 import { StationName, StationNameList } from './types.js';
-import { configure as configureOSNetwork, restartService as applyNetworkConfig, NetworkConfig } from 'set-ip-address';
+import networkManager from 'set-ip-address';
+import {} from 'netlink';
 
 function teamIp(team: number, end: number | string = '') {
   if (team < 1 || team > 25599) {
@@ -69,40 +70,46 @@ const vlanMap = {
   blue3: 60,
 };
 
-async function updateNetworkConfig(stations: Stations, physical_interface: string) {
-  const config = StationNameList.map((station, i): NetworkConfig => {
+async function updateNetworkConfig(stations: Stations, iface: string) {
+  const config = StationNameList.map((station, i): networkManager.NetworkConfig | null => {
     const team = stations[station];
     const base = {
-      interface: `${physical_interface}.${station}`,
+      interface: iface,
       vlanid: vlanMap[station],
-      ifname: `${physical_interface}.${station}`,
-      physical_interface,
+      // Override the interface name to use the station name
+      // Breaks from the convention of using the vlan id as part of the name
+      ifname: `${iface}.${station}`,
       optional: true,
-      manual: true,
+      dhcp: false,
     };
 
-    if (!team) return base;
+    if (!team) return { ...base, manual: true };
 
-    const us = teamIp(team, 1);
-    const upstream = teamIp(team, 254);
+    // We take
+    const us = teamIp(team, 254);
+    const upstream = us;
 
     return {
       ...base,
       ip_address: us,
       prefix: 24,
       gateway: upstream,
-      nameservers: [us, upstream],
+      // Ensure we don't list the same nameserver multiple times
+      nameservers: [us, upstream].filter((e, n, a) => a.indexOf(e) === n),
     };
   });
 
-  await configureOSNetwork(config);
+  console.log('Network configuration:');
+  console.log(config);
+
+  await networkManager.configure(config.filter(c => c !== null));
 
   if (!process.env.YOLO) {
     console.log('Skipping network configuration. Use YOLO to apply.');
     return;
   }
 
-  await applyNetworkConfig();
+  await networkManager.restartService();
 
   // TODO: Update iptables and handle routing for DS to internet router?
 

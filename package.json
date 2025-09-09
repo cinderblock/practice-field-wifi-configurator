@@ -5,7 +5,11 @@
   "workspaces": [
     "frontend"
   ],
+  "type": "module",
+  "main": "src",
   "scripts": {
+    "postinstall": "rmdir /s /q node_modules\\@cinderblock\\rdt && mklink /j node_modules\\@cinderblock\\rdt \"..\\Personal Projects\\rdt\\.dist\"",
+    "rdt": "rdt dev",
     "build": "tsc && npm run build --workspaces",
     "dev": "tsx --watch src/index.ts",
     "once": "tsx src/index.ts",
@@ -23,16 +27,19 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@cinderblock/ip": "github:cinderblock/ip",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
     "dhcp": "github:cinderblock/node-dhcp",
-    "set-ip-address": "^1.2.3",
+    "promise-limit": "^2.7.0",
+    "set-ip-address": "github:cinderblock/set-ip-address",
     "syslog-server": "github:cinderblock/syslog-server",
     "ws": "^8.18.1"
   },
   "devDependencies": {
+    "@cinderblock/rdt": "^0.7.0",
     "@types/node": "^22.13.13",
     "@types/ws": "^8.18.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
@@ -42,6 +49,7 @@
     "typescript": "^5.8.2"
   },
   "optionalDependencies": {
-    "bufferutil": "^4.0.9"
+    "bufferutil": "^4.0.9",
+    "netlink": "^0.3.0"
   }
 }

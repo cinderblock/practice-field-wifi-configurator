@@ -18,6 +18,7 @@
     "esModuleInterop": true
   },
   "include": [
+    "rdt.ts",
     "src/**/*.ts"
   ],
 }
