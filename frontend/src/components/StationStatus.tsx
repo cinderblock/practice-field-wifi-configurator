@@ -10,18 +10,30 @@ import TextField from '@mui/material/TextField';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import SettingsIcon from '@mui/icons-material/Settings';
-import { StationName } from '../../../src/types';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableRow from '@mui/material/TableRow';
+import { StationName, SavedWiFiSetting } from '../../../src/types';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
+import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
+import { TimeDisplay } from './TimeDisplay';
 import { prettyStationName } from '../../../src/utils';
-import { Grid } from '@mui/material';
+import { Grid, Box, Tooltip } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
   const [ssid, setSsid] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [showPassphrases, setShowPassphrases] = useState(false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
   const latest = useLatest();
+  const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
 
   if (!latest) {
     return <Typography>Loading...</Typography>;
@@ -58,7 +70,23 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const handleSave = (stage: boolean) => {
     sendNewConfig(station, ssid, passphrase, stage);
+    
+    // Auto-save the setting if it's valid and not empty
+    if (ssid.trim() && passphrase.trim()) {
+      saveSetting(ssid, passphrase);
+    }
+    
     setOpen(false);
+  };
+
+  const handleApplySetting = (setting: SavedWiFiSetting) => {
+    setSsid(setting.ssid);
+    setPassphrase(setting.wpaKey);
+  };
+
+  const handleRemoveSetting = (e: React.MouseEvent, setting: SavedWiFiSetting) => {
+    e.stopPropagation(); // Prevent row click
+    removeSetting(setting.ssid, setting.wpaKey);
   };
 
   const ssidRegex = /^[a-zA-Z0-9-]{0,14}$/;
@@ -193,6 +221,144 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               }
               error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
             />
+            
+            {recentSettings.length > 0 && (
+              <Box sx={{ 
+                marginTop: 2, 
+                padding: 2, 
+                backgroundColor: 'background.paper',
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1 
+              }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+                    Recent Configurations
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title={showPassphrases ? "Hide passphrases" : "Show passphrases"}>
+                      <IconButton 
+                        size="small" 
+                        onClick={() => setShowPassphrases(!showPassphrases)}
+                        sx={{ 
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'text.primary'
+                          }
+                        }}
+                      >
+                        {showPassphrases ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Clear all recent configurations">
+                      <IconButton 
+                        size="small" 
+                        onClick={clearSettings}
+                        sx={{ 
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'error.main'
+                          }
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+                <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                  <TableBody>
+                    {recentSettings.map((setting) => (
+                      <TableRow 
+                        key={`${setting.ssid}-${setting.createdAt}`}
+                        hover
+                        onClick={() => handleApplySetting(setting)}
+                        sx={{ 
+                          cursor: 'pointer',
+                          position: 'relative',
+                          '&:hover': {
+                            backgroundColor: 'action.hover',
+                            '& .delete-button': {
+                              opacity: 1
+                            }
+                          }
+                        }}
+                      >
+                        <TableCell 
+                          sx={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.75rem',
+                            padding: '4px 8px',
+                            width: '25%',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {setting.ssid}
+                        </TableCell>
+                        <TableCell 
+                          sx={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.75rem',
+                            padding: '4px 8px',
+                            width: '25%',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {showPassphrases ? setting.wpaKey : '••••••••'}
+                        </TableCell>
+                        <TableCell 
+                          sx={{ 
+                            fontSize: '0.75rem',
+                            padding: '4px 8px',
+                            width: '25%',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <TimeDisplay timestamp={setting.lastUsedAt} />
+                        </TableCell>
+                        <TableCell 
+                          sx={{ 
+                            fontSize: '0.75rem',
+                            padding: '4px 8px',
+                            width: '25%',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <TimeDisplay timestamp={setting.createdAt} />
+                        </TableCell>
+                        {/* Floating delete button */}
+                        <IconButton
+                          className="delete-button"
+                          size="small"
+                          onClick={(e) => handleRemoveSetting(e, setting)}
+                          sx={{
+                            position: 'absolute',
+                            right: 4,
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            opacity: 0,
+                            transition: 'opacity 0.2s',
+                            backgroundColor: 'background.paper',
+                            boxShadow: 1,
+                            zIndex: 1,
+                            '&:hover': {
+                              backgroundColor: 'error.light',
+                              color: 'error.contrastText'
+                            }
+                          }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose} color="secondary">

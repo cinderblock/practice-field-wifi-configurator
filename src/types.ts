@@ -344,3 +344,24 @@ export type StationUpdate = {
   wpaKey: string;
   stage?: boolean;
 };
+
+export interface SavedWiFiSetting {
+  ssid: string;
+  wpaKey: string;
+  createdAt: number; // timestamp when first created
+  lastUsedAt: number; // timestamp when last used
+}
+
+export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSetting {
+  if (typeof setting !== 'object') return false;
+  if (!setting) return false;
+
+  const { ssid, wpaKey, createdAt, lastUsedAt } = setting as SavedWiFiSetting;
+
+  if (typeof ssid !== 'string') return false;
+  if (typeof wpaKey !== 'string') return false;
+  if (typeof createdAt !== 'number') return false;
+  if (typeof lastUsedAt !== 'number') return false;
+
+  return true;
+}
