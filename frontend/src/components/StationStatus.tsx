@@ -29,6 +29,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const {
     ssid: stationSsid,
+    hashedWpaKey,
     isLinked,
     macAddress,
     dataAgeMs,
@@ -97,7 +98,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         {stationSsid ? (
           <Grid container style={{ marginTop: '1rem' }}>
             <DataUnit name="SSID" value={stationSsid} />
-            <DataUnit name="Passphrase" value={passphrase ? '********' : 'not set'} />
+            <DataUnit name="Passphrase" value={hashedWpaKey ? '********' : 'not set'} />
             {/* TODO: ability to test if user knows wpakey */}
             {isLinked ? (
               <>
