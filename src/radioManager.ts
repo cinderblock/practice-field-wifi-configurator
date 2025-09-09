@@ -190,7 +190,6 @@ class RadioManager {
         resolve();
       });
     } finally {
-      await network;
       this.configuring = false;
     }
   }
