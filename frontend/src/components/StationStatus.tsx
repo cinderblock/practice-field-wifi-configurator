@@ -17,6 +17,7 @@ import TableRow from '@mui/material/TableRow';
 import { StationName, SavedWiFiSetting } from '../../../src/types';
 import { useLatest, sendNewConfig } from '../hooks/useBackend';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
+import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
 import { prettyStationName } from '../../../src/utils';
 import { Grid, Box, Tooltip } from '@mui/material';
@@ -24,6 +25,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -32,8 +34,12 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const [showPassphrases, setShowPassphrases] = useState(false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Feature flag for staging functionality
+  const enableStaging = process.env.REACT_APP_ENABLE_STAGING === 'true';
+
   const latest = useLatest();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
+  const { stagedChanges, hasStagedChange, stageChange, applyStagedChange } = useStagedChanges();
 
   if (!latest) {
     return <Typography>Loading...</Typography>;
@@ -69,11 +75,27 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   const handleSave = (stage: boolean) => {
-    sendNewConfig(station, ssid, passphrase, stage);
-    
-    // Auto-save the setting if it's valid and not empty
-    if (ssid.trim() && passphrase.trim()) {
-      saveSetting(ssid, passphrase);
+    if (enableStaging && stage) {
+      // Staging mode: stage the change
+      sendNewConfig(station, ssid, passphrase, true);
+      
+      // Track staged change
+      if (ssid.trim() && passphrase.trim()) {
+        stageChange(station, ssid, passphrase);
+      }
+    } else {
+      // Direct apply mode: apply immediately
+      sendNewConfig(station, ssid, passphrase, false);
+      
+      if (enableStaging) {
+        // Clear any staged change when applying
+        applyStagedChange(station);
+      }
+      
+      // Auto-save the setting if it's valid and not empty
+      if (ssid.trim() && passphrase.trim()) {
+        saveSetting(ssid, passphrase);
+      }
     }
     
     setOpen(false);
@@ -87,6 +109,24 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleRemoveSetting = (e: React.MouseEvent, setting: SavedWiFiSetting) => {
     e.stopPropagation(); // Prevent row click
     removeSetting(setting.ssid, setting.wpaKey);
+  };
+
+  const handleApplyAllStagedChanges = () => {
+    // Apply all staged changes across all stations
+    // Only stations with staged changes (stagedChange !== null) will be processed
+    Object.entries(stagedChanges).forEach(([stationName, stagedChange]) => {
+      if (stagedChange) {
+        // Apply the staged change
+        sendNewConfig(stationName as StationName, stagedChange.ssid, stagedChange.wpaKey, false);
+        
+        // Auto-save the setting
+        saveSetting(stagedChange.ssid, stagedChange.wpaKey);
+        
+        // Clear the staged change
+        applyStagedChange(stationName as StationName);
+      }
+      // Stations without staged changes (stagedChange === null) are skipped
+    });
   };
 
   const ssidRegex = /^[a-zA-Z0-9-]{0,14}$/;
@@ -119,38 +159,129 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       <CardContent>
         <Typography variant="h6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {pretty}
-          <IconButton onClick={handleOpen} size="small">
-            <SettingsIcon />
-          </IconButton>
-        </Typography>
-        {stationSsid ? (
-          <Grid container style={{ marginTop: '1rem' }}>
-            <DataUnit name="SSID" value={stationSsid} />
-            <DataUnit name="Passphrase" value={hashedWpaKey ? '********' : 'not set'} />
-            {/* TODO: ability to test if user knows wpakey */}
-            {isLinked ? (
-              <>
-                <DataUnit name="MAC Address" value={macAddress!} />
-                <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
-                <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
-                <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
-                <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
-                <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
-                <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
-                <DataUnit name="RX Packets" value={rxPackets!} />
-                <DataUnit name="TX Packets" value={txPackets!} />
-                <DataUnit name="RX Bytes" value={rxBytes!} />
-                <DataUnit name="TX Bytes" value={txBytes!} />
-                <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
-                <DataUnit name="Connection Quality" value={connectionQuality!} />
-              </>
-            ) : (
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography noWrap style={{ fontStyle: 'italic' }}>
-                  not linked
-                </Typography>
-              </Grid>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
+              <Tooltip title={`Apply all staged changes (${Object.values(stagedChanges).filter(change => change !== null).length} stations)`}>
+                <IconButton 
+                  onClick={handleApplyAllStagedChanges} 
+                  size="small" 
+                  sx={{
+                    color: '#e65100',
+                    backgroundColor: '#fff3e0',
+                    '&:hover': {
+                      backgroundColor: '#ffb74d',
+                      color: '#bf360c'
+                    }
+                  }}
+                >
+                  <PlayArrowIcon />
+                </IconButton>
+              </Tooltip>
             )}
+            <IconButton onClick={handleOpen} size="small">
+              <SettingsIcon />
+            </IconButton>
+          </Box>
+        </Typography>
+        {stationSsid || (enableStaging && hasStagedChange(station)) ? (
+          <Grid container style={{ marginTop: '1rem' }}>
+            {/* SSID and Passphrase with current/staged values */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ marginBottom: 2 }}>
+                {/* SSID Row */}
+                <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
+                  <Typography sx={{ minWidth: '80px', fontWeight: 'medium' }}>SSID:</Typography>
+                  <Typography sx={{ 
+                    flex: 1, 
+                    fontFamily: 'monospace',
+                    backgroundColor: 'background.paper',
+                    padding: '4px 8px',
+                    borderRadius: 1,
+                    border: 1,
+                    borderColor: 'divider'
+                  }}>
+                    {stationSsid || 'not configured'}
+                  </Typography>
+                  {enableStaging && hasStagedChange(station) && (
+                    <>
+                      <Typography sx={{ margin: '0 8px', color: 'text.secondary' }}>→</Typography>
+                      <Typography sx={{ 
+                        flex: 1, 
+                        fontFamily: 'monospace',
+                        backgroundColor: '#fff3e0',
+                        color: '#e65100',
+                        padding: '4px 8px',
+                        borderRadius: 1,
+                        border: 1,
+                        borderColor: '#ffb74d',
+                        fontWeight: 'medium'
+                      }}>
+                        {stagedChanges[station]?.ssid || 'not configured'}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+
+                {/* Passphrase Row */}
+                <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
+                  <Typography sx={{ minWidth: '80px', fontWeight: 'medium' }}>Passphrase:</Typography>
+                  <Typography sx={{ 
+                    flex: 1, 
+                    fontFamily: 'monospace',
+                    backgroundColor: 'background.paper',
+                    padding: '4px 8px',
+                    borderRadius: 1,
+                    border: 1,
+                    borderColor: 'divider'
+                  }}>
+                    {hashedWpaKey ? '********' : 'not set'}
+                  </Typography>
+                  {enableStaging && hasStagedChange(station) && (
+                    <>
+                      <Typography sx={{ margin: '0 8px', color: 'text.secondary' }}>→</Typography>
+                      <Typography sx={{ 
+                        flex: 1, 
+                        fontFamily: 'monospace',
+                        backgroundColor: '#fff3e0',
+                        color: '#e65100',
+                        padding: '4px 8px',
+                        borderRadius: 1,
+                        border: 1,
+                        borderColor: '#ffb74d',
+                        fontWeight: 'medium'
+                      }}>
+                        ********
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </Box>
+
+              {/* Connection Details */}
+              {stationSsid && isLinked ? (
+                <>
+                  <DataUnit name="MAC Address" value={macAddress!} />
+                  <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
+                  <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
+                  <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
+                  <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
+                  <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
+                  <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
+                  <DataUnit name="RX Packets" value={rxPackets!} />
+                  <DataUnit name="TX Packets" value={txPackets!} />
+                  <DataUnit name="RX Bytes" value={rxBytes!} />
+                  <DataUnit name="TX Bytes" value={txBytes!} />
+                  <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
+                  <DataUnit name="Connection Quality" value={connectionQuality!} />
+                </>
+              ) : stationSsid ? (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography noWrap style={{ fontStyle: 'italic' }}>
+                    not linked
+                  </Typography>
+                </Grid>
+              ) : null}
+            </Grid>
           </Grid>
         ) : (
           <Typography noWrap style={{ fontStyle: 'italic' }}>
@@ -178,7 +309,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             if (isSaveEnabled) handleSave(false); // Save or Clear on submit
           }}
           onKeyDown={e => {
-            if (e.key === 'Enter' && e.shiftKey) {
+            if (enableStaging && e.key === 'Enter' && e.shiftKey) {
               // Shift+Enter: Stage
               if (isSaveEnabled) handleSave(true);
               e.preventDefault(); // Prevent form submit
@@ -364,9 +495,11 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             <Button onClick={handleClose} color="secondary">
               Cancel
             </Button>
-            <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
-              Stage
-            </Button>
+            {enableStaging && (
+              <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
+                Stage
+              </Button>
+            )}
             <Button type="submit" color="primary" disabled={!isSaveEnabled}>
               {isSSIDEmpty ? 'Clear' : 'Save'}
             </Button>
