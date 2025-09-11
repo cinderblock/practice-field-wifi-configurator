@@ -19,10 +19,12 @@ fi
 
 npm run build
 
+DEPLOY_BASE=/opt/practice-field-wifi
+
 # Synchronize the internal directory with the frontend build output
-rsync -av --delete frontend/dist/ ../practice-field-wifi/internal/
+rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
 
 # Copy the public.html to the public directory
-cp frontend/src/public.html ../practice-field-wifi/public/index.html
+cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
 sudo systemctl restart practice-field-wifi-configurator.service
