@@ -26,6 +26,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ClearIcon from '@mui/icons-material/Clear';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -129,6 +130,23 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     });
   };
 
+  const handleClearStation = () => {
+    console.log('Clearing station:', station, 'Current SSID:', stationSsid);
+    
+    // Only clear if the station is actually configured
+    if (stationSsid || (enableStaging && hasStagedChange(station))) {
+      // Send empty strings like the dialog does
+      sendNewConfig(station, '', '', false);
+      
+      // Clear any staged changes for this station
+      if (enableStaging) {
+        applyStagedChange(station);
+      }
+    } else {
+      console.log('Station is already cleared, no action needed');
+    }
+  };
+
   const ssidRegex = /^[a-zA-Z0-9-]{0,14}$/;
   const ssidFormatRegex = /^\d{1,6}(?:-.*)?$/; // FIRST SSID format
   const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
@@ -175,6 +193,23 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   }}
                 >
                   <PlayArrowIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            {(stationSsid || (enableStaging && hasStagedChange(station))) && (
+              <Tooltip title="Clear station configuration">
+                <IconButton 
+                  onClick={handleClearStation} 
+                  size="small"
+                  sx={{
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'error.main',
+                      backgroundColor: 'error.light'
+                    }
+                  }}
+                >
+                  <ClearIcon />
                 </IconButton>
               </Tooltip>
             )}

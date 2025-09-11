@@ -64,6 +64,7 @@ export function sendNewConfig(station: StationName, ssid: string, wpaKey: string
     wpaKey,
     stage,
   };
+  console.log('Sending config update:', update);
   ws?.send(JSON.stringify(update));
 }
 
