@@ -5,7 +5,9 @@ import { runFMS } from './fmsServer.js';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';
-const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1' or 'eth2'
+const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or undefined
+const StartFMS = process.env.FMS_ENDPOINT === 'true';
+const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 
 // Initialize radio manager
 const radioManager = new RadioManager(RadioUrl, VlanInterface);
@@ -13,6 +15,7 @@ const radioManager = new RadioManager(RadioUrl, VlanInterface);
 // Initialize WebSocket server
 const wss = setupWebSocket(radioManager);
 
+if (StartSyslog) {
 runSyslogServer().then(syslogServer => {
   if (!syslogServer) return;
 
@@ -25,7 +28,9 @@ runSyslogServer().then(syslogServer => {
     });
   });
 });
+}
 
+if (StartFMS) {
 runFMS().then(fms => {
   if (!fms) return;
 
@@ -34,3 +39,4 @@ runFMS().then(fms => {
     console.log(msg);
   });
 });
+}
