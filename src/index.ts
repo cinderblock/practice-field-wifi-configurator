@@ -16,27 +16,27 @@ const radioManager = new RadioManager(RadioUrl, VlanInterface);
 const wss = setupWebSocket(radioManager);
 
 if (StartSyslog) {
-runSyslogServer().then(syslogServer => {
-  if (!syslogServer) return;
+  runSyslogServer().then(syslogServer => {
+    if (!syslogServer) return;
 
-  syslogServer.on('message', msg => {
-    const data = JSON.stringify(msg);
+    syslogServer.on('message', msg => {
+      const data = JSON.stringify(msg);
 
-    wss.clients.forEach(client => {
-      if (client.readyState !== WebSocket.OPEN) return;
-      client.send(data);
+      wss.clients.forEach(client => {
+        if (client.readyState !== WebSocket.OPEN) return;
+        client.send(data);
+      });
     });
   });
-});
 }
 
 if (StartFMS) {
-runFMS().then(fms => {
-  if (!fms) return;
+  runFMS().then(fms => {
+    if (!fms) return;
 
-  fms.on('message', msg => {
-    console.log('Message from DS:');
-    console.log(msg);
+    fms.on('message', msg => {
+      console.log('Message from DS:');
+      console.log(msg);
+    });
   });
-});
 }
