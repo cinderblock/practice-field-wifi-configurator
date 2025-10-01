@@ -209,6 +209,59 @@ class RadioManager {
     }
   }
 
+  async clearAllConfigurations(): Promise<void> {
+    console.log(`[${new Date().toISOString()}] Starting to clear all active radio configurations`);
+
+    if (this.configuring) {
+      console.log('Already configuring, skipping clear operation');
+      return;
+    }
+
+    // Check if there are any active configurations to clear
+    const activeStations = Object.keys(this.activeConfig);
+    if (activeStations.length === 0) {
+      console.log('No active configurations to clear');
+      return;
+    }
+
+    console.log(`Clearing ${activeStations.length} active configurations for stations: ${activeStations.join(', ')}`);
+
+    // Clear all active configurations
+    this.activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
+
+    try {
+      // Send empty configuration to radio
+      const body = JSON.stringify({ stationConfigurations: {} });
+      console.log('Sending empty configuration to radio');
+
+      const response = await fetch(`${this.apiBaseUrl}/configuration`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(this.timeout),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
+      }
+
+      // Clear network configuration if interface is configured
+      if (this.radioManagementInterface) {
+        const teamsConfig = {} as Record<StationName, number | undefined>;
+        await configureNetwork(teamsConfig, this.radioManagementInterface);
+      }
+
+      console.log(`[${new Date().toISOString()}] Successfully cleared all radio configurations`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Error clearing configurations:`, error);
+      // Restore the activeConfig state since the clear failed
+      // Note: This is a best-effort restoration, but we can't know the exact previous state
+      console.warn('Configuration clear failed, radio state may be inconsistent');
+    }
+  }
+
   isConnected(): boolean {
     return this.connected;
   }

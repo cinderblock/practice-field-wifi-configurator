@@ -2,6 +2,7 @@ import RadioManager from './radioManager.js';
 import { runSyslogServer } from './runSyslogServer.js';
 import { setupWebSocket } from './websocketServer.js';
 import { runFMS } from './fmsServer.js';
+import { startConfigurationScheduler } from './scheduler.js';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';
@@ -9,11 +10,22 @@ const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or un
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 
+// Scheduled configuration clearing
+const RadioClearSchedule = process.env.RADIO_CLEAR_SCHEDULE;
+const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
+
 // Initialize radio manager
 const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
 // Initialize WebSocket server
 const wss = setupWebSocket(radioManager);
+
+// Initialize scheduled configuration clearing
+if (RadioClearSchedule) {
+  startConfigurationScheduler(radioManager, RadioClearSchedule, RadioClearTimezone);
+} else {
+  console.log('RADIO_CLEAR_SCHEDULE environment variable is not set. Skipping scheduled configuration clearing.');
+}
 
 if (StartSyslog) {
   runSyslogServer().then(syslogServer => {
