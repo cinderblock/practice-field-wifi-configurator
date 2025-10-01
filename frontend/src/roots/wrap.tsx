@@ -5,6 +5,7 @@ import Backdrop from '@mui/material/Backdrop';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import { useHistory, useLatest } from '../hooks/useBackend.js';
+import GithubCorner from '../components/GithubCorner';
 
 export function WrapAll({ children }: { children: React.ReactNode }) {
   const latest = useLatest();
@@ -46,6 +47,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
             </Grid>
           </Backdrop>
           {children}
+          <GithubCorner href="https://github.com/cinderblock/practice-field-wifi-configurator" />
         </ThemeProvider>
       </ErrorBoundary>
     </StrictMode>
