@@ -175,9 +175,27 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       }}
     >
       <CardContent>
-        <Typography variant="h6" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {pretty}
+        <Typography variant="h5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {pretty}
+            <Typography variant="h6" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+              <Tooltip title="SSID">
+                <>{stationSsid}</>
+              </Tooltip>
+              <span style={{ userSelect: 'none' }}>{stationSsid && (hashedWpaKey ? '🔒' : '🔓')}</span>
+              {enableStaging && hasStagedChange(station) && (
+                <span>
+                  <span style={{ userSelect: 'none' }}> → </span>
+                  <Tooltip title="Staged SSID">
+                    <span>{stagedChanges[station]?.ssid}</span>
+                  </Tooltip>
+                  <span style={{ userSelect: 'none' }}>{stagedChanges[station]?.wpaKey ? '🔒' : '🔓'}</span>
+                </span>
+              )}
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
+            {/** APPLY ALL STAGED CHANGES BUTTON */}
             {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
               <Tooltip title={`Apply all staged changes (${Object.values(stagedChanges).filter(change => change !== null).length} stations)`}>
                 <IconButton 
@@ -196,6 +214,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </IconButton>
               </Tooltip>
             )}
+            {/** CLEAR BUTTON */}
             {(stationSsid || (enableStaging && hasStagedChange(station))) && (
               <Tooltip title="Clear station configuration">
                 <IconButton 
@@ -213,85 +232,16 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </IconButton>
               </Tooltip>
             )}
+            {/** SETTINGS BUTTON */}
             <IconButton onClick={handleOpen} size="small">
               <SettingsIcon />
             </IconButton>
           </Box>
         </Typography>
         {stationSsid || (enableStaging && hasStagedChange(station)) ? (
-          <Grid container style={{ marginTop: '1rem' }}>
+          <Grid container>
             {/* SSID and Passphrase with current/staged values */}
             <Grid size={{ xs: 12 }}>
-              <Box sx={{ marginBottom: 2 }}>
-                {/* SSID Row */}
-                <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
-                  <Typography sx={{ minWidth: '80px', fontWeight: 'medium' }}>SSID:</Typography>
-                  <Typography sx={{ 
-                    flex: 1, 
-                    fontFamily: 'monospace',
-                    backgroundColor: 'background.paper',
-                    padding: '4px 8px',
-                    borderRadius: 1,
-                    border: 1,
-                    borderColor: 'divider'
-                  }}>
-                    {stationSsid || 'not configured'}
-                  </Typography>
-                  {enableStaging && hasStagedChange(station) && (
-                    <>
-                      <Typography sx={{ margin: '0 8px', color: 'text.secondary' }}>→</Typography>
-                      <Typography sx={{ 
-                        flex: 1, 
-                        fontFamily: 'monospace',
-                        backgroundColor: '#fff3e0',
-                        color: '#e65100',
-                        padding: '4px 8px',
-                        borderRadius: 1,
-                        border: 1,
-                        borderColor: '#ffb74d',
-                        fontWeight: 'medium'
-                      }}>
-                        {stagedChanges[station]?.ssid || 'not configured'}
-                      </Typography>
-                    </>
-                  )}
-                </Box>
-
-                {/* Passphrase Row */}
-                <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: 1 }}>
-                  <Typography sx={{ minWidth: '80px', fontWeight: 'medium' }}>Passphrase:</Typography>
-                  <Typography sx={{ 
-                    flex: 1, 
-                    fontFamily: 'monospace',
-                    backgroundColor: 'background.paper',
-                    padding: '4px 8px',
-                    borderRadius: 1,
-                    border: 1,
-                    borderColor: 'divider'
-                  }}>
-                    {hashedWpaKey ? '********' : 'not set'}
-                  </Typography>
-                  {enableStaging && hasStagedChange(station) && (
-                    <>
-                      <Typography sx={{ margin: '0 8px', color: 'text.secondary' }}>→</Typography>
-                      <Typography sx={{ 
-                        flex: 1, 
-                        fontFamily: 'monospace',
-                        backgroundColor: '#fff3e0',
-                        color: '#e65100',
-                        padding: '4px 8px',
-                        borderRadius: 1,
-                        border: 1,
-                        borderColor: '#ffb74d',
-                        fontWeight: 'medium'
-                      }}>
-                        ********
-                      </Typography>
-                    </>
-                  )}
-                </Box>
-              </Box>
-
               {/* Connection Details */}
               {stationSsid && isLinked ? (
                 <>
