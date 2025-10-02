@@ -30,7 +30,7 @@ export function startConfigurationScheduler(radioManager: RadioManager, schedule
     console.log(
       `[${new Date().toISOString()}] Scheduled configuration clearing started with cron expression: "${schedule}" (timezone: ${timezoneInfo})`,
     );
-    console.log(`Next execution: ${cronJob.nextDate().toISOString()}`);
+    console.log(`Next execution: ${cronJob.nextDate()}`);
   } catch (error) {
     console.error('Failed to start scheduled configuration clearing:', error);
     console.error('Please check your RADIO_CLEAR_SCHEDULE cron expression format.');
