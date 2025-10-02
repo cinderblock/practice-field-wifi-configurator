@@ -79,7 +79,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     if (enableStaging && stage) {
       // Staging mode: stage the change
       sendNewConfig(station, ssid, passphrase, true);
-      
+
       // Track staged change
       if (ssid.trim() && passphrase.trim()) {
         stageChange(station, ssid, passphrase);
@@ -87,18 +87,18 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     } else {
       // Direct apply mode: apply immediately
       sendNewConfig(station, ssid, passphrase, false);
-      
+
       if (enableStaging) {
         // Clear any staged change when applying
         applyStagedChange(station);
       }
-      
+
       // Auto-save the setting if it's valid and not empty
       if (ssid.trim() && passphrase.trim()) {
         saveSetting(ssid, passphrase);
       }
     }
-    
+
     setOpen(false);
   };
 
@@ -119,10 +119,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       if (stagedChange) {
         // Apply the staged change
         sendNewConfig(stationName as StationName, stagedChange.ssid, stagedChange.wpaKey, false);
-        
+
         // Auto-save the setting
         saveSetting(stagedChange.ssid, stagedChange.wpaKey);
-        
+
         // Clear the staged change
         applyStagedChange(stationName as StationName);
       }
@@ -132,12 +132,12 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const handleClearStation = () => {
     console.log('Clearing station:', station, 'Current SSID:', stationSsid);
-    
+
     // Only clear if the station is actually configured
     if (stationSsid || (enableStaging && hasStagedChange(station))) {
       // Send empty strings like the dialog does
       sendNewConfig(station, '', '', false);
-      
+
       // Clear any staged changes for this station
       if (enableStaging) {
         applyStagedChange(station);
@@ -197,17 +197,21 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           <Box sx={{ display: 'flex', gap: 0.5 }}>
             {/** APPLY ALL STAGED CHANGES BUTTON */}
             {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
-              <Tooltip title={`Apply all staged changes (${Object.values(stagedChanges).filter(change => change !== null).length} stations)`}>
-                <IconButton 
-                  onClick={handleApplyAllStagedChanges} 
-                  size="small" 
+              <Tooltip
+                title={`Apply all staged changes (${
+                  Object.values(stagedChanges).filter(change => change !== null).length
+                } stations)`}
+              >
+                <IconButton
+                  onClick={handleApplyAllStagedChanges}
+                  size="small"
                   sx={{
                     color: '#e65100',
                     backgroundColor: '#fff3e0',
                     '&:hover': {
                       backgroundColor: '#ffb74d',
-                      color: '#bf360c'
-                    }
+                      color: '#bf360c',
+                    },
                   }}
                 >
                   <PlayArrowIcon />
@@ -217,15 +221,15 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             {/** CLEAR BUTTON */}
             {(stationSsid || (enableStaging && hasStagedChange(station))) && (
               <Tooltip title="Clear station configuration">
-                <IconButton 
-                  onClick={handleClearStation} 
+                <IconButton
+                  onClick={handleClearStation}
                   size="small"
                   sx={{
                     color: 'text.secondary',
                     '&:hover': {
                       color: 'error.main',
-                      backgroundColor: 'error.light'
-                    }
+                      backgroundColor: 'error.light',
+                    },
                   }}
                 >
                   <ClearIcon />
@@ -238,6 +242,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </IconButton>
           </Box>
         </Typography>
+
         {stationSsid || (enableStaging && hasStagedChange(station)) ? (
           <Grid container>
             {/* SSID and Passphrase with current/staged values */}
@@ -315,10 +320,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 isSSIDEmpty
                   ? 'Empty SSID will clear the configuration.'
                   : !ssidRegex.test(ssid)
-                  ? 'SSID must be alphanumeric and up to 14 characters.'
-                  : !ssidFormatRegex.test(ssid)
-                  ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
-                  : ''
+                    ? 'SSID must be alphanumeric and up to 14 characters.'
+                    : !ssidFormatRegex.test(ssid)
+                      ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
+                      : ''
               }
               error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
             />
@@ -337,44 +342,46 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               }
               error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
             />
-            
+
             {recentSettings.length > 0 && (
-              <Box sx={{ 
-                marginTop: 2, 
-                padding: 2, 
-                backgroundColor: 'background.paper',
-                border: 1,
-                borderColor: 'divider',
-                borderRadius: 1 
-              }}>
+              <Box
+                sx={{
+                  marginTop: 2,
+                  padding: 2,
+                  backgroundColor: 'background.paper',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                }}
+              >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
                   <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
                     Recent Configurations
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title={showPassphrases ? "Hide passphrases" : "Show passphrases"}>
-                      <IconButton 
-                        size="small" 
+                    <Tooltip title={showPassphrases ? 'Hide passphrases' : 'Show passphrases'}>
+                      <IconButton
+                        size="small"
                         onClick={() => setShowPassphrases(!showPassphrases)}
-                        sx={{ 
+                        sx={{
                           color: 'text.secondary',
                           '&:hover': {
-                            color: 'text.primary'
-                          }
+                            color: 'text.primary',
+                          },
                         }}
                       >
                         {showPassphrases ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Clear all recent configurations">
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={clearSettings}
-                        sx={{ 
+                        sx={{
                           color: 'text.secondary',
                           '&:hover': {
-                            color: 'error.main'
-                          }
+                            color: 'error.main',
+                          },
                         }}
                       >
                         <DeleteIcon fontSize="small" />
@@ -384,64 +391,64 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </Box>
                 <Table size="small" sx={{ tableLayout: 'fixed' }}>
                   <TableBody>
-                    {recentSettings.map((setting) => (
-                      <TableRow 
+                    {recentSettings.map(setting => (
+                      <TableRow
                         key={`${setting.ssid}-${setting.createdAt}`}
                         hover
                         onClick={() => handleApplySetting(setting)}
-                        sx={{ 
+                        sx={{
                           cursor: 'pointer',
                           position: 'relative',
                           '&:hover': {
                             backgroundColor: 'action.hover',
                             '& .delete-button': {
-                              opacity: 1
-                            }
-                          }
+                              opacity: 1,
+                            },
+                          },
                         }}
                       >
-                        <TableCell 
-                          sx={{ 
-                            fontFamily: 'monospace', 
+                        <TableCell
+                          sx={{
+                            fontFamily: 'monospace',
                             fontSize: '0.75rem',
                             padding: '4px 8px',
                             width: '25%',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            textOverflow: 'ellipsis',
                           }}
                         >
                           {setting.ssid}
                         </TableCell>
-                        <TableCell 
-                          sx={{ 
-                            fontFamily: 'monospace', 
+                        <TableCell
+                          sx={{
+                            fontFamily: 'monospace',
                             fontSize: '0.75rem',
                             padding: '4px 8px',
                             width: '25%',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            textOverflow: 'ellipsis',
                           }}
                         >
                           {showPassphrases ? setting.wpaKey : '••••••••'}
                         </TableCell>
-                        <TableCell 
-                          sx={{ 
+                        <TableCell
+                          sx={{
                             fontSize: '0.75rem',
                             padding: '4px 8px',
                             width: '25%',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           <TimeDisplay timestamp={setting.lastUsedAt} />
                         </TableCell>
-                        <TableCell 
-                          sx={{ 
+                        <TableCell
+                          sx={{
                             fontSize: '0.75rem',
                             padding: '4px 8px',
                             width: '25%',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           <TimeDisplay timestamp={setting.createdAt} />
@@ -450,7 +457,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         <IconButton
                           className="delete-button"
                           size="small"
-                          onClick={(e) => handleRemoveSetting(e, setting)}
+                          onClick={e => handleRemoveSetting(e, setting)}
                           sx={{
                             position: 'absolute',
                             right: 4,
@@ -463,8 +470,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                             zIndex: 1,
                             '&:hover': {
                               backgroundColor: 'error.light',
-                              color: 'error.contrastText'
-                            }
+                              color: 'error.contrastText',
+                            },
                           }}
                         >
                           <DeleteOutlineIcon fontSize="small" />

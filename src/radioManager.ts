@@ -26,7 +26,10 @@ class RadioManager {
   private updateListeners: StatusListener[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
 
-  constructor(private readonly apiBaseUrl: string, private readonly radioManagementInterface?: string) {
+  constructor(
+    private readonly apiBaseUrl: string,
+    private readonly radioManagementInterface?: string,
+  ) {
     this.startPolling();
     if (this.radioManagementInterface) {
       console.log('Radio management interface:', this.radioManagementInterface);

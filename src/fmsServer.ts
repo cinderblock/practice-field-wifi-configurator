@@ -411,7 +411,11 @@ export async function runFMS() {
 }
 
 class Control {
-  constructor(public eStop: boolean, public enabled: boolean, public mode: Mode) {}
+  constructor(
+    public eStop: boolean,
+    public enabled: boolean,
+    public mode: Mode,
+  ) {}
   get bits() {
     return (this.eStop ? 0x80 : 0) | (this.enabled ? 0x04 : 0) | ['teleOp', 'test', 'auto'].indexOf(this.mode);
   }

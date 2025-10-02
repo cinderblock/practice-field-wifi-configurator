@@ -54,12 +54,12 @@ export function useStagedChanges() {
     const listener = (changes: Record<StationName, StagedChange | null>) => {
       setStagedChanges(changes);
     };
-    
+
     globalListeners.add(listener);
-    
+
     // Set initial state
     setStagedChanges(globalStagedChanges);
-    
+
     return () => {
       globalListeners.delete(listener);
     };
@@ -84,7 +84,7 @@ export function useStagedChanges() {
       globalStagedChanges[station] = null;
       saveToStorage();
       notifyListeners();
-      
+
       // Return the change so it can be applied
       return change;
     }
@@ -109,4 +109,3 @@ export function useStagedChanges() {
     hasStagedChange,
   };
 }
-

@@ -112,7 +112,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
 type Stations = Record<StationName, number | undefined>;
 
 export async function configureNetwork(stations: Stations, interfaceName: string) {
-	console.log('configureNetwork');
+  console.log('configureNetwork');
   await updateNetworkConfig(stations, interfaceName);
 
   await Promise.all(

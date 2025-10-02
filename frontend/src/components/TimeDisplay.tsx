@@ -9,13 +9,13 @@ interface TimeDisplayProps {
 export function TimeDisplay({ timestamp, className }: TimeDisplayProps) {
   const [isAbsolute, setIsAbsolute] = useState(() => {
     const now = Date.now();
-    const twoWeeksAgo = now - (14 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = now - 14 * 24 * 60 * 60 * 1000;
     return timestamp < twoWeeksAgo;
   });
 
   const timeString = useMemo(() => {
     const date = new Date(timestamp);
-    
+
     if (isAbsolute) {
       return date.toLocaleString('en-US', {
         year: 'numeric',
@@ -24,7 +24,7 @@ export function TimeDisplay({ timestamp, className }: TimeDisplayProps) {
         hour: 'numeric',
         minute: '2-digit',
         second: '2-digit',
-        hour12: true
+        hour12: true,
       });
     } else {
       const now = Date.now();
@@ -72,8 +72,8 @@ export function TimeDisplay({ timestamp, className }: TimeDisplayProps) {
         whiteSpace: 'nowrap',
         '&:hover': {
           color: 'text.primary',
-          textDecoration: 'underline'
-        }
+          textDecoration: 'underline',
+        },
       }}
       className={className}
     >

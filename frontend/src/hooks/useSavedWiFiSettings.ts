@@ -66,7 +66,7 @@ export function useSavedWiFiSettings() {
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener(CUSTOM_EVENT_NAME, handleCustomEvent);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener(CUSTOM_EVENT_NAME, handleCustomEvent);
@@ -83,14 +83,14 @@ export function useSavedWiFiSettings() {
     setRecentSettings(prev => {
       // Check if this exact setting already exists
       const existingIndex = prev.findIndex(s => s.ssid === trimmedSsid && s.wpaKey === trimmedWpaKey);
-      
+
       let updatedSettings;
       if (existingIndex >= 0) {
         // Update existing setting with new lastUsedAt
         updatedSettings = [...prev];
         updatedSettings[existingIndex] = {
           ...updatedSettings[existingIndex],
-          lastUsedAt: now
+          lastUsedAt: now,
         };
       } else {
         // Add new setting
@@ -104,9 +104,7 @@ export function useSavedWiFiSettings() {
       }
 
       // Sort by lastUsedAt (most recent first) and limit to MAX_RECENT_SETTINGS
-      const sortedSettings = updatedSettings
-        .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
-        .slice(0, MAX_RECENT_SETTINGS);
+      const sortedSettings = updatedSettings.sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, MAX_RECENT_SETTINGS);
 
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(sortedSettings));
@@ -123,7 +121,7 @@ export function useSavedWiFiSettings() {
   const removeSetting = useCallback((ssid: string, wpaKey: string) => {
     setRecentSettings(prev => {
       const updatedSettings = prev.filter(s => !(s.ssid === ssid && s.wpaKey === wpaKey));
-      
+
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSettings));
         // Dispatch custom event to notify other components in the same tab
