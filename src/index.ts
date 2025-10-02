@@ -3,6 +3,8 @@ import { runSyslogServer } from './runSyslogServer.js';
 import { setupWebSocket } from './websocketServer.js';
 import { runFMS } from './fmsServer.js';
 import { startConfigurationScheduler } from './scheduler.js';
+import CIDRMatcher from 'cidr-matcher';
+import { toCidr } from './utils.js';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2';
@@ -11,8 +13,12 @@ const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 
 // Trusted proxy configuration
-const trustedProxyConfig = process.env.TRUSTED_PROXIES
-  ? { proxies: process.env.TRUSTED_PROXIES.split(',').map(proxy => proxy.trim()) }
+const trustedProxyMatcher = process.env.TRUSTED_PROXIES
+  ? new CIDRMatcher(
+      process.env.TRUSTED_PROXIES.split(/[,\s]+/g)
+        .filter(s => s)
+        .map(toCidr),
+    )
   : undefined;
 
 // Scheduled configuration clearing
@@ -23,7 +29,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
 // Initialize WebSocket server
-const wss = setupWebSocket(radioManager, undefined, trustedProxyConfig);
+const wss = setupWebSocket(radioManager, undefined, trustedProxyMatcher);
 
 // Initialize scheduled configuration clearing
 if (RadioClearSchedule) {

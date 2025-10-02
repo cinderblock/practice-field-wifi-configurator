@@ -1,15 +1,12 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager.js';
-import { isStationUpdate, TrustedProxyConfig } from './types.js';
+import { isStationUpdate } from './types.js';
 import { getRealClientIp } from './utils.js';
+import CIDRMatcher from 'cidr-matcher';
 
 const DefaultPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
-export function setupWebSocket(
-  radioManager: RadioManager,
-  port = DefaultPort,
-  trustedProxyConfig?: TrustedProxyConfig,
-) {
+export function setupWebSocket(radioManager: RadioManager, port = DefaultPort, trustedProxyMatcher?: CIDRMatcher) {
   const wss = new WebSocketServer({ port });
 
   // Set up single listener for all clients
@@ -23,7 +20,7 @@ export function setupWebSocket(
 
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
-    const realClientIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyConfig);
+    const realClientIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
     console.log(`[${new Date().toISOString()}] New client connected: ${realClientIp}`);
     // Send initial history
     const history = radioManager.getStatusHistory();
