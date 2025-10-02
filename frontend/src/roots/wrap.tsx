@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary.js';
-import { createTheme, CssBaseline, ThemeProvider, Grid } from '@mui/material';
+import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/material';
 import Backdrop from '@mui/material/Backdrop';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
@@ -46,6 +46,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               </Typography>
             </Grid>
           </Backdrop>
+          <Box sx={{ my: 1 }} />
           {children}
           <GithubCorner href="https://github.com/cinderblock/practice-field-wifi-configurator" />
         </ThemeProvider>
