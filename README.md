@@ -77,6 +77,7 @@ WorkingDirectory=/path/to/practice-field-configurator
 ExecStart=/usr/bin/node dist
 Restart=on-failure
 Environment=WEBSOCKET_PORT=9001
+Environment=TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.0/8
 
 [Install]
 WantedBy=multi-user.target
@@ -124,3 +125,31 @@ server {
     }
 }
 ```
+
+## Environment Variables
+
+- `WEBSOCKET_PORT`: Port for the WebSocket server (default: 3000)
+- `RADIO_URL`: URL for the radio API (default: http://10.0.100.2)
+- `VLAN_INTERFACE`: Physical network interface for VLAN configuration
+- `FMS_ENDPOINT`: Set to 'true' to enable FMS server
+- `SYSLOG_ENDPOINT`: Set to 'true' to enable syslog server
+- `RADIO_CLEAR_SCHEDULE`: Cron expression for scheduled configuration clearing
+- `RADIO_CLEAR_TIMEZONE`: Timezone for scheduled clearing
+- `TRUSTED_PROXIES`: Comma-separated list of trusted proxy IPs/CIDR blocks for real client IP detection
+
+### Trusted Proxies Configuration
+
+When running behind a reverse proxy (like Caddy), set `TRUSTED_PROXIES` to enable real client IP detection:
+
+```bash
+# For Caddy running on localhost
+TRUSTED_PROXIES=127.0.0.1,::1
+
+# For Caddy on a specific network
+TRUSTED_PROXIES=10.0.0.0/8
+
+# Multiple proxies
+TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.0/8,192.168.1.0/24
+```
+
+This allows the application to read the `X-Forwarded-For` header from trusted proxies to log the real client IP instead of the proxy's IP (127.0.0.1).

@@ -1,10 +1,15 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager.js';
-import { isStationUpdate } from './types.js';
+import { isStationUpdate, TrustedProxyConfig } from './types.js';
+import { getRealClientIp } from './utils.js';
 
 const DefaultPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
-export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
+export function setupWebSocket(
+  radioManager: RadioManager,
+  port = DefaultPort,
+  trustedProxyConfig?: TrustedProxyConfig,
+) {
   const wss = new WebSocketServer({ port });
 
   // Set up single listener for all clients
@@ -16,8 +21,10 @@ export function setupWebSocket(radioManager: RadioManager, port = DefaultPort) {
     });
   });
 
-  wss.on('connection', (ws: WebSocket) => {
-    console.log(`[${new Date().toISOString()}] New client connected: ${(ws as any)._socket?.remoteAddress}`);
+  wss.on('connection', (ws: WebSocket, req) => {
+    const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
+    const realClientIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyConfig);
+    console.log(`[${new Date().toISOString()}] New client connected: ${realClientIp}`);
     // Send initial history
     const history = radioManager.getStatusHistory();
     ws.send(JSON.stringify(history));

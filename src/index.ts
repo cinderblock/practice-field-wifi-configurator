@@ -10,6 +10,11 @@ const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or un
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 
+// Trusted proxy configuration
+const trustedProxyConfig = process.env.TRUSTED_PROXIES
+  ? { proxies: process.env.TRUSTED_PROXIES.split(',').map(proxy => proxy.trim()) }
+  : undefined;
+
 // Scheduled configuration clearing
 const RadioClearSchedule = process.env.RADIO_CLEAR_SCHEDULE;
 const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
@@ -18,7 +23,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
 // Initialize WebSocket server
-const wss = setupWebSocket(radioManager);
+const wss = setupWebSocket(radioManager, undefined, trustedProxyConfig);
 
 // Initialize scheduled configuration clearing
 if (RadioClearSchedule) {

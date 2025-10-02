@@ -365,3 +365,17 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
 
   return true;
 }
+
+export interface TrustedProxyConfig {
+  proxies: string[]; // Array of IP addresses or CIDR blocks
+}
+
+export function isTrustedProxyConfig(config: unknown): config is TrustedProxyConfig {
+  if (typeof config !== 'object') return false;
+  if (!config) return false;
+
+  const { proxies } = config as TrustedProxyConfig;
+
+  if (!Array.isArray(proxies)) return false;
+  return proxies.every(proxy => typeof proxy === 'string' && proxy.length > 0);
+}
