@@ -4,9 +4,7 @@ import { isStationUpdate } from './types.js';
 import { getRealClientIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
 
-const DefaultPort = Number(process.env.WEBSOCKET_PORT) || 3000;
-
-export function setupWebSocket(radioManager: RadioManager, port = DefaultPort, trustedProxyMatcher?: CIDRMatcher) {
+export function setupWebSocket(radioManager: RadioManager, port: number, trustedProxyMatcher?: CIDRMatcher) {
   const wss = new WebSocketServer({ port });
 
   // Set up single listener for all clients
