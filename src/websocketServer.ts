@@ -19,7 +19,7 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const realClientIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
-    console.log(`[${new Date().toISOString()}] New client connected: ${realClientIp}`);
+    console.log(`New client connected: ${realClientIp}`);
     // Send initial history
     const history = radioManager.getStatusHistory();
     ws.send(JSON.stringify(history));
@@ -39,7 +39,7 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
   });
 
   wss.on('listening', () => {
-    console.log(`[${new Date().toISOString()}] WebSocket server running on port ${port}`);
+    console.log(`WebSocket server running on port ${port}`);
   });
 
   return wss;

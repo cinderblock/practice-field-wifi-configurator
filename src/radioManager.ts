@@ -213,7 +213,7 @@ class RadioManager {
   }
 
   async clearAllConfigurations(): Promise<void> {
-    console.log(`[${new Date().toISOString()}] Starting to clear all active radio configurations`);
+    console.log(`Starting to clear all active radio configurations`);
 
     if (this.configuring) {
       console.log('Already configuring, skipping clear operation');
@@ -256,9 +256,9 @@ class RadioManager {
         await configureNetwork(teamsConfig, this.radioManagementInterface);
       }
 
-      console.log(`[${new Date().toISOString()}] Successfully cleared all radio configurations`);
+      console.log(`Successfully cleared all radio configurations`);
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] Error clearing configurations:`, error);
+      console.error(`Error clearing configurations:`, error);
       // Restore the activeConfig state since the clear failed
       // Note: This is a best-effort restoration, but we can't know the exact previous state
       console.warn('Configuration clear failed, radio state may be inconsistent');

@@ -14,11 +14,11 @@ export function startConfigurationScheduler(radioManager: RadioManager, schedule
     const cronJob = new CronJob(
       schedule,
       async () => {
-        console.log(`[${new Date().toISOString()}] Scheduled task triggered: Clearing all radio configurations`);
+        console.log(`Scheduled task triggered: Clearing all radio configurations`);
         try {
           await radioManager.clearAllConfigurations();
         } catch (error) {
-          console.error(`[${new Date().toISOString()}] Error in scheduled configuration clear:`, error);
+          console.error(`Error in scheduled configuration clear:`, error);
         }
       },
       null, // onComplete callback
@@ -28,7 +28,7 @@ export function startConfigurationScheduler(radioManager: RadioManager, schedule
 
     const timezoneInfo = timezone || 'system default';
     console.log(
-      `[${new Date().toISOString()}] Scheduled configuration clearing started with cron expression: "${schedule}" (timezone: ${timezoneInfo})`,
+      `Scheduled configuration clearing started with cron expression: "${schedule}" (timezone: ${timezoneInfo})`,
     );
     console.log(`Next execution: ${cronJob.nextDate()}`);
   } catch (error) {
