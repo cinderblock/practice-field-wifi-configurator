@@ -51,6 +51,11 @@ if (StartSyslog) {
         client.send(data);
       });
     });
+
+    // TODO: Load system IP
+    radioManager.setSyslogIP('10.0.100.5').catch(err => {
+      console.error('Failed to set Syslog IP:', err);
+    });
   });
 }
 

@@ -1,9 +1,6 @@
 import SyslogServer from 'syslog-server';
 
-// Fixed address for the Syslog server
-const DefaultAddress = '10.0.100.40';
-
-export async function startSyslogServer(address = DefaultAddress) {
+export async function startSyslogServer(address = '0.0.0.0') {
   return new Promise<SyslogServer>(async (resolve, reject) => {
     const s = new SyslogServer();
     s.on('error', reject);
