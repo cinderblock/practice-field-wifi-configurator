@@ -9,10 +9,13 @@ import {
   ReadyScanResults,
   ScanResults,
   StationName,
+  Status,
   StatusEntry,
 } from './types.js';
 
 type StatusListener = (entry: StatusEntry) => void;
+
+const ReconfigurationTimeout = 45; // seconds
 
 class RadioManager {
   private updateInterval: NodeJS.Timeout | null = null;
@@ -141,35 +144,66 @@ class RadioManager {
       return;
     }
 
-    this.configuring = true;
-
     const config = ssid ? { ssid, wpaKey } : null;
 
     // console.log('Configuring station:', stationId, config);
 
-    if (config) {
-      this.activeConfig[stationId] = config;
-    } else {
-      delete this.activeConfig[stationId];
+    if (config) this.activeConfig[stationId] = config;
+    else delete this.activeConfig[stationId];
+
+    // Bail if just staging the change
+    if (!stage) await this.commitConfiguration();
+  }
+
+  async commitConfiguration(): Promise<void> {
+    const config = { stationConfigurations: this.activeConfig };
+
+    // Log the configuration to be sent for debugging
+    const sanitizedConfig = JSON.parse(JSON.stringify(config)).stationConfigurations;
+    for (const station in sanitizedConfig) if (sanitizedConfig[station]) sanitizedConfig[station].wpaKey &&= '***';
+    console.log('Configuring stations:', sanitizedConfig);
+
+    const teamsConfig = {} as Record<StationName, number | undefined>;
+
+    for (const station in this.activeConfig) {
+      const { ssid } = this.activeConfig[station as StationName] ?? {};
+      if (ssid) teamsConfig[station as StationName] = parseInt(ssid.split('-', 2)[0]) || undefined;
     }
 
-    let network: Promise<void> | undefined | '' = undefined;
+    const jobs: Promise<void>[] = [];
+
+    if (this.radioManagementInterface) {
+      jobs.push(configureNetwork(teamsConfig, this.radioManagementInterface));
+    }
+
+    jobs.push(this.configureRadio(config));
+
+    await Promise.all(jobs);
+  }
+
+  private async configureRadio(config: any) {
+    // Patch over a "bug" in the radio that refuses to accept an empty configuration, but will accept a configuration with only the syslog IP address that does what we want
+    if (
+      'stationConfigurations' in config &&
+      config.stationConfigurations &&
+      Object.keys(config).length === 1 &&
+      Object.keys(config.stationConfigurations).length === 0
+    ) {
+      console.log('No configurations are active, tricking radio to clear all configurations');
+      return this.setSyslogIP(this.entries[this.entries.length - 1]?.radioUpdate?.syslogIpAddress ?? '10.0.100.40');
+    }
+
+    if (this.configuring) {
+      console.log('Already configuring');
+      return;
+    }
 
     try {
-      // Bail if just staging the change
-      if (stage) return;
+      this.configuring = true;
 
-      const teamsConfig = {} as Record<StationName, number | undefined>;
+      const body = JSON.stringify(config);
 
-      for (const station in this.activeConfig) {
-        const { ssid } = this.activeConfig[station as StationName];
-        if (ssid) teamsConfig[station as StationName] = parseInt(ssid.split('-', 2)[0]) || undefined;
-      }
-
-      network = this.radioManagementInterface && configureNetwork(teamsConfig, this.radioManagementInterface);
-
-      const body = JSON.stringify({ stationConfigurations: this.activeConfig });
-      console.log('Configuring stations:', body);
+      const isConfiguring = this.untilStatusIs('CONFIGURING', 2);
 
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
         method: 'POST',
@@ -181,32 +215,17 @@ class RadioManager {
       });
 
       if (!response.ok) {
+        isConfiguring.catch(() => {});
         throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
       }
 
-      await new Promise<void>(async (resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Configuration timed out'));
-        }, 45 * 1000);
+      await isConfiguring;
 
-        // Wait for status to become "CONFIGURING"
-        while (this.entries[this.entries.length - 1]?.radioUpdate!.status !== 'CONFIGURING') {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+      await this.untilStatusIsNot('CONFIGURING', ReconfigurationTimeout);
 
-        // Wait for status to not be "CONFIGURING"
-        while (this.entries[this.entries.length - 1]?.radioUpdate?.status === 'CONFIGURING') {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        if (this.entries[this.entries.length - 1]?.radioUpdate?.status !== 'ACTIVE') {
-          console.error('Error configuring station: Radio status is not ACTIVE after configuration');
-          throw new Error('Radio status is not ACTIVE after configuration');
-        }
-
-        clearTimeout(timeout);
-        resolve();
-      });
+      if (!this.isStatus('ACTIVE')) {
+        throw new Error(`Radio status is not ACTIVE after configuration. Status: ${this.getStatus()}`);
+      }
     } finally {
       this.configuring = false;
     }
@@ -220,41 +239,10 @@ class RadioManager {
       return;
     }
 
-    // Check if there are any active configurations to clear
-    const activeStations = Object.keys(this.activeConfig);
-    if (activeStations.length === 0) {
-      console.log('No active configurations to clear');
-      return;
-    }
-
-    console.log(`Clearing ${activeStations.length} active configurations for stations: ${activeStations.join(', ')}`);
-
-    // Clear all active configurations
-    this.activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
-
     try {
-      // Send empty configuration to radio
-      const body = JSON.stringify({ stationConfigurations: {} });
-      console.log('Sending empty configuration to radio');
+      for (const stationId in this.activeConfig) delete this.activeConfig[stationId as StationName];
 
-      const response = await fetch(`${this.apiBaseUrl}/configuration`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body,
-        signal: AbortSignal.timeout(this.timeout),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
-      }
-
-      // Clear network configuration if interface is configured
-      if (this.radioManagementInterface) {
-        const teamsConfig = {} as Record<StationName, number | undefined>;
-        await configureNetwork(teamsConfig, this.radioManagementInterface);
-      }
+      await this.commitConfiguration();
 
       console.log(`Successfully cleared all radio configurations`);
     } catch (error) {
@@ -263,6 +251,36 @@ class RadioManager {
       // Note: This is a best-effort restoration, but we can't know the exact previous state
       console.warn('Configuration clear failed, radio state may be inconsistent');
     }
+  }
+
+  getStatus(): Status | undefined {
+    return this.entries[this.entries.length - 1]?.radioUpdate?.status;
+  }
+
+  isStatus(status: Status): boolean {
+    return this.getStatus() === status;
+  }
+
+  async untilStatusIs(status: Status, timeout = 1): Promise<void> {
+    const timeoutId = setTimeout(() => {
+      throw new Error(`Timeout waiting for status to be ${status}. Is ${this.getStatus()}`);
+    }, timeout * 1000);
+
+    // TODO: don't poll our own memory, setup a notifier instead
+    while (!this.isStatus(status)) await delay(100);
+
+    clearTimeout(timeoutId);
+  }
+
+  async untilStatusIsNot(status: Status, timeout = 1): Promise<void> {
+    const timeoutId = setTimeout(() => {
+      throw new Error(`Timeout waiting for status to not be ${status}. Is ${this.getStatus()}`);
+    }, timeout * 1000);
+
+    // TODO: don't poll our own memory, setup a notifier instead
+    while (this.isStatus(status)) await delay(100);
+
+    clearTimeout(timeoutId);
   }
 
   isConnected(): boolean {
@@ -276,6 +294,10 @@ class RadioManager {
   addStatusListener(listener: StatusListener): () => void {
     this.updateListeners.push(listener);
     return () => this.updateListeners.splice(this.updateListeners.indexOf(listener), 1);
+  }
+
+  async setSyslogIP(ip: string): Promise<void> {
+    return this.configureRadio({ syslogIpAddress: ip });
   }
 
   private static parseShorthand(shorthand: string): string {
@@ -443,3 +465,7 @@ class RadioManager {
 }
 
 export default RadioManager;
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
