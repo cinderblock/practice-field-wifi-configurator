@@ -26,7 +26,11 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
 
     ws.on('message', (message: string) => {
       const data = JSON.parse(message);
-      console.log('Received message:', data);
+
+      // Log the configuration to be sent for debugging (with passphrase redacted)
+      const sanitizedConfig = JSON.parse(message);
+      sanitizedConfig.wpaKey &&= '***';
+      console.log('Received message:', sanitizedConfig);
 
       if (isStationUpdate(data)) {
         radioManager.configure(data.station, data).catch(err => {
