@@ -176,23 +176,15 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     >
       <CardContent>
         <Typography variant="h5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             {pretty}
-            <Typography variant="h6" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-              <Tooltip title="SSID">
-                <>{stationSsid}</>
-              </Tooltip>
-              <span style={{ userSelect: 'none' }}>{stationSsid && (hashedWpaKey ? '🔒' : '🔓')}</span>
-              {enableStaging && hasStagedChange(station) && (
-                <span>
-                  <span style={{ userSelect: 'none' }}> → </span>
-                  <Tooltip title="Staged SSID">
-                    <span>{stagedChanges[station]?.ssid}</span>
-                  </Tooltip>
-                  <span style={{ userSelect: 'none' }}>{stagedChanges[station]?.wpaKey ? '🔒' : '🔓'}</span>
-                </span>
-              )}
-            </Typography>
+            <SSIDDisplay ssid={stationSsid} hashedWpaKey={hashedWpaKey} />
+            {enableStaging && hasStagedChange(station) && (
+              <>
+                <span style={{ userSelect: 'none' }}> → </span>
+                <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
+              </>
+            )}
           </Box>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
             {/** APPLY ALL STAGED CHANGES BUTTON */}
@@ -503,6 +495,33 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 }
 
 export default StationStatus;
+
+function SSIDDisplay({ ssid, hashedWpaKey }: { ssid?: string; hashedWpaKey?: string }) {
+  if (!ssid) {
+    return null;
+  }
+
+  return (
+    <>
+      {ssid && <SecureStatus secure={!!hashedWpaKey} />}
+      <Tooltip title="SSID">
+        <Typography variant="h6" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+          {ssid}
+        </Typography>
+      </Tooltip>
+    </>
+  );
+}
+
+function SecureStatus({ secure }: { secure: boolean }) {
+  return (
+    <Tooltip title={secure ? 'passphrase set' : 'no passphrase'}>
+      <span style={{ userSelect: 'none', fontSize: '0.75em' }}>
+        <>{secure ? '🔒' : '🔓'}</>
+      </span>
+    </Tooltip>
+  );
+}
 
 function DataUnit({
   name,
