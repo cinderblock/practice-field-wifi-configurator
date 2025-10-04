@@ -7,14 +7,14 @@ import Typography from '@mui/material/Typography';
 import { useHistory, useLatest } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
 
+const EstimatedReconfigurationTime = 32; // seconds
+
 export function WrapAll({ children }: { children: React.ReactNode }) {
   const latest = useLatest();
   const lastActive =
     useHistory()
       .reverse()
       .find(h => h.radioUpdate?.status === 'ACTIVE')?.timestamp || null;
-
-  const estimatedReconfigurationTime = 31; // seconds
 
   const isLoading = latest === undefined || latest.radioUpdate === undefined;
   const { status } = latest?.radioUpdate || {};
@@ -42,7 +42,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                     isConnected &&
                     lastActive &&
                     `Estimated time remaining:
-                  ${(estimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds`}
+                  ${(EstimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds`}
               </Typography>
             </Grid>
           </Backdrop>
