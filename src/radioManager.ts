@@ -183,7 +183,9 @@ class RadioManager {
 
   private async configureRadio(config: any) {
     // Patch over a "bug" in the radio that refuses to accept an empty configuration, but will accept a configuration with only the syslog IP address that does what we want
+    const PatchBug = true;
     if (
+      PatchBug &&
       'stationConfigurations' in config &&
       config.stationConfigurations &&
       Object.keys(config).length === 1 &&
