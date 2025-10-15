@@ -22,6 +22,7 @@ import { TimeDisplay } from './TimeDisplay';
 import { prettyStationName } from '../../../src/utils';
 import { Grid, Box, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -504,11 +505,26 @@ function SSIDDisplay({ ssid, hashedWpaKey }: { ssid?: string; hashedWpaKey?: str
   return (
     <>
       {ssid && <SecureStatus secure={!!hashedWpaKey} />}
-      <Tooltip title="SSID">
-        <Typography variant="h6" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+      <CopyToClipboard text={ssid} tooltipText="Click to copy SSID">
+        <Typography
+          variant="h6"
+          sx={{
+            color: 'text.secondary',
+            fontFamily: 'monospace',
+            cursor: 'pointer',
+            paddingX: 0.5,
+            paddingY: 0.25,
+            borderRadius: 0.5,
+            '&:hover': {
+              color: 'text.primary',
+              backgroundColor: 'action.hover',
+            },
+            transition: 'all 0.2s',
+          }}
+        >
           {ssid}
         </Typography>
-      </Tooltip>
+      </CopyToClipboard>
     </>
   );
 }
