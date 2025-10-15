@@ -10,6 +10,7 @@ import TextField from '@mui/material/TextField';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -28,12 +29,14 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ClearIcon from '@mui/icons-material/Clear';
+import { StationChart } from './StationChart';
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
   const [ssid, setSsid] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [showPassphrases, setShowPassphrases] = useState(false);
+  const [chartMode, setChartMode] = useState(full ?? false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
   // Feature flag for staging functionality
@@ -229,6 +232,25 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </IconButton>
               </Tooltip>
             )}
+            {/** CHART TOGGLE BUTTON - only show if station is configured */}
+            {stationSsid && (
+              <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
+                <IconButton
+                  onClick={() => setChartMode(!chartMode)}
+                  size="small"
+                  sx={{
+                    color: chartMode ? 'primary.main' : 'text.secondary',
+                    backgroundColor: chartMode ? 'primary.light' : 'transparent',
+                    '&:hover': {
+                      backgroundColor: chartMode ? 'primary.main' : 'action.hover',
+                      color: chartMode ? 'primary.contrastText' : 'text.primary',
+                    },
+                  }}
+                >
+                  <ShowChartIcon />
+                </IconButton>
+              </Tooltip>
+            )}
             {/** SETTINGS BUTTON */}
             <IconButton onClick={handleOpen} size="small">
               <SettingsIcon />
@@ -237,35 +259,89 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         </Typography>
 
         {stationSsid || (enableStaging && hasStagedChange(station)) ? (
-          <Grid container>
-            {/* SSID and Passphrase with current/staged values */}
-            <Grid size={{ xs: 12 }}>
-              {/* Connection Details */}
-              {stationSsid && isLinked ? (
-                <>
-                  <DataUnit name="MAC Address" value={macAddress!} />
-                  <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
-                  <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
-                  <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
-                  <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
-                  <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
-                  <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
-                  <DataUnit name="RX Packets" value={rxPackets!} />
-                  <DataUnit name="TX Packets" value={txPackets!} />
-                  <DataUnit name="RX Bytes" value={rxBytes!} />
-                  <DataUnit name="TX Bytes" value={txBytes!} />
-                  <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
-                  <DataUnit name="Connection Quality" value={connectionQuality!} />
-                </>
-              ) : stationSsid ? (
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography noWrap style={{ fontStyle: 'italic' }}>
-                    not linked
+          <>
+            {stationSsid &&
+              (isLinked ? (
+                <CopyToClipboard text={macAddress || ''} tooltipText="Click to copy MAC address">
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      color: 'text.secondary',
+                      marginBottom: 0.5,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      paddingX: 0.5,
+                      paddingY: 0.25,
+                      borderRadius: 0.5,
+                      '&:hover': {
+                        color: 'text.primary',
+                        backgroundColor: 'action.hover',
+                      },
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {macAddress}
                   </Typography>
+                </CopyToClipboard>
+              ) : (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    fontStyle: 'italic',
+                    color: 'warning.main',
+                    marginBottom: 0.5,
+                    textAlign: 'center',
+                    paddingX: 0.5,
+                    paddingY: 0.25,
+                  }}
+                >
+                  not linked
+                </Typography>
+              ))}
+            {chartMode && stationSsid ? (
+              <Box sx={{ overflowY: 'auto', height: full ? 'calc(100vh - 135px)' : 'calc(20em - 95px)' }}>
+                <StationChart station={station} metric="signalLevels" height="60px" />
+                <StationChart station={station} metric="snr" height="60px" />
+                <StationChart station={station} metric="rates" height="60px" />
+                {full && (
+                  <>
+                    <StationChart station={station} metric="bandwidth" height="60px" />
+                    <StationChart station={station} metric="quality" height="60px" />
+                    <StationChart station={station} metric="dataAge" height="60px" />
+                    <StationChart station={station} metric="packets" height="60px" />
+                    <StationChart station={station} metric="bytes" height="60px" />
+                  </>
+                )}
+              </Box>
+            ) : (
+              <Grid container>
+                {/* SSID and Passphrase with current/staged values */}
+                <Grid size={{ xs: 12 }}>
+                  {/* Connection Details */}
+                  {stationSsid && isLinked && (
+                    <>
+                      <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
+                      <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
+                      <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
+                      <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
+                      <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
+                      <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
+                      <DataUnit name="RX Packets" value={rxPackets!} />
+                      <DataUnit name="TX Packets" value={txPackets!} />
+                      <DataUnit name="RX Bytes" value={rxBytes!} />
+                      <DataUnit name="TX Bytes" value={txBytes!} />
+                      <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
+                      <DataUnit name="Connection Quality" value={connectionQuality!} />
+                    </>
+                  )}
                 </Grid>
-              ) : null}
-            </Grid>
-          </Grid>
+              </Grid>
+            )}
+          </>
         ) : (
           <Typography noWrap style={{ fontStyle: 'italic' }}>
             not configured
