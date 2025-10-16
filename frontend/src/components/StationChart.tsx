@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Box, Typography, useTheme } from '@mui/material';
 import SmoothieComponent, { TimeSeries } from 'react-smoothie';
 import { StationName, StatusEntry, StationNameList } from '../../../src/types';
@@ -9,6 +10,7 @@ interface StationChartProps {
   station: StationName;
   metric: MetricType;
   height?: string;
+  marginBottom?: number;
 }
 
 // Create TimeSeries instances at module level so they persist across component mounts/unmounts
@@ -90,7 +92,7 @@ function clearStationTimeSeries(stationName: StationName) {
 }
 
 // Set up a single listener at module level that populates all station time series
-function handleStatusUpdate(entry: StatusEntry) {
+export function handleStatusUpdate(entry: StatusEntry) {
   // Skip if we've already processed this timestamp (multiple charts calling the same handler)
   if (entry.timestamp === lastProcessedTimestamp) return;
   lastProcessedTimestamp = entry.timestamp;
@@ -285,7 +287,7 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
   },
 };
 
-export function StationChart({ station, metric, height = '60px' }: StationChartProps) {
+export function StationChart({ station, metric, height = '60px', marginBottom = 2 }: StationChartProps) {
   const timeSeries = stationTimeSeries[station];
   const theme = useTheme();
 
@@ -300,7 +302,7 @@ export function StationChart({ station, metric, height = '60px' }: StationChartP
   const config = metricConfigs[metric];
 
   return (
-    <Box sx={{ width: '100%', marginBottom: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+    <Box sx={{ width: '100%', marginBottom, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
       <Box sx={{ width: '100%', '& canvas': { display: 'block', height: `${height} !important` } }}>
         <SmoothieComponent
           responsive
@@ -382,4 +384,41 @@ export function StationChart({ station, metric, height = '60px' }: StationChartP
 function formatYValue(value: number, unit?: string) {
   const formattedValue = value.toFixed(0);
   return unit ? `${formattedValue} ${unit}` : formattedValue;
+}
+
+// Grouped chart component that toggles between multiple metrics
+interface GroupedChartProps {
+  station: StationName;
+  metrics: MetricType[];
+  height?: string;
+  defaultMetricIndex?: number;
+  marginBottom?: number;
+}
+
+export function GroupedChart({
+  station,
+  metrics,
+  height = '60px',
+  defaultMetricIndex = 0,
+  marginBottom = 2,
+}: GroupedChartProps) {
+  const [currentIndex, setCurrentIndex] = useState(defaultMetricIndex);
+
+  const handleClick = () => {
+    setCurrentIndex(prevIndex => (prevIndex + 1) % metrics.length);
+  };
+
+  const currentMetric = metrics[currentIndex];
+
+  return (
+    <Box onClick={handleClick} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+      <StationChart
+        key={currentMetric}
+        station={station}
+        metric={currentMetric}
+        height={height}
+        marginBottom={marginBottom}
+      />
+    </Box>
+  );
 }

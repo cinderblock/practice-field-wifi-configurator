@@ -15,13 +15,14 @@ import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
+import TableHead from '@mui/material/TableHead';
 import { StationName, SavedWiFiSetting } from '../../../src/types';
-import { useLatest, sendNewConfig } from '../hooks/useBackend';
+import { useLatest, sendNewConfig, useUpdateCallback } from '../hooks/useBackend';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
 import { prettyStationName } from '../../../src/utils';
-import { Grid, Box, Tooltip } from '@mui/material';
+import { Box, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -29,7 +30,13 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ClearIcon from '@mui/icons-material/Clear';
-import { StationChart } from './StationChart';
+import { StationChart, GroupedChart, handleStatusUpdate } from './StationChart';
+
+// Helper function to format numbers with thin space as thousands separator
+function formatNumberWithThinSpace(num: number | undefined): string {
+  if (num === undefined) return '';
+  return num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+}
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -45,6 +52,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const latest = useLatest();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const { stagedChanges, hasStagedChange, stageChange, applyStagedChange } = useStagedChanges();
+
+  // Always register the chart data collection handler, even if charts aren't visible
+  // This ensures chart data is collected from page load, not just when charts are first shown
+  useUpdateCallback(handleStatusUpdate);
 
   if (!latest) {
     return <Typography>Loading...</Typography>;
@@ -174,7 +185,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     <Card
       style={{
         marginBottom: full ? undefined : '1rem',
-        height: full ? '100vh' : '20em',
+        height: full ? '100vh' : '22em',
         ...borderStyle,
       }}
     >
@@ -303,43 +314,162 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </Typography>
               ))}
             {chartMode && stationSsid ? (
-              <Box sx={{ overflowY: 'auto', height: full ? 'calc(100vh - 135px)' : 'calc(20em - 95px)' }}>
-                <StationChart station={station} metric="signalLevels" height="60px" />
-                <StationChart station={station} metric="snr" height="60px" />
-                <StationChart station={station} metric="rates" height="60px" />
-                {full && (
+              <Box sx={{ overflowY: 'auto', height: full ? 'calc(100vh - 135px)' : 'calc(22em - 95px + 5px)' }}>
+                {full ? (
                   <>
-                    <StationChart station={station} metric="bandwidth" height="60px" />
-                    <StationChart station={station} metric="quality" height="60px" />
-                    <StationChart station={station} metric="dataAge" height="60px" />
+                    {/* Full view: show all charts separately */}
+                    <StationChart station={station} metric="signalLevels" height="60px" />
+                    <StationChart station={station} metric="snr" height="60px" />
+                    <StationChart station={station} metric="rates" height="60px" />
                     <StationChart station={station} metric="packets" height="60px" />
                     <StationChart station={station} metric="bytes" height="60px" />
+                    <StationChart station={station} metric="bandwidth" height="60px" />
+                    <StationChart station={station} metric="dataAge" height="60px" />
+                    <StationChart station={station} metric="quality" height="60px" />
+                  </>
+                ) : (
+                  <>
+                    {/* Non-full view: use grouped charts */}
+                    <GroupedChart
+                      station={station}
+                      metrics={['snr', 'signalLevels']}
+                      height="60px"
+                      defaultMetricIndex={0}
+                      marginBottom={0.5}
+                    />
+                    <GroupedChart
+                      station={station}
+                      metrics={['rates', 'packets', 'bytes']}
+                      height="60px"
+                      defaultMetricIndex={0}
+                      marginBottom={0.5}
+                    />
+                    <GroupedChart
+                      station={station}
+                      metrics={['quality', 'bandwidth', 'dataAge']}
+                      height="60px"
+                      defaultMetricIndex={0}
+                      marginBottom={0.5}
+                    />
                   </>
                 )}
               </Box>
             ) : (
-              <Grid container>
-                {/* SSID and Passphrase with current/staged values */}
-                <Grid size={{ xs: 12 }}>
-                  {/* Connection Details */}
-                  {stationSsid && isLinked && (
-                    <>
-                      <DataUnit name="Data Age" value={dataAgeMs!} unit="ms" />
-                      <DataUnit name="Signal" value={signalDbm!} unit="dBm" cols={3} />
-                      <DataUnit name="Noise" value={noiseDbm!} unit="dBm" cols={3} />
-                      <DataUnit name="SNR" value={signalNoiseRatio!} unit="dB" cols={3} />
-                      <DataUnit name="RX Rate" value={rxRateMbps!} unit="Mbps" />
-                      <DataUnit name="TX Rate" value={txRateMbps!} unit="Mbps" />
-                      <DataUnit name="RX Packets" value={rxPackets!} />
-                      <DataUnit name="TX Packets" value={txPackets!} />
-                      <DataUnit name="RX Bytes" value={rxBytes!} />
-                      <DataUnit name="TX Bytes" value={txBytes!} />
-                      <DataUnit name="Bandwidth Used" value={bandwidthUsedMbps!} unit="Mbps" />
-                      <DataUnit name="Connection Quality" value={connectionQuality!} />
-                    </>
-                  )}
-                </Grid>
-              </Grid>
+              <>
+                {stationSsid && isLinked && (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                    {/* Signal Levels Group */}
+                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ textAlign: 'right' }}>Signal</TableCell>
+                          <TableCell sx={{ textAlign: 'right' }}>Noise</TableCell>
+                          <TableCell sx={{ textAlign: 'right' }}>SNR</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 200, 100)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(signalDbm)} dBm
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 150, 150)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(noiseDbm)} dBm
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(signalNoiseRatio)} dB
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+
+                    {/* Connection Quality, Bandwidth, and Data Age Group */}
+                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Quality</TableCell>
+                          <TableCell sx={{ textAlign: 'right' }}>Used</TableCell>
+                          <TableCell sx={{ textAlign: 'right' }}>of Available</TableCell>
+                          <TableCell sx={{ textAlign: 'right' }}>Data Age</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell
+                            sx={{
+                              color:
+                                connectionQuality === 'excellent'
+                                  ? 'rgb(76, 175, 80)'
+                                  : connectionQuality === 'good'
+                                    ? 'rgb(139, 195, 74)'
+                                    : connectionQuality === 'caution'
+                                      ? 'rgb(255, 193, 7)'
+                                      : connectionQuality === 'warning'
+                                        ? 'rgb(244, 67, 54)'
+                                        : 'rgb(128, 128, 128)',
+                            }}
+                          >
+                            {connectionQuality}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(bandwidthUsedMbps)} Mbps
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace((bandwidthUsedMbps! / Math.min(rxRateMbps!, txRateMbps!)) * 100)}
+                            %
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(200, 150, 100)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(dataAgeMs)} ms
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+
+                    {/* TX/RX Group */}
+                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell></TableCell>
+                          <Tooltip title="To robot">
+                            <TableCell sx={{ textAlign: 'right' }}>TX</TableCell>
+                          </Tooltip>
+                          <Tooltip title="From robot">
+                            <TableCell sx={{ textAlign: 'right' }}>RX</TableCell>
+                          </Tooltip>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>Rate</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(txRateMbps)} Mbps
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(rxRateMbps)} Mbps
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Packets</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(txPackets)}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(rxPackets)}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Bytes</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(txBytes)}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            {formatNumberWithThinSpace(rxBytes)}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </Box>
+                )}
+              </>
             )}
           </>
         ) : (
@@ -612,26 +742,5 @@ function SecureStatus({ secure }: { secure: boolean }) {
         <>{secure ? '🔒' : '🔓'}</>
       </span>
     </Tooltip>
-  );
-}
-
-function DataUnit({
-  name,
-  value,
-  unit,
-  cols = 2,
-}: {
-  name: string;
-  value: number | string;
-  unit?: string;
-  cols?: number;
-}) {
-  return (
-    <Grid size={{ xs: 12, md: 12 / cols }}>
-      <Typography noWrap>
-        {name}: {value}
-        {unit ? ` ${unit}` : ''}
-      </Typography>
-    </Grid>
   );
 }
