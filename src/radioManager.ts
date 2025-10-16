@@ -28,6 +28,9 @@ class RadioManager {
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
+  private lastBroadcastEntry: StatusEntry | null = null;
+  private lastBroadcastTime: number = 0;
+  private readonly maxBroadcastInterval = 15000;
 
   constructor(
     private readonly apiBaseUrl: string,
@@ -41,6 +44,30 @@ class RadioManager {
 
   private updateBusy: boolean = false;
 
+  private deepEqual(a: any, b: any): boolean {
+    // Use JSON stringification for deep equality comparison
+    // This works well for plain data objects without functions/symbols
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  private shouldBroadcast(radioUpdate: RadioUpdate | undefined): boolean {
+    const timeSinceLastBroadcast = Date.now() - this.lastBroadcastTime;
+
+    // Always broadcast if max interval elapsed (heartbeat)
+    if (timeSinceLastBroadcast >= this.maxBroadcastInterval) {
+      console.log('Broadcasting: heartbeat interval reached');
+      return true;
+    }
+
+    // Broadcast if data changed (including undefined transitions)
+    if (!this.deepEqual(radioUpdate, this.lastBroadcastEntry?.radioUpdate)) {
+      console.log('Broadcasting: radio status changed');
+      return true;
+    }
+
+    return false;
+  }
+
   private async updateStatus(): Promise<void> {
     if (this.updateBusy) {
       // console.log('Update already in progress');
@@ -53,6 +80,9 @@ class RadioManager {
     const submit = (radioUpdate?: RadioUpdate) => {
       const entry: StatusEntry = { timestamp, radioUpdate };
 
+      // Only continue if data changed or max interval elapsed
+      if (!this.shouldBroadcast(radioUpdate)) return;
+
       // Add to history and notify listeners
       this.entries.push(entry);
 
@@ -61,6 +91,11 @@ class RadioManager {
         this.entries.shift();
       }
 
+      // Update cache
+      this.lastBroadcastEntry = entry;
+      this.lastBroadcastTime = timestamp;
+
+      // Notify listeners (broadcasts to WebSocket clients)
       this.notifyListeners(entry);
     };
 
