@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary.js';
 import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/material';
 import Backdrop from '@mui/material/Backdrop';
@@ -21,6 +21,20 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const isConfiguring = status === 'CONFIGURING';
   const isConnected = latest?.radioUpdate !== undefined;
 
+  // State to force re-renders for real-time countdown
+  const [now, setNow] = useState(Date.now());
+
+  // Update the current time continuously when reconfiguring
+  useEffect(() => {
+    if (!isConfiguring || !lastActive) return;
+
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 100); // Update every 100ms for smooth countdown
+
+    return () => clearInterval(interval);
+  }, [isConfiguring, lastActive]);
+
   // Enable dark mode for the entire app (system default)
   const theme = createTheme({ colorSchemes: { dark: true } });
 
@@ -42,7 +56,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                     isConnected &&
                     lastActive &&
                     `Estimated time remaining:
-                  ${(EstimatedReconfigurationTime - (latest.timestamp - lastActive) / 1000).toFixed(1)} seconds`}
+                  ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
               </Typography>
             </Grid>
           </Backdrop>
