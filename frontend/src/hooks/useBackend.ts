@@ -51,9 +51,25 @@ const history: StatusEntry[] = [];
 const radioMessages: RadioMessage[] = [];
 
 function processHistory(json: string) {
-  const entry = JSON.parse(json) as StatusEntry[];
+  const entries = JSON.parse(json) as StatusEntry[];
   // TODO: Validate
-  history.push(...entry);
+  history.push(...entries);
+
+  console.log(`Received ${entries.length} history entries`);
+
+  // Delay dispatching events to allow React components to mount and register listeners
+  // This ensures charts and other UI components can receive the historical data
+  setTimeout(() => {
+    console.log(`Dispatching ${entries.length} historical updates to UI`);
+
+    // Dispatch entries with a small stagger so Smoothie charts can properly render
+    // Smoothie is a real-time streaming library and needs time to establish viewport
+    entries.forEach((entry, index) => {
+      setTimeout(() => {
+        events.dispatchEvent(new CustomEvent('update', { detail: entry }));
+      }, index * 10); // 10ms stagger between each entry
+    });
+  }, 200); // 200ms initial delay to allow components to mount
 }
 
 export function sendNewConfig(station: StationName, ssid: string, wpaKey: string, stage = false) {
