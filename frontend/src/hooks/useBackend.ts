@@ -50,6 +50,9 @@ const history: StatusEntry[] = [];
 
 const radioMessages: RadioMessage[] = [];
 
+// Track time offset between server and client (serverTime - clientTime)
+let timeOffset = 0;
+
 function processHistory(json: string) {
   const entries = JSON.parse(json) as StatusEntry[];
   // TODO: Validate
@@ -157,6 +160,16 @@ function handleErrorEntry(detail: { error: string; details: string }) {
 }
 
 function handleStatusEntry(detail: StatusEntry) {
+  // Calculate time offset between server and client
+  // Server sent detail.timestamp (its current time when the message was created)
+  // We're receiving it now at Date.now() (client time)
+  const newOffset = detail.timestamp - Date.now();
+
+  const alpha = 0.1;
+  // Use exponential moving average to smooth out network latency variations
+  // This gives alpha% weight to the OLD offset and (1-alpha)% to the new offset for stability
+  timeOffset = timeOffset * (1 - alpha) + newOffset * alpha;
+
   history.push(detail);
 
   // Remove old history
@@ -213,4 +226,18 @@ export function useRadioMessages() {
   useRadioMessageCallback(useCallback(_ => setMessages([...radioMessages]), [setMessages]));
 
   return messages;
+}
+
+/**
+ * Returns the current server time (adjusted for clock offset between client and server)
+ */
+export function getServerTime(): number {
+  return Date.now() + timeOffset;
+}
+
+/**
+ * Converts a server timestamp to browser/client time
+ */
+export function serverToBrowserTime(serverTimestamp: number): number {
+  return serverTimestamp - timeOffset;
 }

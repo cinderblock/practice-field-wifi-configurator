@@ -1,7 +1,7 @@
 import { Box, Typography, useTheme } from '@mui/material';
 import SmoothieComponent, { TimeSeries } from 'react-smoothie';
 import { StationName, StatusEntry, StationNameList } from '../../../src/types';
-import { useUpdateCallback } from '../hooks/useBackend';
+import { useUpdateCallback, serverToBrowserTime } from '../hooks/useBackend';
 
 export type MetricType = 'signalLevels' | 'snr' | 'rates' | 'packets' | 'bytes' | 'bandwidth' | 'quality' | 'dataAge';
 
@@ -110,7 +110,8 @@ function handleStatusUpdate(entry: StatusEntry) {
       stationSSIDs[stationName] = currentSSID;
     }
 
-    const timestamp = entry.timestamp;
+    // Convert server timestamp to browser time for proper chart alignment
+    const timestamp = serverToBrowserTime(entry.timestamp);
     const timeSeries = stationTimeSeries[stationName];
 
     if (!stationStatus || !stationStatus.isLinked) {

@@ -4,7 +4,7 @@ import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/materia
 import Backdrop from '@mui/material/Backdrop';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
-import { useHistory, useLatest } from '../hooks/useBackend.js';
+import { useHistory, useLatest, getServerTime } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
 
 const EstimatedReconfigurationTime = 32; // seconds
@@ -21,15 +21,20 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const isConfiguring = status === 'CONFIGURING';
   const isConnected = latest?.radioUpdate !== undefined;
 
-  // State to force re-renders for real-time countdown
-  const [now, setNow] = useState(Date.now());
+  // State to force re-renders for real-time countdown (using server-adjusted time)
+  const [now, setNow] = useState(getServerTime());
+
+  // Update time whenever we get a new status update (to sync with offset changes)
+  useEffect(() => {
+    setNow(getServerTime());
+  }, [latest]);
 
   // Update the current time continuously when reconfiguring
   useEffect(() => {
     if (!isConfiguring || !lastActive) return;
 
     const interval = setInterval(() => {
-      setNow(Date.now());
+      setNow(getServerTime());
     }, 100); // Update every 100ms for smooth countdown
 
     return () => clearInterval(interval);
