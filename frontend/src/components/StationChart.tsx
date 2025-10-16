@@ -31,6 +31,7 @@ const stationTimeSeries: Record<
     qualityCaution: TimeSeries;
     qualityWarning: TimeSeries;
     qualityNone: TimeSeries;
+    qualityNotLinked: TimeSeries;
   }
 > = {} as any;
 
@@ -53,6 +54,7 @@ for (const stationName of StationNameList) {
     qualityCaution: new TimeSeries(),
     qualityWarning: new TimeSeries(),
     qualityNone: new TimeSeries(),
+    qualityNotLinked: new TimeSeries(),
   };
 }
 
@@ -84,6 +86,7 @@ function clearStationTimeSeries(stationName: StationName) {
   series.qualityCaution.clear();
   series.qualityWarning.clear();
   series.qualityNone.clear();
+  series.qualityNotLinked.clear();
 }
 
 // Set up a single listener at module level that populates all station time series
@@ -107,12 +110,20 @@ function handleStatusUpdate(entry: StatusEntry) {
       stationSSIDs[stationName] = currentSSID;
     }
 
+    const timestamp = entry.timestamp;
+    const timeSeries = stationTimeSeries[stationName];
+
     if (!stationStatus || !stationStatus.isLinked) {
+      // Station is not linked - show "not linked" state
+      timeSeries.qualityNotLinked.append(timestamp, 1);
+      timeSeries.qualityExcellent.append(timestamp, 0);
+      timeSeries.qualityGood.append(timestamp, 0);
+      timeSeries.qualityCaution.append(timestamp, 0);
+      timeSeries.qualityWarning.append(timestamp, 0);
+      timeSeries.qualityNone.append(timestamp, 0);
       continue;
     }
 
-    const timestamp = entry.timestamp;
-    const timeSeries = stationTimeSeries[stationName];
     const {
       dataAgeMs,
       signalDbm,
@@ -141,6 +152,7 @@ function handleStatusUpdate(entry: StatusEntry) {
     if (bandwidthUsedMbps !== undefined) timeSeries.bandwidthUsedMbps.append(timestamp, bandwidthUsedMbps);
 
     // Convert connectionQuality string to binary indicators for each quality level
+    timeSeries.qualityNotLinked.append(timestamp, 0);
     timeSeries.qualityExcellent.append(timestamp, connectionQuality === 'excellent' ? 1 : 0);
     timeSeries.qualityGood.append(timestamp, connectionQuality === 'good' ? 1 : 0);
     timeSeries.qualityCaution.append(timestamp, connectionQuality === 'caution' ? 1 : 0);
@@ -254,6 +266,13 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
         label: 'None',
         fillStyle: 'rgba(128, 128, 128, 0.7)',
         color: { r: 128, g: 128, b: 128 },
+        lineWidth: 0,
+      },
+      {
+        data: 'qualityNotLinked',
+        label: 'Not Linked',
+        fillStyle: 'rgba(156, 39, 176, 0.7)',
+        color: { r: 156, g: 39, b: 176 },
         lineWidth: 0,
       },
     ],
