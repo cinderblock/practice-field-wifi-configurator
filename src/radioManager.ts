@@ -22,8 +22,8 @@ class RadioManager {
   private connected: boolean = false;
   private configuring = false;
   private scanning: null | Promise<ReadyScanResults> = null;
-  private readonly timeout = 1000;
-  private readonly pollInterval = 250;
+  private readonly pollInterval = 100;
+  private readonly timeout = this.pollInterval * 3;
   private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 60000; // 60 seconds default
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
