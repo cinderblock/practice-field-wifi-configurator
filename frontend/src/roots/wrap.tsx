@@ -7,7 +7,7 @@ import Typography from '@mui/material/Typography';
 import { useHistory, useLatest, getServerTime } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
 
-const EstimatedReconfigurationTime = 32; // seconds
+const EstimatedReconfigurationTime = 35; // seconds
 
 export function WrapAll({ children }: { children: React.ReactNode }) {
   const latest = useLatest();
