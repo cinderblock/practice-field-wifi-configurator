@@ -53,6 +53,19 @@ const radioMessages: RadioMessage[] = [];
 // Track time offset between server and client (serverTime - clientTime)
 let timeOffset = 0;
 
+// Debug: Track WS messages per second
+let wsMessageCount = 0;
+let noMessages = 0;
+setInterval(() => {
+  if (wsMessageCount === 0) {
+    noMessages++;
+    return;
+  }
+  console.log(`Received ${wsMessageCount} in last second, after ${noMessages} seconds of no messages`);
+  noMessages = 0;
+  wsMessageCount = 0;
+}, 1000);
+
 function processHistory(json: string) {
   const entries = JSON.parse(json) as StatusEntry[];
   // TODO: Validate
@@ -184,7 +197,9 @@ function handleRadioMessage(detail: RadioMessage) {
 }
 
 function receiveMessage(entry: string) {
+  wsMessageCount++; // Increment debug counter
   const detail = JSON.parse(entry) as Message;
+  // console.log('Received real-time update');
 
   if (isErrorEntry(detail)) {
     handleErrorEntry(detail);
