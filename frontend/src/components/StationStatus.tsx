@@ -185,11 +185,11 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     <Card
       style={{
         marginBottom: full ? undefined : '1rem',
-        height: full ? '100vh' : '22em',
+        height: full ? 'calc(100vh - 4rem)' : '22em',
         ...borderStyle,
       }}
     >
-      <CardContent>
+      <CardContent sx={full ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}>
         <Typography variant="h5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             {pretty}
@@ -314,7 +314,12 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </Typography>
               ))}
             {chartMode && stationSsid ? (
-              <Box sx={{ overflowY: 'auto', height: full ? 'calc(100vh - 135px)' : 'calc(22em - 95px + 5px)' }}>
+              <Box
+                sx={{
+                  overflowY: 'auto',
+                  ...(full ? { flex: 1, minHeight: 0 } : { height: 'calc(22em - 95px + 5px)' }),
+                }}
+              >
                 {full ? (
                   <>
                     {/* Full view: show all charts separately */}
