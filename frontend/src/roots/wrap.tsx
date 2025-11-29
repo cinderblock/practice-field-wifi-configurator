@@ -20,6 +20,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const { status } = latest?.radioUpdate || {};
   const isConfiguring = status === 'CONFIGURING';
   const isConnected = latest?.radioUpdate !== undefined;
+  const isNetworkFault = latest !== undefined && !isConnected; // Backend is up, radio not responding
 
   // State to force re-renders for real-time countdown (using server-adjusted time)
   const [now, setNow] = useState(getServerTime());
@@ -51,17 +52,25 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
           <Backdrop open={isConfiguring || !isConnected} style={{ zIndex: 9999 }}>
             <Grid container direction="column" justifyContent="center" alignItems="center" style={{ height: '100%' }}>
               <Typography variant="h2" style={{ marginBottom: '1rem', userSelect: 'none' }}>
-                {isLoading ? 'Loading' : isConnected ? 'Reconfiguration in progress' : 'Radio connecting'}...
+                {isLoading
+                  ? 'Loading'
+                  : isNetworkFault
+                  ? 'Network Fault. Field Radio Unreachable'
+                  : isConnected
+                  ? 'Reconfiguration in progress'
+                  : 'Radio connecting'}
+                ...
               </Typography>
               <CircularProgress style={{ width: '25vw', height: '25vw' }} />
               <Typography style={{ marginTop: '1rem', userSelect: 'none' }}>
                 {!latest
                   ? 'Connecting to backend...'
+                  : isNetworkFault
+                  ? 'The field radio is not responding. Check power, cabling, and IP configuration.'
                   : !isLoading &&
                     isConnected &&
                     lastActive &&
-                    `Estimated time remaining:
-                  ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
+                    `Estimated time remaining: ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
               </Typography>
             </Grid>
           </Backdrop>
