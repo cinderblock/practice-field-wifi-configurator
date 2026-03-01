@@ -77,6 +77,7 @@ export function startDHCP(station: StationName, team: number | undefined, interf
     '--dhcp-option=6', // no DNS servers
     `--dhcp-leasefile=/tmp/dnsmasq-${station}.leases`,
     '--log-dhcp',
+    '--log-facility=-', // log to stderr instead of syslog
     '--no-ping',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
