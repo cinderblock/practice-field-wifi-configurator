@@ -68,8 +68,8 @@ export function detectFirmwareMode(version: string): 'PRACTICE' | 'OFFSEASON' | 
 }
 
 /**
- * Verify that the VLAN interface has the expected IPs configured.
- * Logs what's found and warns about anything missing.
+ * Ensure that the VLAN interface has the expected IPs configured.
+ * Adds any missing IPs automatically.
  */
 export async function checkInterfaceIps(iface: string, expectedIps: string[], net: NetworkBackend): Promise<void> {
   const interfaces = await net.listInterfaces(iface);
@@ -90,7 +90,8 @@ export async function checkInterfaceIps(iface: string, expectedIps: string[], ne
     if (assignedIps.includes(expected)) {
       console.log(`  OK: ${expected}`);
     } else {
-      console.warn(`  MISSING: ${expected} — expected on ${iface}`);
+      console.log(`  Adding ${expected}/24 to ${iface}`);
+      await net.addAddress({ interfaceName: iface, address: expected, prefixLength: 24 });
     }
   }
 }
