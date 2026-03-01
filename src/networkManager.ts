@@ -46,7 +46,7 @@ export async function startDHCP(station: StationName, team: number | undefined) 
     return;
   }
 
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const s = createServer({
       range: [ipStart, ipEnd],
       server,
@@ -55,9 +55,9 @@ export async function startDHCP(station: StationName, team: number | undefined) 
     s.on('error', reject);
     s.on('listening', () => {
       console.log(`DHCP server started on ${server}`);
+      resolve(s);
     });
-
-    resolve(s);
+    s.listen();
   });
 }
 
