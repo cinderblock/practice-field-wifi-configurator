@@ -30,6 +30,70 @@ The frontend will be available at http://localhost:5173.
 
 The backend will be available at http://localhost:3000, however it is also proxied by the frontend dev server so no configuration should be necessary.
 
+## Network Architecture
+
+The VH-113 field radio runs **OFFSEASON** AP firmware (no DHCP, firewall between VLANs). Steamboat acts as the DHCP server and inter-VLAN router for all team subnets, and bridges team traffic to the site's guest WiFi so laptops can reach robots.
+
+```mermaid
+graph TD
+    Internet["Internet"]
+    UFG["UniFi Gateway<br/>(site router)"]
+    Laptops@{ shape: docs, label: "Team Laptops / Phones"}
+    Steamboat["Steamboat<br/>(PFMS + DHCP + router)"]
+    AP["VH-113 AP<br/>OFFSEASON firmware<br/>10.0.100.2"]
+    Robots@{ shape: docs, label: "Robots + Driver Stations"}
+
+    Internet --- UFG
+
+    UFG -- "10.255.0.0/20<br/>(main network)" --- Steamboat
+    UFG -- "10.55.0.0/16<br/>(guest WiFi)" --- Laptops
+
+    VLANs@{ shape: docs, label: "VLANs 10–60<br/>10.TE.AM.0/24 each"}
+
+    Steamboat -- "trunk<br/>(10.0.100.0/24)" --- AP
+    Steamboat --- VLANs --- AP
+    AP -- "6 GHz Wi-Fi" --- Robots
+
+    Laptops -. "10.TE.AM.x" .-> UFG -. "static route" .-> Steamboat
+```
+
+### Subnets
+
+| Subnet        | CIDR            | Managed by    | Purpose                                                        |
+| ------------- | --------------- | ------------- | -------------------------------------------------------------- |
+| Main network  | `10.255.0.0/20` | UniFi Gateway | Servers, infrastructure                                        |
+| Guest WiFi    | `10.55.0.0/16`  | UniFi Gateway | Team laptops, phones (site-specific, conflicts with team 5500) |
+| Field control | `10.0.100.0/24` | —             | AP management, FMS                                             |
+| Team VLANs    | `10.TE.AM.0/24` | **Steamboat** | Per-team isolation (e.g. team 1234 → `10.12.34.0/24`)          |
+
+### Radio Firmware: Why OFFSEASON
+
+The VH-113 AP has three firmware variants:
+
+| Mode          | DHCP                        | Firewall | Auth         | Use case                           |
+| ------------- | --------------------------- | -------- | ------------ | ---------------------------------- |
+| **PRACTICE**  | AP runs DHCP on VLANs 10-90 | Disabled | None         | Simple setup, no routing control   |
+| **OFFSEASON** | None — external             | Enabled  | None         | Full control over DHCP and routing |
+| **FRC**       | None — external             | Enabled  | Bearer token | Competition                        |
+
+**PRACTICE** mode is simpler but the AP becomes the router for team subnets with no way to add routes to the site network. **OFFSEASON** mode lets Steamboat run DHCP and act as the gateway for each team VLAN, enabling routing between team subnets and the guest WiFi.
+
+### Steamboat's Network Responsibilities
+
+1. **VLAN interfaces** — trunk port carries VLANs 10-60 + 100; OS creates sub-interfaces (e.g. `eth0.10`, `eth0.20`)
+2. **DHCP** — serves `10.TE.AM.100-199` on each active team's VLAN, gateway = Steamboat (`10.TE.AM.1`)
+3. **Inter-VLAN routing** — IP forwarding between team subnets and the guest WiFi subnet
+4. **Radio configuration** — HTTP REST to `10.0.100.2` (already working)
+5. **Syslog / FMS** — optional services for field telemetry
+
+### Routing: Guest WiFi ↔ Team Subnets
+
+For laptops on guest WiFi (`10.55.0.x`) to reach robots on team subnets (`10.TE.AM.x`):
+
+1. **UniFi Gateway** needs a static route: `10.0.0.0/8` → Steamboat's main IP (one-time config, team-agnostic)
+2. **Steamboat** has direct access to team VLANs via trunk and routes between them and its main interface
+3. **Teams** use hardcoded IPs (e.g. `10.12.34.2` for roboRIO) — no DNS needed
+
 ## Project Structure
 
 - `src/` - Backend TypeScript files
