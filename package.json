@@ -30,7 +30,6 @@
     "@mui/material": "^7.0.2",
     "cidr-matcher": "^2.1.1",
     "cron": "^3.2.0",
-    "dhcp": "github:cinderblock/node-dhcp",
     "syslog-server": "github:cinderblock/syslog-server",
     "ws": "^8.18.1"
   },

@@ -1,4 +1,4 @@
-import { createServer } from 'dhcp';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { StationName, StationNameList } from './types.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
@@ -25,40 +25,84 @@ function teamIp(team: number, end: number | string = '') {
   return `10.${high}.${low}.${end}`;
 }
 
-export async function startDHCP(station: StationName, team: number | undefined) {
+/** Track running dnsmasq processes per station */
+const dhcpProcesses = new Map<StationName, ChildProcess>();
+
+/** Stop a running DHCP server for a station */
+function stopDHCP(station: StationName) {
+  const proc = dhcpProcesses.get(station);
+  if (proc) {
+    proc.kill();
+    dhcpProcesses.delete(station);
+    console.log(`DHCP server stopped for ${station}`);
+  }
+}
+
+/** Stop all running DHCP servers (for cleanup on shutdown) */
+export function stopAllDHCP() {
+  for (const station of dhcpProcesses.keys()) {
+    stopDHCP(station);
+  }
+}
+
+export function startDHCP(station: StationName, team: number | undefined, interfaceName: string) {
+  // Always stop the previous instance for this station
+  stopDHCP(station);
+
   if (team === undefined) {
     console.log(`No team for ${station}, skipping DHCP server`);
     return;
   }
 
-  const te_am_ = teamIp(team);
-
-  const ipStart = `${te_am_}100`;
-  const ipEnd = `${te_am_}199`;
-  const server = `${te_am_}3`; // us (field network reserved address)
-  const router = [`${te_am_}3`];
+  const gateway = teamIp(team, 3);
+  const rangeStart = teamIp(team, 100);
+  const rangeEnd = teamIp(team, 199);
+  const ifName = `${interfaceName}.${station}`;
 
   if (!process.env.YOLO) {
-    console.log(`DHCP server not started for ${station} (${team})`);
-    console.log(`  IP range: ${ipStart} - ${ipEnd}`);
-    console.log(`  Server: ${server}`);
-    console.log(`  Router: ${router}`);
+    console.log(`[dry-run] DHCP server not started for ${station} (${team})`);
+    console.log(`  Interface: ${ifName}`);
+    console.log(`  Range: ${rangeStart} - ${rangeEnd}`);
+    console.log(`  Gateway: ${gateway}`);
     return;
   }
 
-  return new Promise((resolve, reject) => {
-    const s = createServer({
-      range: [ipStart, ipEnd],
-      server,
-      router,
-    });
-    s.on('error', reject);
-    s.on('listening', () => {
-      console.log(`DHCP server started on ${server}`);
-      resolve(s);
-    });
-    s.listen();
+  const proc = spawn('dnsmasq', [
+    '--no-daemon',
+    '--port=0', // disable DNS
+    `--interface=${ifName}`,
+    '--bind-interfaces',
+    `--dhcp-range=${rangeStart},${rangeEnd},255.255.255.0,1h`,
+    `--dhcp-option=3,${gateway}`, // router
+    '--dhcp-option=6', // no DNS servers
+    `--dhcp-leasefile=/tmp/dnsmasq-${station}.leases`,
+    '--log-dhcp',
+    '--no-ping',
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  proc.stdout!.on('data', (data: Buffer) => {
+    for (const line of data.toString().trim().split('\n')) {
+      console.log(`[dhcp:${station}] ${line}`);
+    }
   });
+
+  proc.stderr!.on('data', (data: Buffer) => {
+    for (const line of data.toString().trim().split('\n')) {
+      console.log(`[dhcp:${station}] ${line}`);
+    }
+  });
+
+  proc.on('exit', (code, signal) => {
+    dhcpProcesses.delete(station);
+    if (signal) {
+      console.log(`DHCP server for ${station} killed by ${signal}`);
+    } else if (code !== 0) {
+      console.error(`DHCP server for ${station} exited with code ${code}`);
+    }
+  });
+
+  dhcpProcesses.set(station, proc);
+  console.log(`DHCP server started for ${station} (team ${team}) on ${ifName}`);
 }
 
 // TODO: load this map from the radio config
@@ -148,12 +192,7 @@ export async function configureNetwork(stations: Stations, interfaceName: string
   console.log('configureNetwork');
   await updateNetworkConfig(stations, interfaceName);
 
-  await Promise.all(
-    Object.entries(stations).map(([station, team]) =>
-      startDHCP(station as StationName, team).catch(err => {
-        console.log(`Failed to start DHCP server for ${station}${team ? ` team ${team}` : ''}`);
-        console.log(err);
-      }),
-    ),
-  );
+  for (const station of StationNameList) {
+    startDHCP(station, stations[station], interfaceName);
+  }
 }

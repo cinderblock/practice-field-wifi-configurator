@@ -9,6 +9,7 @@ import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
+import { stopAllDHCP } from './networkManager.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -111,6 +112,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Clean up iptables rules on graceful shutdown
   if (net) {
     const cleanup = () => {
+      stopAllDHCP();
       console.log('Cleaning up iptables rules...');
       net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX).then(
         () => process.exit(0),
