@@ -1,6 +1,9 @@
 import { createServer } from 'dhcp';
 import { StationName, StationNameList } from './types.js';
-import { configure as configureOSNetwork, restartService as applyNetworkConfig, NetworkConfig } from 'set-ip-address';
+import { createBackend, createDryRunBackend } from './node-ip/index.js';
+import type { NetworkBackend } from './node-ip/index.js';
+
+const net: NetworkBackend = process.env.YOLO ? createBackend() : createDryRunBackend();
 
 function teamIp(team: number, end: number | string = '') {
   if (team < 1 || team > 25599) {
@@ -57,8 +60,6 @@ export async function startDHCP(station: StationName, team: number | undefined) 
   });
 }
 
-// cSpell:words vlanid ifname
-
 // TODO: load this map from the radio config
 const vlanMap = {
   red1: 10,
@@ -70,41 +71,24 @@ const vlanMap = {
 };
 
 async function updateNetworkConfig(stations: Stations, physical_interface: string) {
-  const config = StationNameList.map((station, i): NetworkConfig => {
+  for (const station of StationNameList) {
     const team = stations[station];
-    const base = {
-      interface: `${physical_interface}.${station}`,
-      vlanid: vlanMap[station],
-      ifname: `${physical_interface}.${station}`,
-      physical_interface,
-      optional: true,
-      manual: true,
-    };
+    const vlanId = vlanMap[station];
+    const ifName = `${physical_interface}.${station}`;
 
-    if (!team) return base;
+    await net.createVlan({ parent: physical_interface, vlanId, name: ifName });
+    await net.flushAddresses(ifName);
 
-    const us = teamIp(team, 1);
-    const upstream = teamIp(team, 254);
-
-    return {
-      ...base,
-      ip_address: us,
-      prefix: 24,
-      gateway: upstream,
-      nameservers: [us, upstream],
-    };
-  });
-
-  await configureOSNetwork(config);
-
-  if (!process.env.YOLO) {
-    console.log('Skipping network configuration. Use YOLO to apply.');
-    return;
+    if (team) {
+      const us = teamIp(team, 1);
+      await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
+      await net.setInterfaceUp(ifName);
+    } else {
+      await net.setInterfaceDown(ifName);
+    }
   }
 
-  await applyNetworkConfig();
-
-  // TODO: Update iptables and handle routing for DS to internet router?
+  await net.setSysctl({ key: 'net.ipv4.ip_forward', value: '1' });
 
   console.log('Network configuration applied');
 }
