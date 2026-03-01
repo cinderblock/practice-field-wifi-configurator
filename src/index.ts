@@ -5,8 +5,11 @@ import { runFMS } from './fmsServer.js';
 import { startConfigurationScheduler } from './scheduler.js';
 import { waitForRadio, detectFirmwareMode, checkInterfaceIps, startRoutingCheck } from './startupChecks.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
+import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
+
+const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2'; // Probably don't need to override this
@@ -34,14 +37,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const firmwareMode = detectFirmwareMode(initialStatus.version);
 
   // Verify expected IPs on the VLAN interface
+  let net: NetworkBackend | undefined;
   if (VlanInterface) {
-    const net = process.env.YOLO ? createBackend() : createDryRunBackend();
+    net = process.env.YOLO ? createBackend() : createDryRunBackend();
     // Steamboat serves multiple roles on this interface:
     const expectedIps = [
       '10.0.100.5', // FMS
       '10.0.100.40', // Syslog server
     ];
     await checkInterfaceIps(VlanInterface, expectedIps, net);
+
+    // Clean up stale iptables rules from a previous run (e.g., after a crash)
+    await net.flushRulesByComment(IPTABLES_COMMENT_PREFIX);
 
     // Enable IP forwarding once at startup (required for inter-VLAN routing)
     await net.setSysctl({ key: 'net.ipv4.ip_forward', value: '1' });
@@ -95,5 +102,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Pings the router from the trunk interface to verify the static route is configured
   if (firmwareMode === 'OFFSEASON' && VlanInterface) {
     startRoutingCheck('10.0.100.1', VlanInterface);
+  }
+
+  // Clean up iptables rules on graceful shutdown
+  if (net) {
+    const cleanup = () => {
+      console.log('Cleaning up iptables rules...');
+      net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX).then(
+        () => process.exit(0),
+        err => {
+          console.error('Error during iptables cleanup:', err);
+          process.exit(1);
+        },
+      );
+    };
+
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
   }
 })();

@@ -37,4 +37,7 @@ export interface NetworkBackend {
 
   /** Run an iptables rule operation. Uses -C (check) for idempotent -A (append). */
   iptables(opts: IptablesOptions): Promise<void>;
+
+  /** Delete all iptables rules whose comment contains the given prefix. */
+  flushRulesByComment(commentPrefix: string): Promise<void>;
 }

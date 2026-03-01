@@ -191,6 +191,32 @@ export function createLinuxBackend(): NetworkBackend {
 
       await run('iptables', buildArgs(opts.action));
     },
+
+    async flushRulesByComment(commentPrefix: string): Promise<void> {
+      if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
+
+      for (const table of ['filter', 'nat']) {
+        let output: string;
+        try {
+          output = await run('iptables', ['-t', table, '-S']);
+        } catch {
+          continue;
+        }
+
+        for (const line of output.split('\n')) {
+          if (!line.startsWith('-A ')) continue;
+          if (!line.includes(`--comment ${commentPrefix}`)) continue;
+
+          // Convert "-A CHAIN ..." to ["-D", "CHAIN", ...]
+          const args = ['-t', table, '-D', ...line.substring(3).split(/\s+/).filter(Boolean)];
+          try {
+            await run('iptables', args);
+          } catch (err) {
+            console.warn(`Failed to clean up iptables rule: ${line}`, err);
+          }
+        }
+      }
+    },
   };
 
   return backend;

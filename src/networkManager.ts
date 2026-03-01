@@ -4,6 +4,7 @@ import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
 const net: NetworkBackend = process.env.YOLO ? createBackend() : createDryRunBackend();
+const commentPrefix = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
 function teamIp(team: number, end: number | string = '') {
   if (team < 1 || team > 25599) {
@@ -80,12 +81,12 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     await net.flushAddresses(ifName);
 
     // Forwarding rules use the VLAN interface name, so they're team-number-independent
-    const fwdOut = { chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT', comment: `pfms-fwd-${station}` } as const;
+    const fwdOut = { chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT', comment: `${commentPrefix}fwd-${station}` } as const;
     const fwdIn = {
       chain: 'FORWARD',
       outInterface: ifName,
       jump: 'ACCEPT',
-      comment: `pfms-fwd-in-${station}`,
+      comment: `${commentPrefix}fwd-in-${station}`,
     } as const;
 
     if (team) {
@@ -130,7 +131,7 @@ export async function setInternetAccess(
     notDestination: '10.0.0.0/8',
     outInterface: physicalInterface,
     jump: 'MASQUERADE',
-    comment: `pfms-nat-${station}`,
+    comment: `${commentPrefix}nat-${station}`,
   });
 
   console.log(`Internet access ${enabled ? 'enabled' : 'disabled'} for ${station} (team ${team})`);
