@@ -49,6 +49,7 @@ export interface IptablesOptions {
   chain: string;
   source?: string;
   notDestination?: string;
+  inInterface?: string;
   outInterface?: string;
   jump: string;
   comment?: string;

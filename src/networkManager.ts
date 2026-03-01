@@ -79,12 +79,29 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     await net.createVlan({ parent: physical_interface, vlanId, name: ifName });
     await net.flushAddresses(ifName);
 
+    // Forwarding rules use the VLAN interface name, so they're team-number-independent
+    const fwdOut = { chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT', comment: `pfms-fwd-${station}` } as const;
+    const fwdIn = {
+      chain: 'FORWARD',
+      outInterface: ifName,
+      jump: 'ACCEPT',
+      comment: `pfms-fwd-in-${station}`,
+    } as const;
+
     if (team) {
       const us = teamIp(team, 3);
       await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
       await net.setInterfaceUp(ifName);
+
+      // Allow traffic to/from this VLAN through the FORWARD chain (default policy is DROP due to Docker)
+      await net.iptables({ ...fwdOut, action: '-A' });
+      await net.iptables({ ...fwdIn, action: '-A' });
     } else {
       await net.setInterfaceDown(ifName);
+
+      // Remove forwarding rules when station is cleared
+      await net.iptables({ ...fwdOut, action: '-D' });
+      await net.iptables({ ...fwdIn, action: '-D' });
     }
   }
 
@@ -98,31 +115,23 @@ export async function setInternetAccess(
   physicalInterface: string,
   enabled: boolean,
 ): Promise<void> {
+  // FORWARD rules are handled by updateNetworkConfig (interface-based, always on).
+  // Internet toggle only controls MASQUERADE — without it, return traffic from the internet
+  // can't find its way back (the robot's 10.TE.AM.x source IP isn't routable externally).
   const subnet = teamIp(team, '0/24');
-  const privateNet = '10.0.0.0/8';
-
-  const natOpts = {
-    table: 'nat',
-    chain: 'POSTROUTING',
-    source: subnet,
-    notDestination: privateNet,
-    outInterface: physicalInterface,
-    jump: 'MASQUERADE',
-    comment: `pfms-nat-${station}`,
-  } as const;
-
-  const fwdOpts = {
-    chain: 'FORWARD',
-    source: subnet,
-    notDestination: privateNet,
-    jump: 'ACCEPT',
-    comment: `pfms-fwd-${station}`,
-  } as const;
 
   const action = enabled ? '-A' : '-D';
 
-  await net.iptables({ ...natOpts, action });
-  await net.iptables({ ...fwdOpts, action });
+  await net.iptables({
+    action,
+    table: 'nat',
+    chain: 'POSTROUTING',
+    source: subnet,
+    notDestination: '10.0.0.0/8',
+    outInterface: physicalInterface,
+    jump: 'MASQUERADE',
+    comment: `pfms-nat-${station}`,
+  });
 
   console.log(`Internet access ${enabled ? 'enabled' : 'disabled'} for ${station} (team ${team})`);
 }
