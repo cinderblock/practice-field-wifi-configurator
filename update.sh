@@ -19,7 +19,19 @@ fi
 
 npm run build
 
-DEPLOY_BASE=/opt/practice-field-wifi
+# Auto-detect deployment based on working directory name
+case "$(basename "$PWD")" in
+  practice-field-management-system)
+    DEPLOY_BASE=/opt/practice-field-management-system
+    SERVICE=practice-field-management-system.service
+    ;;
+  *)
+    DEPLOY_BASE=/opt/practice-field-wifi
+    SERVICE=practice-field-wifi-configurator.service
+    ;;
+esac
+
+echo "Deploying to $DEPLOY_BASE"
 
 # Synchronize the internal directory with the frontend build output
 rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
@@ -27,4 +39,5 @@ rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
 # Copy the public.html to the public directory
 cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
-sudo systemctl restart practice-field-wifi-configurator.service
+echo "Restarting $SERVICE"
+sudo systemctl restart "$SERVICE"
