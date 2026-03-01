@@ -86,9 +86,7 @@ function GlobalEStopSection() {
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Confirm Emergency Stop</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            This will E-Stop ALL stations and end the current match. Are you sure?
-          </DialogContentText>
+          <DialogContentText>This will E-Stop ALL stations and end the current match. Are you sure?</DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
@@ -169,12 +167,7 @@ function StationControlCard({ station }: { station: StationName }) {
                 >
                   Disable
                 </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="error"
-                  onClick={() => sendAdminStationEStop(station)}
-                >
+                <Button size="small" variant="contained" color="error" onClick={() => sendAdminStationEStop(station)}>
                   E-Stop
                 </Button>
               </>

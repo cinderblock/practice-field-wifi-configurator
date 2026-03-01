@@ -1,13 +1,6 @@
 import dgram from 'dgram';
 import { makeDSPacket, Control, UdpSendPort } from './fmsServer.js';
-import {
-  MatchPhase,
-  MatchConfig,
-  MatchState,
-  StationName,
-  StationNameList,
-  StationControlState,
-} from './types.js';
+import { MatchPhase, MatchConfig, MatchState, StationName, StationNameList, StationControlState } from './types.js';
 
 const TICK_INTERVAL_MS = 250;
 const MAX_PERIOD = 300;

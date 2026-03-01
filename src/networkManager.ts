@@ -81,7 +81,12 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     await net.flushAddresses(ifName);
 
     // Forwarding rules use the VLAN interface name, so they're team-number-independent
-    const fwdOut = { chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT', comment: `${commentPrefix}fwd-${station}` } as const;
+    const fwdOut = {
+      chain: 'FORWARD',
+      inInterface: ifName,
+      jump: 'ACCEPT',
+      comment: `${commentPrefix}fwd-${station}`,
+    } as const;
     const fwdIn = {
       chain: 'FORWARD',
       outInterface: ifName,

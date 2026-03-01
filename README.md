@@ -163,9 +163,11 @@ practice.example.com {
     rewrite /index.html /non-existent-path
     rewrite /station.html /non-existent-path
     rewrite /admin.html /non-existent-path
+    rewrite /logs.html /non-existent-path
 
     rewrite @stations /station.html
     rewrite /admin /admin.html
+    rewrite /logs /logs.html
     root /path/to/frontend/dist
     file_server
 }
@@ -185,6 +187,10 @@ server {
 
     location = /admin {
         rewrite ^ /admin.html break;
+    }
+
+    location = /logs {
+        rewrite ^ /logs.html break;
     }
 
     location /ws {

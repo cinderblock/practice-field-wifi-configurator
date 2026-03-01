@@ -14,6 +14,9 @@ function stationRoutes(): Plugin {
         if (url === '/admin') {
           req.url = '/admin.html';
         }
+        if (url === '/logs') {
+          req.url = '/logs.html';
+        }
         next();
       });
     },
@@ -38,6 +41,7 @@ export default defineConfig({
         main: 'index.html',
         station: 'station.html',
         admin: 'admin.html',
+        logs: 'logs.html',
       },
     },
   },
