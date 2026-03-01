@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { InternetToggle, StationName, StationUpdate, StatusEntry } from '../../../src/types';
+import {
+  InternetToggle,
+  MatchConfig,
+  MatchState,
+  isMatchState,
+  StationName,
+  StationUpdate,
+  StatusEntry,
+} from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
 
 let ws: WebSocket | null = null;
@@ -153,7 +161,9 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
   return true;
 }
 
-type Message = StatusEntry | ErrorMessage | RadioMessage;
+let currentMatchState: MatchState | null = null;
+
+type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -200,11 +210,21 @@ function handleRadioMessage(detail: RadioMessage) {
   events.dispatchEvent(new CustomEvent('radio', { detail }));
 }
 
+function handleMatchState(state: MatchState) {
+  currentMatchState = state;
+  events.dispatchEvent(new CustomEvent('matchState', { detail: state }));
+}
+
 function receiveMessage(entry: string) {
   const detail = JSON.parse(entry) as Message;
 
   if (isErrorEntry(detail)) {
     handleErrorEntry(detail);
+    return;
+  }
+
+  if (isMatchState(detail)) {
+    handleMatchState(detail);
     return;
   }
 
@@ -257,4 +277,44 @@ export function getServerTime(): number {
  */
 export function serverToBrowserTime(serverTimestamp: number): number {
   return serverTimestamp - timeOffset;
+}
+
+// ── Match State ─────────────────────────────────────────────────────
+
+export function useMatchState(): MatchState | null {
+  const [state, setState] = useState<MatchState | null>(currentMatchState);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('matchState', handler);
+    return () => events.removeEventListener('matchState', handler);
+  }, []);
+
+  return state;
+}
+
+// ── Admin Commands ──────────────────────────────────────────────────
+
+export function sendAdminStartMatch(config: MatchConfig) {
+  ws?.send(JSON.stringify({ type: 'adminStartMatch', config }));
+}
+
+export function sendAdminStopMatch() {
+  ws?.send(JSON.stringify({ type: 'adminStopMatch' }));
+}
+
+export function sendAdminGlobalEStop() {
+  ws?.send(JSON.stringify({ type: 'adminGlobalEStop' }));
+}
+
+export function sendAdminStationEStop(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'adminStationEStop', station }));
+}
+
+export function sendAdminStationDisable(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'adminStationDisable', station }));
+}
+
+export function sendAdminClearEStop(station?: StationName) {
+  ws?.send(JSON.stringify({ type: 'adminClearEStop', station }));
 }

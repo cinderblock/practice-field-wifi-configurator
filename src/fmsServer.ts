@@ -3,11 +3,11 @@ import dgram, { Socket } from 'dgram';
 import { EventEmitter } from 'events';
 import { Transform, TransformCallback } from 'stream';
 import { BufferOverflowError, BufferReader, BufferWriter } from './BufferWrappers.js';
-import { StationName } from './types.js';
+import { StationName, Mode } from './types.js';
 
 const DefaultTcpPort = 1750;
 const DefaultUdpPort = 1160;
-const UdpSendPort = 1121; // 1120 to assert control over DS
+export const UdpSendPort = 1121; // 1120 to assert control over DS
 
 const DefaultAddress = '10.0.100.5';
 
@@ -242,8 +242,6 @@ type Metrics = FieldRadioMetrics | CommsMetrics | LaptopMetrics | RobotRadioMetr
 
 type Tags = Metrics[];
 
-type Mode = 'teleOp' | 'test' | 'auto';
-
 type DsStatus = {
   EStop: boolean;
   robotComms: boolean;
@@ -410,7 +408,7 @@ export async function runFMS() {
   });
 }
 
-class Control {
+export class Control {
   constructor(
     public eStop: boolean,
     public enabled: boolean,

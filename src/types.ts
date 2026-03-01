@@ -365,6 +365,113 @@ export function isInternetToggle(msg: unknown): msg is InternetToggle {
   return true;
 }
 
+// ── Admin / Match Engine Types ──────────────────────────────────────
+
+export type Mode = 'teleOp' | 'test' | 'auto';
+
+export type MatchPhase = 'idle' | 'countdown' | 'auto' | 'pause' | 'teleop' | 'endgame' | 'postMatch';
+
+export type MatchConfig = {
+  autoDuration: number;
+  teleopDuration: number;
+  endgameDuration: number;
+  pauseDuration: number;
+  stations: StationName[];
+};
+
+export type StationControlState = {
+  teamNumber: number | null;
+  enabled: boolean;
+  eStop: boolean;
+  mode: Mode;
+};
+
+export type MatchState = {
+  type: 'matchState';
+  phase: MatchPhase;
+  remainingTime: number;
+  totalMatchTime: number;
+  config: MatchConfig | null;
+  stationStates: Partial<Record<StationName, StationControlState>>;
+  connectedStations: StationName[];
+};
+
+export function isMatchState(msg: unknown): msg is MatchState {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as MatchState).type === 'matchState';
+}
+
+export type AdminStartMatch = {
+  type: 'adminStartMatch';
+  config: MatchConfig;
+};
+
+export function isAdminStartMatch(msg: unknown): msg is AdminStartMatch {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  const m = msg as AdminStartMatch;
+  if (m.type !== 'adminStartMatch') return false;
+  if (!m.config || typeof m.config !== 'object') return false;
+  if (typeof m.config.autoDuration !== 'number') return false;
+  if (typeof m.config.teleopDuration !== 'number') return false;
+  if (typeof m.config.endgameDuration !== 'number') return false;
+  if (typeof m.config.pauseDuration !== 'number') return false;
+  if (!Array.isArray(m.config.stations)) return false;
+  return true;
+}
+
+export type AdminStopMatch = { type: 'adminStopMatch' };
+
+export function isAdminStopMatch(msg: unknown): msg is AdminStopMatch {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as AdminStopMatch).type === 'adminStopMatch';
+}
+
+export type AdminGlobalEStop = { type: 'adminGlobalEStop' };
+
+export function isAdminGlobalEStop(msg: unknown): msg is AdminGlobalEStop {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as AdminGlobalEStop).type === 'adminGlobalEStop';
+}
+
+export type AdminStationEStop = { type: 'adminStationEStop'; station: StationName };
+
+export function isAdminStationEStop(msg: unknown): msg is AdminStationEStop {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  const m = msg as AdminStationEStop;
+  if (m.type !== 'adminStationEStop') return false;
+  if (!StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
+export type AdminStationDisable = { type: 'adminStationDisable'; station: StationName };
+
+export function isAdminStationDisable(msg: unknown): msg is AdminStationDisable {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  const m = msg as AdminStationDisable;
+  if (m.type !== 'adminStationDisable') return false;
+  if (!StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
+export type AdminClearEStop = { type: 'adminClearEStop'; station?: StationName };
+
+export function isAdminClearEStop(msg: unknown): msg is AdminClearEStop {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  const m = msg as AdminClearEStop;
+  if (m.type !== 'adminClearEStop') return false;
+  if (m.station !== undefined && !StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
+// ── Saved WiFi Types ────────────────────────────────────────────────
+
 export interface SavedWiFiSetting {
   ssid: string;
   wpaKey: string;

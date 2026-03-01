@@ -11,6 +11,9 @@ function stationRoutes(): Plugin {
         if (url?.match(/^\/(red|blue)[1-3]$/)) {
           req.url = '/station.html';
         }
+        if (url === '/admin') {
+          req.url = '/admin.html';
+        }
         next();
       });
     },
@@ -34,6 +37,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         station: 'station.html',
+        admin: 'admin.html',
       },
     },
   },

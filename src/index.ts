@@ -8,6 +8,7 @@ import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
+import { MatchEngine } from './matchEngine.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -57,8 +58,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Initialize radio manager
   const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
+  // Initialize match engine (for admin page match simulation & e-stop)
+  const matchEngine = new MatchEngine(s => radioManager.getTeamForStation(s));
+
   // Initialize WebSocket server
-  const wss = setupWebSocket(radioManager, WebSocketPort, trustedProxyMatcher);
+  const wss = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {
@@ -94,6 +98,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       fms.on('message', msg => {
         console.log('Message from DS:');
         console.log(msg);
+
+        // Auto-discover DS addresses for the match engine
+        if ('teamNumber' in msg.data && 'sequence' in msg.data) {
+          const station = radioManager.getStationForTeam(msg.data.teamNumber);
+          if (station) matchEngine.setDSAddress(station, msg.address);
+        }
       });
     });
   }

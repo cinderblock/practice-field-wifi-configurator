@@ -162,8 +162,10 @@ practice.example.com {
     # Prevent direct access to html files
     rewrite /index.html /non-existent-path
     rewrite /station.html /non-existent-path
+    rewrite /admin.html /non-existent-path
 
     rewrite @stations /station.html
+    rewrite /admin /admin.html
     root /path/to/frontend/dist
     file_server
 }
@@ -179,6 +181,10 @@ server {
 
     location ~^/(red|blue)[123]$ {
         rewrite ^ /station.html break;
+    }
+
+    location = /admin {
+        rewrite ^ /admin.html break;
     }
 
     location /ws {

@@ -370,6 +370,23 @@ class RadioManager {
     return () => this.updateListeners.splice(this.updateListeners.indexOf(listener), 1);
   }
 
+  getStationForTeam(teamNumber: number): StationName | undefined {
+    for (const station in this.activeConfig) {
+      const { ssid } = this.activeConfig[station as StationName] ?? {};
+      if (ssid && parseInt(ssid.split('-', 2)[0]) === teamNumber) {
+        return station as StationName;
+      }
+    }
+    return undefined;
+  }
+
+  getTeamForStation(station: StationName): number | null {
+    const { ssid } = this.activeConfig[station] ?? {};
+    if (!ssid) return null;
+    const num = parseInt(ssid.split('-', 2)[0]);
+    return isNaN(num) ? null : num;
+  }
+
   async setSyslogIP(ip: string): Promise<void> {
     return this.configureRadio({ syslogIpAddress: ip });
   }
