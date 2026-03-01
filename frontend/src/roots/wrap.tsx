@@ -55,10 +55,10 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                 {isLoading
                   ? 'Loading'
                   : isNetworkFault
-                  ? 'Network Fault. Field Radio Unreachable'
-                  : isConnected
-                  ? 'Reconfiguration in progress'
-                  : 'Radio connecting'}
+                    ? 'Network Fault. Field Radio Unreachable'
+                    : isConnected
+                      ? 'Reconfiguration in progress'
+                      : 'Radio connecting'}
                 ...
               </Typography>
               <CircularProgress style={{ width: '25vw', height: '25vw' }} />
@@ -66,11 +66,11 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                 {!latest
                   ? 'Connecting to backend...'
                   : isNetworkFault
-                  ? 'The field radio is not responding. Check power, cabling, and IP configuration.'
-                  : !isLoading &&
-                    isConnected &&
-                    lastActive &&
-                    `Estimated time remaining: ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
+                    ? 'The field radio is not responding. Check power, cabling, and IP configuration.'
+                    : !isLoading &&
+                      isConnected &&
+                      lastActive &&
+                      `Estimated time remaining: ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
               </Typography>
             </Grid>
           </Backdrop>
