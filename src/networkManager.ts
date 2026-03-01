@@ -54,7 +54,7 @@ export function startDHCP(station: StationName, team: number | undefined, interf
     return;
   }
 
-  const gateway = teamIp(team, 3);
+  const gateway = teamIp(team, 4);
   const rangeStart = teamIp(team, 100);
   const rangeEnd = teamIp(team, 199);
   const ifName = `${interfaceName}.${station}`;
@@ -140,7 +140,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     } as const;
 
     if (team) {
-      const us = teamIp(team, 3);
+      const us = teamIp(team, 4);
       await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
       await net.setInterfaceUp(ifName);
 
