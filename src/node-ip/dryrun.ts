@@ -1,5 +1,5 @@
 import type { NetworkBackend } from './backend.js';
-import type { VlanOptions, AddAddressOptions, SysctlOptions } from './types.js';
+import type { VlanOptions, AddAddressOptions, SysctlOptions, IptablesOptions } from './types.js';
 
 /**
  * Creates a dry-run backend that logs operations instead of executing them.
@@ -53,6 +53,17 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     async getSysctl(key: string) {
       if (inner) return inner.getSysctl(key);
       return '';
+    },
+
+    async iptables(opts: IptablesOptions) {
+      console.log(
+        `[dry-run] Would run iptables ${opts.action} ${opts.chain} in ${opts.table ?? 'filter'} table` +
+          (opts.source ? ` -s ${opts.source}` : '') +
+          (opts.notDestination ? ` ! -d ${opts.notDestination}` : '') +
+          (opts.outInterface ? ` -o ${opts.outInterface}` : '') +
+          ` -j ${opts.jump}` +
+          (opts.comment ? ` (${opts.comment})` : ''),
+      );
     },
   };
 }

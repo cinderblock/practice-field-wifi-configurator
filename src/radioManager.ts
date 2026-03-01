@@ -1,4 +1,4 @@
-import { configureNetwork } from './networkManager.js';
+import { configureNetwork, setInternetAccess } from './networkManager.js';
 import {
   AdditionalChannelStatistic,
   AllChannels,
@@ -27,7 +27,7 @@ class RadioManager {
   private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 60000; // 60 seconds default
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
-  private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string }>;
+  private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
   private lastBroadcastEntry: StatusEntry | null = null;
   private lastBroadcastTime: number = 0;
   private readonly maxBroadcastInterval = 15000;
@@ -172,14 +172,19 @@ class RadioManager {
 
   async configure(
     stationId: StationName,
-    { ssid, wpaKey, stage }: { ssid: string; wpaKey: string; stage?: boolean },
+    {
+      ssid,
+      wpaKey,
+      stage,
+      internetAccess,
+    }: { ssid: string; wpaKey: string; stage?: boolean; internetAccess?: boolean },
   ): Promise<void> {
     if (this.configuring) {
       console.log('Already configuring');
       return;
     }
 
-    const config = ssid ? { ssid, wpaKey } : null;
+    const config = ssid ? { ssid, wpaKey, internetAccess } : null;
 
     // console.log('Configuring station:', stationId, config);
 
@@ -208,7 +213,19 @@ class RadioManager {
     const jobs: Promise<void>[] = [];
 
     if (this.radioManagementInterface) {
-      jobs.push(configureNetwork(teamsConfig, this.radioManagementInterface));
+      jobs.push(
+        configureNetwork(teamsConfig, this.radioManagementInterface).then(async () => {
+          // Apply internet access rules after network is configured
+          for (const station in this.activeConfig) {
+            const s = station as StationName;
+            const team = teamsConfig[s];
+            const ia = this.activeConfig[s]?.internetAccess;
+            if (team && ia !== undefined) {
+              await setInternetAccess(s, team, this.radioManagementInterface!, ia);
+            }
+          }
+        }),
+      );
     }
 
     jobs.push(this.configureRadio(config));
@@ -266,6 +283,26 @@ class RadioManager {
     } finally {
       this.configuring = false;
     }
+  }
+
+  async toggleInternetAccess(stationId: StationName, enabled: boolean): Promise<void> {
+    const config = this.activeConfig[stationId];
+    if (!config) {
+      console.log(`No active config for ${stationId}, cannot toggle internet`);
+      return;
+    }
+
+    config.internetAccess = enabled;
+
+    if (!this.radioManagementInterface) return;
+
+    const team = parseInt(config.ssid.split('-', 2)[0]) || undefined;
+    if (!team) {
+      console.log(`Cannot parse team number from SSID "${config.ssid}"`);
+      return;
+    }
+
+    await setInternetAccess(stationId, team, this.radioManagementInterface, enabled);
   }
 
   async clearAllConfigurations(): Promise<void> {

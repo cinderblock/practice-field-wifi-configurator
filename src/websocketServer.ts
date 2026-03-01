@@ -1,6 +1,6 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager.js';
-import { isStationUpdate } from './types.js';
+import { isStationUpdate, isInternetToggle } from './types.js';
 import { getRealClientIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
 
@@ -38,6 +38,11 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
           ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
         });
         // TODO: handle multiple simultaneous configurations gracefully
+      } else if (isInternetToggle(data)) {
+        radioManager.toggleInternetAccess(data.station, data.enabled).catch(err => {
+          console.error('Error toggling internet access:', err);
+          ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
+        });
       }
     });
   });

@@ -10,6 +10,7 @@ words:
   - maxrssi
   - nbss
   - bssid
+  - OFFSEASON
 ignorePaths:
   - node_modules
   - dist

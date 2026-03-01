@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StationName, StationUpdate, StatusEntry } from '../../../src/types';
+import { InternetToggle, StationName, StationUpdate, StatusEntry } from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
 
 let ws: WebSocket | null = null;
@@ -75,16 +75,33 @@ function processHistory(json: string) {
   }, 200); // 200ms initial delay to allow components to mount
 }
 
-export function sendNewConfig(station: StationName, ssid: string, wpaKey: string, stage = false) {
+export function sendNewConfig(
+  station: StationName,
+  ssid: string,
+  wpaKey: string,
+  stage = false,
+  internetAccess?: boolean,
+) {
   const update: StationUpdate = {
     type: 'station',
     station,
     ssid,
     wpaKey,
     stage,
+    internetAccess,
   };
   console.log('Sending config update:', update);
   ws?.send(JSON.stringify(update));
+}
+
+export function sendInternetToggle(station: StationName, enabled: boolean) {
+  const msg: InternetToggle = {
+    type: 'internetToggle',
+    station,
+    enabled,
+  };
+  console.log('Sending internet toggle:', msg);
+  ws?.send(JSON.stringify(msg));
 }
 
 const events = new EventTarget();

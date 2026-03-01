@@ -41,3 +41,15 @@ export interface SysctlOptions {
   key: string;
   value: string;
 }
+
+/** Options for iptables rule manipulation */
+export interface IptablesOptions {
+  action: '-A' | '-D' | '-I' | '-C';
+  table?: string;
+  chain: string;
+  source?: string;
+  notDestination?: string;
+  outInterface?: string;
+  jump: string;
+  comment?: string;
+}

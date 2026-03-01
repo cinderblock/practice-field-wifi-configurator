@@ -343,11 +343,32 @@ export type StationUpdate = {
   ssid: string;
   wpaKey: string;
   stage?: boolean;
+  internetAccess?: boolean;
 };
+
+export type InternetToggle = {
+  type: 'internetToggle';
+  station: StationName;
+  enabled: boolean;
+};
+
+export function isInternetToggle(msg: unknown): msg is InternetToggle {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+
+  const { type, station, enabled } = msg as InternetToggle;
+
+  if (type !== 'internetToggle') return false;
+  if (!StationNameRegex.test(station)) return false;
+  if (typeof enabled !== 'boolean') return false;
+
+  return true;
+}
 
 export interface SavedWiFiSetting {
   ssid: string;
   wpaKey: string;
+  internetAccess?: boolean;
   createdAt: number; // timestamp when first created
   lastUsedAt: number; // timestamp when last used
 }

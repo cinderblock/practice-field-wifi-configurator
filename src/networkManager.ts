@@ -34,8 +34,8 @@ export async function startDHCP(station: StationName, team: number | undefined) 
 
   const ipStart = `${te_am_}100`;
   const ipEnd = `${te_am_}199`;
-  const server = `${te_am_}1`; // us
-  const router = [`${te_am_}1`];
+  const server = `${te_am_}3`; // us (field network reserved address)
+  const router = [`${te_am_}3`];
 
   if (!process.env.YOLO) {
     console.log(`DHCP server not started for ${station} (${team})`);
@@ -80,7 +80,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     await net.flushAddresses(ifName);
 
     if (team) {
-      const us = teamIp(team, 1);
+      const us = teamIp(team, 3);
       await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
       await net.setInterfaceUp(ifName);
     } else {
@@ -88,9 +88,43 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     }
   }
 
-  await net.setSysctl({ key: 'net.ipv4.ip_forward', value: '1' });
-
   console.log('Network configuration applied');
+}
+
+/** Enable or disable internet access (NAT + forwarding) for a team subnet. */
+export async function setInternetAccess(
+  station: StationName,
+  team: number,
+  physicalInterface: string,
+  enabled: boolean,
+): Promise<void> {
+  const subnet = teamIp(team, '0/24');
+  const privateNet = '10.0.0.0/8';
+
+  const natOpts = {
+    table: 'nat',
+    chain: 'POSTROUTING',
+    source: subnet,
+    notDestination: privateNet,
+    outInterface: physicalInterface,
+    jump: 'MASQUERADE',
+    comment: `pfms-nat-${station}`,
+  } as const;
+
+  const fwdOpts = {
+    chain: 'FORWARD',
+    source: subnet,
+    notDestination: privateNet,
+    jump: 'ACCEPT',
+    comment: `pfms-fwd-${station}`,
+  } as const;
+
+  const action = enabled ? '-A' : '-D';
+
+  await net.iptables({ ...natOpts, action });
+  await net.iptables({ ...fwdOpts, action });
+
+  console.log(`Internet access ${enabled ? 'enabled' : 'disabled'} for ${station} (team ${team})`);
 }
 
 type Stations = Record<StationName, number | undefined>;

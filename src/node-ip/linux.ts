@@ -1,7 +1,14 @@
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { NetworkBackend } from './backend.js';
-import type { InterfaceInfo, InterfaceAddress, VlanOptions, AddAddressOptions, SysctlOptions } from './types.js';
+import type {
+  InterfaceInfo,
+  InterfaceAddress,
+  VlanOptions,
+  AddAddressOptions,
+  SysctlOptions,
+  IptablesOptions,
+} from './types.js';
 
 const execFile = promisify(execFileCb);
 
@@ -149,6 +156,39 @@ export function createLinuxBackend(): NetworkBackend {
     async getSysctl(key: string): Promise<string> {
       const out = await run('sysctl', ['-n', key]);
       return out.trim();
+    },
+
+    async iptables(opts: IptablesOptions): Promise<void> {
+      function buildArgs(action: string): string[] {
+        const args = ['-t', opts.table ?? 'filter', action, opts.chain];
+        if (opts.source) args.push('-s', opts.source);
+        if (opts.notDestination) args.push('!', '-d', opts.notDestination);
+        if (opts.outInterface) args.push('-o', opts.outInterface);
+        args.push('-j', opts.jump);
+        if (opts.comment) args.push('-m', 'comment', '--comment', opts.comment);
+        return args;
+      }
+
+      if (opts.action === '-A' || opts.action === '-I') {
+        // Idempotent: check first, skip if already exists
+        try {
+          await run('iptables', buildArgs('-C'));
+          return; // Rule already exists
+        } catch {
+          // Rule doesn't exist, proceed to add
+        }
+      }
+
+      if (opts.action === '-D') {
+        // Idempotent: check first, skip if doesn't exist
+        try {
+          await run('iptables', buildArgs('-C'));
+        } catch {
+          return; // Rule doesn't exist, nothing to delete
+        }
+      }
+
+      await run('iptables', buildArgs(opts.action));
     },
   };
 

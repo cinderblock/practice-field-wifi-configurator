@@ -17,12 +17,12 @@ import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
 import TableHead from '@mui/material/TableHead';
 import { StationName, SavedWiFiSetting } from '../../../src/types';
-import { useLatest, sendNewConfig, useUpdateCallback } from '../hooks/useBackend';
+import { useLatest, sendNewConfig, sendInternetToggle, useUpdateCallback } from '../hooks/useBackend';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
 import { prettyStationName } from '../../../src/utils';
-import { Box, Tooltip } from '@mui/material';
+import { Box, FormControlLabel, Switch, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -30,6 +30,8 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ClearIcon from '@mui/icons-material/Clear';
+import PublicIcon from '@mui/icons-material/Public';
+import PublicOffIcon from '@mui/icons-material/PublicOff';
 import { StationChart, GroupedChart, handleStatusUpdate } from './StationChart';
 
 // Helper function to format numbers with thin space as thousands separator
@@ -43,6 +45,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const [ssid, setSsid] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [showPassphrases, setShowPassphrases] = useState(false);
+  const [internetAccess, setInternetAccess] = useState(false);
   const [chartMode, setChartMode] = useState(full ?? false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,6 +86,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleOpen = () => {
     setSsid(stationSsid || '');
     setPassphrase('');
+    setInternetAccess(false);
     setOpen(true);
   };
 
@@ -93,7 +97,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleSave = (stage: boolean) => {
     if (enableStaging && stage) {
       // Staging mode: stage the change
-      sendNewConfig(station, ssid, passphrase, true);
+      sendNewConfig(station, ssid, passphrase, true, internetAccess);
 
       // Track staged change
       if (ssid.trim() && passphrase.trim()) {
@@ -101,7 +105,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       }
     } else {
       // Direct apply mode: apply immediately
-      sendNewConfig(station, ssid, passphrase, false);
+      sendNewConfig(station, ssid, passphrase, false, internetAccess);
 
       if (enableStaging) {
         // Clear any staged change when applying
@@ -110,7 +114,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
       // Auto-save the setting if it's valid and not empty
       if (ssid.trim() && passphrase.trim()) {
-        saveSetting(ssid, passphrase);
+        saveSetting(ssid, passphrase, internetAccess);
       }
     }
 
@@ -120,6 +124,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleApplySetting = (setting: SavedWiFiSetting) => {
     setSsid(setting.ssid);
     setPassphrase(setting.wpaKey);
+    setInternetAccess(setting.internetAccess ?? false);
   };
 
   const handleRemoveSetting = (e: React.MouseEvent, setting: SavedWiFiSetting) => {
@@ -240,6 +245,28 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   }}
                 >
                   <ClearIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            {/** INTERNET TOGGLE BUTTON - only show if station is configured */}
+            {stationSsid && (
+              <Tooltip title={internetAccess ? 'Disable internet access' : 'Enable internet access'}>
+                <IconButton
+                  onClick={() => {
+                    const next = !internetAccess;
+                    setInternetAccess(next);
+                    sendInternetToggle(station, next);
+                  }}
+                  size="small"
+                  sx={{
+                    color: internetAccess ? 'success.main' : 'text.secondary',
+                    '&:hover': {
+                      color: internetAccess ? 'success.dark' : 'success.main',
+                      backgroundColor: 'action.hover',
+                    },
+                  }}
+                >
+                  {internetAccess ? <PublicIcon /> : <PublicOffIcon />}
                 </IconButton>
               </Tooltip>
             )}
@@ -545,6 +572,18 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   : ''
               }
               error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={internetAccess}
+                  onChange={e => setInternetAccess(e.target.checked)}
+                  disabled={isSSIDEmpty}
+                />
+              }
+              label="Internet access"
+              sx={{ mt: 1 }}
             />
 
             {recentSettings.length > 0 && (

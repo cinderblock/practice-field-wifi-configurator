@@ -73,7 +73,7 @@ export function useSavedWiFiSettings() {
     };
   }, []);
 
-  const saveSetting = useCallback((ssid: string, wpaKey: string) => {
+  const saveSetting = useCallback((ssid: string, wpaKey: string, internetAccess?: boolean) => {
     if (!ssid.trim()) return;
 
     const now = Date.now();
@@ -90,6 +90,7 @@ export function useSavedWiFiSettings() {
         updatedSettings = [...prev];
         updatedSettings[existingIndex] = {
           ...updatedSettings[existingIndex],
+          internetAccess,
           lastUsedAt: now,
         };
       } else {
@@ -97,6 +98,7 @@ export function useSavedWiFiSettings() {
         const newSetting: SavedWiFiSetting = {
           ssid: trimmedSsid,
           wpaKey: trimmedWpaKey,
+          internetAccess,
           createdAt: now,
           lastUsedAt: now,
         };

@@ -1,4 +1,4 @@
-import type { InterfaceInfo, VlanOptions, AddAddressOptions, SysctlOptions } from './types.js';
+import type { InterfaceInfo, VlanOptions, AddAddressOptions, SysctlOptions, IptablesOptions } from './types.js';
 
 /** OS-agnostic network management backend */
 export interface NetworkBackend {
@@ -34,4 +34,7 @@ export interface NetworkBackend {
 
   /** Get a sysctl value. */
   getSysctl(key: string): Promise<string>;
+
+  /** Run an iptables rule operation. Uses -C (check) for idempotent -A (append). */
+  iptables(opts: IptablesOptions): Promise<void>;
 }
