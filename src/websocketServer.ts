@@ -25,11 +25,18 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
     ws.send(JSON.stringify(history));
 
     ws.on('message', (message: string) => {
-      const data = JSON.parse(message);
+      let data: unknown;
+      try {
+        data = JSON.parse(message);
+      } catch {
+        console.error('Invalid JSON from client:', message);
+        ws.send(JSON.stringify({ error: 'Invalid JSON', details: 'Could not parse message' }));
+        return;
+      }
 
       // Log the configuration to be sent for debugging (with passphrase redacted)
-      const sanitizedConfig = JSON.parse(message);
-      sanitizedConfig.wpaKey &&= '***';
+      const sanitizedConfig = { ...(data as Record<string, unknown>) };
+      if ('wpaKey' in sanitizedConfig) sanitizedConfig.wpaKey = '***';
       console.log('Received message:', sanitizedConfig);
 
       if (isStationUpdate(data)) {
@@ -43,6 +50,8 @@ export function setupWebSocket(radioManager: RadioManager, port: number, trusted
           console.error('Error toggling internet access:', err);
           ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
         });
+      } else {
+        console.warn('Unknown message type from client:', sanitizedConfig);
       }
     });
   });
