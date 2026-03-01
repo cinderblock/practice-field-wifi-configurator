@@ -26,9 +26,11 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const [now, setNow] = useState(getServerTime());
 
   // Update time whenever we get a new status update (to sync with offset changes)
+  // Skip when configuring — the setInterval below handles it, and running both
+  // causes the countdown to alternate between two values.
   useEffect(() => {
-    setNow(getServerTime());
-  }, [latest]);
+    if (!isConfiguring) setNow(getServerTime());
+  }, [latest, isConfiguring]);
 
   // Update the current time continuously when reconfiguring
   useEffect(() => {
