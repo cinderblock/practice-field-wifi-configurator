@@ -3,7 +3,7 @@ import { runSyslogServer } from './runSyslogServer.js';
 import { setupWebSocket } from './websocketServer.js';
 import { runFMS } from './fmsServer.js';
 import { startConfigurationScheduler } from './scheduler.js';
-import { waitForRadio, detectFirmwareMode, checkInterfaceIps, startRoutingCheck } from './startupChecks.js';
+import { waitForRadio, detectFirmwareMode, checkInterfaceIps } from './startupChecks.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
@@ -106,12 +106,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         }
       });
     });
-  }
-
-  // Start routing health check (OFFSEASON only)
-  // Pings the router from the trunk interface to verify the static route is configured
-  if (firmwareMode === 'OFFSEASON' && VlanInterface) {
-    startRoutingCheck('10.0.100.1', VlanInterface);
   }
 
   // Clean up iptables rules on graceful shutdown

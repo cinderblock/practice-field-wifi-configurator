@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { isValidRadioUpdate, type RadioUpdate } from './types.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
@@ -94,53 +93,6 @@ export async function checkInterfaceIps(iface: string, expectedIps: string[], ne
       await net.addAddress({ interfaceName: iface, address: expected, prefixLength: 24 });
     }
   }
-}
-
-/**
- * Periodically verify that the parent network's static route (10.0.0.0/8 → Steamboat)
- * is in place so that laptops on the guest/main network can reach team subnets.
- *
- * We test this by pinging the router (10.0.100.1) from a team VLAN interface.
- * The router can only reply if it has the static route, since the source IP
- * (on 10.0.100.0/24) falls within 10.0.0.0/8.
- *
- * Logging:
- * - Success after failure/startup: print once, then suppress
- * - Failure: print every 30s (not every 2s), reset success so recovery is logged
- */
-export function startRoutingCheck(routerIp: string, iface: string): void {
-  if (!process.env.YOLO) {
-    console.log(`[dry-run] Routing check skipped (would ping ${routerIp} from ${iface})`);
-    return;
-  }
-
-  let lastSuccess: boolean | null = null;
-  let lastFailureLogTime = 0;
-
-  const check = () => {
-    execFile('ping', ['-I', iface, '-c', '1', '-W', '1', routerIp], err => {
-      const now = Date.now();
-
-      if (!err) {
-        if (lastSuccess !== true) {
-          console.log(`Routing check: OK — static route is working (${routerIp} replied via ${iface})`);
-          lastSuccess = true;
-        }
-      } else {
-        if (lastSuccess !== false || now - lastFailureLogTime >= 30_000) {
-          console.warn(
-            `Routing check: FAILED — ${routerIp} unreachable from ${iface}. Is the static route (10.0.0.0/8 → Steamboat) configured on the gateway?`,
-          );
-          lastFailureLogTime = now;
-        }
-        lastSuccess = false;
-      }
-    });
-  };
-
-  check();
-  setInterval(check, 2000);
-  console.log(`Routing check started: pinging ${routerIp} from ${iface} every 2s`);
 }
 
 function delay(ms: number): Promise<void> {
