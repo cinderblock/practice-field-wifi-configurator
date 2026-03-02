@@ -11,6 +11,7 @@ import {
 import { Message as RadioMessage } from 'syslog-server';
 
 let ws: WebSocket | null = null;
+let wsConnected = false;
 
 function connect() {
   const schema = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -31,22 +32,23 @@ function connect() {
     };
   };
 
-  let connected = false;
-
   nws.onopen = () => {
     console.log('Connected to backend');
-    connected = true;
+    wsConnected = true;
+    events.dispatchEvent(new CustomEvent('wsStatus', { detail: true }));
   };
   nws.onerror = error => {
-    if (!connected) return;
+    if (!wsConnected) return;
 
     console.error('WebSocket error:', error);
-    connected = false;
+    wsConnected = false;
+    events.dispatchEvent(new CustomEvent('wsStatus', { detail: false }));
   };
 
   nws.onclose = () => {
     console.log('Disconnected from backend');
-    connected = false;
+    wsConnected = false;
+    events.dispatchEvent(new CustomEvent('wsStatus', { detail: false }));
     setTimeout(connect, 1000);
   };
 
@@ -277,6 +279,20 @@ export function getServerTime(): number {
  */
 export function serverToBrowserTime(serverTimestamp: number): number {
   return serverTimestamp - timeOffset;
+}
+
+// ── WebSocket Connection State ───────────────────────────────────────
+
+export function useWsConnected(): boolean {
+  const [connected, setConnected] = useState(wsConnected);
+
+  useEffect(() => {
+    const handler = (e: Event) => setConnected((e as CustomEvent).detail);
+    events.addEventListener('wsStatus', handler);
+    return () => events.removeEventListener('wsStatus', handler);
+  }, []);
+
+  return connected;
 }
 
 // ── Match State ─────────────────────────────────────────────────────

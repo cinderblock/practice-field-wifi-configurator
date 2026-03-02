@@ -63,7 +63,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const matchEngine = new MatchEngine(s => radioManager.getTeamForStation(s));
 
   // Initialize WebSocket server
-  const wss = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
+  const { wss } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {

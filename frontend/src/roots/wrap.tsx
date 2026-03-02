@@ -6,6 +6,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import { useHistory, useLatest, getServerTime } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
+import { StatusBar } from '../components/StatusBar';
 
 const EstimatedReconfigurationTime = 35; // seconds
 
@@ -51,6 +52,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
       <ErrorBoundary>
         <ThemeProvider theme={theme}>
           <CssBaseline />
+          <StatusBar />
           <Backdrop open={isConfiguring || !isConnected} style={{ zIndex: 9999 }}>
             <Grid container direction="column" justifyContent="center" alignItems="center" style={{ height: '100%' }}>
               <Typography variant="h2" style={{ marginBottom: '1rem', userSelect: 'none' }}>

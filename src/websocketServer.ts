@@ -1,3 +1,4 @@
+import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import RadioManager from './radioManager.js';
 import {
@@ -20,7 +21,29 @@ export function setupWebSocket(
   port: number,
   trustedProxyMatcher?: CIDRMatcher,
 ) {
-  const wss = new WebSocketServer({ port });
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, timestamp: Date.now() }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  });
+
+  const wss = new WebSocketServer({ server });
 
   // Broadcast radio status to all clients
   radioManager.addStatusListener(entry => {
@@ -94,9 +117,9 @@ export function setupWebSocket(
     });
   });
 
-  wss.on('listening', () => {
-    console.log(`WebSocket server running on port ${port}`);
+  server.listen(port, () => {
+    console.log(`HTTP + WebSocket server running on port ${port}`);
   });
 
-  return wss;
+  return { server, wss };
 }
