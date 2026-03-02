@@ -42,6 +42,16 @@ export interface SysctlOptions {
   value: string;
 }
 
+/** Options for ARP-based duplicate address detection */
+export interface ArpingOptions {
+  interfaceName: string;
+  address: string;
+  /** Number of probes to send (default 2) */
+  count?: number;
+  /** Timeout in seconds (default 2) */
+  timeout?: number;
+}
+
 /** Options for iptables rule manipulation */
 export interface IptablesOptions {
   action: '-A' | '-D' | '-I' | '-C';

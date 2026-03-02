@@ -4,7 +4,16 @@ A web interface for configuring practice field access points.
 
 ## Setup
 
-1. Install dependencies for both backend and frontend:
+1. Install system dependencies (Linux, for VLAN/DHCP management):
+
+```bash
+sudo apt install dnsmasq-base iputils-arping
+```
+
+`dnsmasq-base` provides the `dnsmasq` binary (without the system service) for per-VLAN DHCP.
+`iputils-arping` provides `arping` for duplicate address detection before claiming team gateway IPs.
+
+2. Install Node.js dependencies:
 
 ```bash
 npm install
@@ -81,7 +90,7 @@ The VH-113 AP has three firmware variants:
 ### Steamboat's Network Responsibilities
 
 1. **VLAN interfaces** — trunk port carries VLANs 10-60 + 100; OS creates sub-interfaces (e.g. `eth0.10`, `eth0.20`)
-2. **DHCP** — serves `10.TE.AM.100-199` on each active team's VLAN, gateway = Steamboat (`10.TE.AM.3`)
+2. **DHCP** — serves `10.TE.AM.100-199` on each active team's VLAN via `dnsmasq`, gateway = Steamboat (`10.TE.AM.4`)
 3. **Inter-VLAN routing** — IP forwarding between team subnets and the guest WiFi subnet
 4. **Radio configuration** — HTTP REST to `10.0.100.2` (already working)
 5. **Syslog / FMS** — optional services for field telemetry

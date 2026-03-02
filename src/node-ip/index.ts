@@ -4,6 +4,7 @@ export type {
   InterfaceAddress,
   VlanOptions,
   AddAddressOptions,
+  ArpingOptions,
   SysctlOptions,
   IptablesOptions,
 } from './types.js';

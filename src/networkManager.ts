@@ -117,6 +117,7 @@ const vlanMap = {
 };
 
 async function updateNetworkConfig(stations: Stations, physical_interface: string) {
+  // Phase 1: Create VLANs and bring up interfaces with teams (required before arping)
   for (const station of StationNameList) {
     const team = stations[station];
     const vlanId = vlanMap[station];
@@ -125,7 +126,33 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     await net.createVlan({ parent: physical_interface, vlanId, name: ifName });
     await net.flushAddresses(ifName);
 
-    // Forwarding rules use the VLAN interface name, so they're team-number-independent
+    if (team) {
+      await net.setInterfaceUp(ifName);
+    } else {
+      await net.setInterfaceDown(ifName);
+    }
+  }
+
+  // Phase 2: Run arping probes in parallel for all stations with teams
+  const arpResults = new Map<StationName, boolean>();
+  await Promise.all(
+    StationNameList.filter(s => stations[s]).map(async station => {
+      const team = stations[station]!;
+      const ifName = `${physical_interface}.${station}`;
+      const us = teamIp(team, 4);
+      const conflict = await net.arping({ interfaceName: ifName, address: us });
+      arpResults.set(station, conflict);
+      if (conflict) {
+        console.warn(`Address conflict: ${us} is already in use on ${ifName}, skipping`);
+      }
+    }),
+  );
+
+  // Phase 3: Apply addresses and forwarding rules
+  for (const station of StationNameList) {
+    const team = stations[station];
+    const ifName = `${physical_interface}.${station}`;
+
     const fwdOut = {
       chain: 'FORWARD',
       inInterface: ifName,
@@ -140,17 +167,14 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     } as const;
 
     if (team) {
+      if (arpResults.get(station)) continue;
+
       const us = teamIp(team, 4);
       await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
-      await net.setInterfaceUp(ifName);
 
-      // Allow traffic to/from this VLAN through the FORWARD chain (default policy is DROP due to Docker)
       await net.iptables({ ...fwdOut, action: '-A' });
       await net.iptables({ ...fwdIn, action: '-A' });
     } else {
-      await net.setInterfaceDown(ifName);
-
-      // Remove forwarding rules when station is cleared
       await net.iptables({ ...fwdOut, action: '-D' });
       await net.iptables({ ...fwdIn, action: '-D' });
     }

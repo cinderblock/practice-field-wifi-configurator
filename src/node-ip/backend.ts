@@ -1,4 +1,4 @@
-import type { InterfaceInfo, VlanOptions, AddAddressOptions, SysctlOptions, IptablesOptions } from './types.js';
+import type { InterfaceInfo, VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions } from './types.js';
 
 /** OS-agnostic network management backend */
 export interface NetworkBackend {
@@ -28,6 +28,9 @@ export interface NetworkBackend {
 
   /** Check whether an interface exists. */
   interfaceExists(name: string): Promise<boolean>;
+
+  /** ARP-based duplicate address detection. Returns true if another host has the IP. */
+  arping(opts: ArpingOptions): Promise<boolean>;
 
   /** Set a sysctl value. */
   setSysctl(opts: SysctlOptions): Promise<void>;

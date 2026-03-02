@@ -1,5 +1,5 @@
 import type { NetworkBackend } from './backend.js';
-import type { VlanOptions, AddAddressOptions, SysctlOptions, IptablesOptions } from './types.js';
+import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions } from './types.js';
 
 /**
  * Creates a dry-run backend that logs operations instead of executing them.
@@ -43,6 +43,11 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
 
     async interfaceExists(name: string) {
       if (inner) return inner.interfaceExists(name);
+      return false;
+    },
+
+    async arping(opts: ArpingOptions) {
+      console.log(`[dry-run] Would arping ${opts.address} on ${opts.interfaceName}`);
       return false;
     },
 

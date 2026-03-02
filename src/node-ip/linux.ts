@@ -6,6 +6,7 @@ import type {
   InterfaceAddress,
   VlanOptions,
   AddAddressOptions,
+  ArpingOptions,
   SysctlOptions,
   IptablesOptions,
 } from './types.js';
@@ -146,6 +147,21 @@ export function createLinuxBackend(): NetworkBackend {
         return true;
       } catch {
         return false;
+      }
+    },
+
+    async arping(opts: ArpingOptions): Promise<boolean> {
+      const count = String(opts.count ?? 2);
+      const timeout = String(opts.timeout ?? 2);
+      try {
+        // -D = DAD mode, -f = quit on first reply
+        await run('arping', ['-D', '-f', '-c', count, '-w', timeout, '-I', opts.interfaceName, opts.address]);
+        return false; // exit 0 = no reply = IP is free
+      } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+          throw new Error('arping not found. Install iputils-arping: sudo apt install iputils-arping');
+        }
+        return true; // non-zero exit = reply received = conflict
       }
     },
 
