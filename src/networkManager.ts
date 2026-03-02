@@ -189,9 +189,14 @@ export async function setInternetAccess(
 
 type Stations = Record<StationName, number | undefined>;
 
-export async function configureNetwork(stations: Stations, interfaceName: string) {
+export async function configureNetwork(stations: Stations, interfaceName: string, skipDHCP = false) {
   console.log('configureNetwork');
   await updateNetworkConfig(stations, interfaceName);
+
+  if (skipDHCP) {
+    console.log('Skipping DHCP (PRACTICE firmware handles it)');
+    return;
+  }
 
   for (const station of StationNameList) {
     startDHCP(station, stations[station], interfaceName);

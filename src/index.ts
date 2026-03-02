@@ -57,7 +57,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   }
 
   // Initialize radio manager
-  const radioManager = new RadioManager(RadioUrl, VlanInterface);
+  const radioManager = new RadioManager(RadioUrl, VlanInterface, firmwareMode);
 
   // Initialize match engine (for admin page match simulation & e-stop)
   const matchEngine = new MatchEngine(s => radioManager.getTeamForStation(s));

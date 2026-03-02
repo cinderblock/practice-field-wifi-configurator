@@ -35,6 +35,7 @@ class RadioManager {
   constructor(
     private readonly apiBaseUrl: string,
     private readonly radioManagementInterface?: string,
+    private readonly firmwareMode?: string,
   ) {
     this.startPolling();
     if (this.radioManagementInterface) {
@@ -214,7 +215,7 @@ class RadioManager {
 
     if (this.radioManagementInterface) {
       jobs.push(
-        configureNetwork(teamsConfig, this.radioManagementInterface).then(async () => {
+        configureNetwork(teamsConfig, this.radioManagementInterface, this.firmwareMode === 'PRACTICE').then(async () => {
           // Apply internet access rules after network is configured
           for (const station in this.activeConfig) {
             const s = station as StationName;
