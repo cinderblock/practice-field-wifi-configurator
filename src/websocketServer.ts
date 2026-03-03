@@ -15,12 +15,19 @@ import { getRealClientIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
 import { MatchEngine } from './matchEngine.js';
 
+export interface WebSocketContext {
+  server: ReturnType<typeof createServer>;
+  wss: WebSocketServer;
+  /** Send a JSON-serializable message to all connected clients. */
+  broadcast: (msg: unknown) => void;
+}
+
 export function setupWebSocket(
   radioManager: RadioManager,
   matchEngine: MatchEngine,
   port: number,
   trustedProxyMatcher?: CIDRMatcher,
-) {
+): WebSocketContext {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -45,23 +52,19 @@ export function setupWebSocket(
 
   const wss = new WebSocketServer({ server });
 
-  // Broadcast radio status to all clients
-  radioManager.addStatusListener(entry => {
-    const data = JSON.stringify(entry);
+  function broadcast(msg: unknown) {
+    const data = JSON.stringify(msg);
     wss.clients.forEach(client => {
       if (client.readyState !== WebSocket.OPEN) return;
       client.send(data);
     });
-  });
+  }
+
+  // Broadcast radio status to all clients
+  radioManager.addStatusListener(broadcast);
 
   // Broadcast match state to all clients
-  matchEngine.addStateListener(state => {
-    const data = JSON.stringify(state);
-    wss.clients.forEach(client => {
-      if (client.readyState !== WebSocket.OPEN) return;
-      client.send(data);
-    });
-  });
+  matchEngine.addStateListener(broadcast);
 
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
@@ -69,8 +72,7 @@ export function setupWebSocket(
     console.log(`New client connected: ${realClientIp}`);
 
     // Send initial history + match state
-    const history = radioManager.getStatusHistory();
-    ws.send(JSON.stringify(history));
+    ws.send(JSON.stringify(radioManager.getStatusHistory()));
     ws.send(JSON.stringify(matchEngine.getState()));
 
     ws.on('message', (message: string) => {
@@ -121,5 +123,5 @@ export function setupWebSocket(
     console.log(`HTTP + WebSocket server running on port ${port}`);
   });
 
-  return { server, wss };
+  return { server, wss, broadcast };
 }

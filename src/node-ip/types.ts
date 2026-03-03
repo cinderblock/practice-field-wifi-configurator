@@ -52,6 +52,15 @@ export interface ArpingOptions {
   timeout?: number;
 }
 
+/** Parsed iptables rule with packet/byte counters */
+export interface ForwardCounter {
+  comment: string;
+  packets: number;
+  bytes: number;
+  inInterface?: string;
+  outInterface?: string;
+}
+
 /** Options for iptables rule manipulation */
 export interface IptablesOptions {
   action: '-A' | '-D' | '-I' | '-C';

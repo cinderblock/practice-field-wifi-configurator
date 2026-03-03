@@ -17,6 +17,9 @@ function stationRoutes(): Plugin {
         if (url === '/logs') {
           req.url = '/logs.html';
         }
+        if (url === '/network') {
+          req.url = '/network.html';
+        }
         next();
       });
     },
@@ -46,6 +49,7 @@ export default defineConfig({
         station: 'station.html',
         admin: 'admin.html',
         logs: 'logs.html',
+        network: 'network.html',
       },
     },
   },

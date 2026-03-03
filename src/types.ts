@@ -470,6 +470,26 @@ export function isAdminClearEStop(msg: unknown): msg is AdminClearEStop {
   return true;
 }
 
+// ── Network Stats ───────────────────────────────────────────────────
+
+export interface StationNetworkStats {
+  rxPackets: number; // packets from robot VLAN (FORWARD in)
+  rxBytes: number;
+  txPackets: number; // packets to robot VLAN (FORWARD out)
+  txBytes: number;
+}
+
+export interface NetworkStats {
+  type: 'networkStats';
+  stations: Partial<Record<StationName, StationNetworkStats>>;
+}
+
+export function isNetworkStats(msg: unknown): msg is NetworkStats {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as NetworkStats).type === 'networkStats';
+}
+
 // ── Saved WiFi Types ────────────────────────────────────────────────
 
 export interface SavedWiFiSetting {

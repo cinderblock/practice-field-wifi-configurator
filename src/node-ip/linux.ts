@@ -9,6 +9,7 @@ import type {
   ArpingOptions,
   SysctlOptions,
   IptablesOptions,
+  ForwardCounter,
 } from './types.js';
 
 const execFile = promisify(execFileCb);
@@ -206,6 +207,44 @@ export function createLinuxBackend(): NetworkBackend {
       }
 
       await run('iptables', buildArgs(opts.action));
+    },
+
+    async getForwardCounters(commentPrefix: string): Promise<ForwardCounter[]> {
+      let output: string;
+      try {
+        // -v for counters, -n for numeric, -x for exact byte counts
+        output = await run('iptables', ['-t', 'filter', '-L', 'FORWARD', '-v', '-n', '-x']);
+      } catch {
+        return [];
+      }
+
+      // Expected columns: pkts bytes target prot opt in out source destination [match-extensions]
+      // Example: 1234  567890 ACCEPT  all  --  eth0.red1  *  0.0.0.0/0  0.0.0.0/0  /* pfms-fwd-red1 */
+      const lineRegex =
+        /^\s*(\d+)\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+\S+\s+.*\/\*\s*(\S+)\s*\*\//;
+
+      const results: ForwardCounter[] = [];
+      for (const line of output.split('\n')) {
+        if (!line.includes(commentPrefix)) continue;
+
+        const match = line.match(lineRegex);
+        if (!match) {
+          console.warn(`Failed to parse iptables FORWARD line (matched prefix "${commentPrefix}" but regex failed):`);
+          console.warn(`  ${line.trim()}`);
+          continue;
+        }
+
+        const [, packets, bytes, inIf, outIf, comment] = match;
+        results.push({
+          comment,
+          packets: Number(packets),
+          bytes: Number(bytes),
+          inInterface: inIf === '*' ? undefined : inIf,
+          outInterface: outIf === '*' ? undefined : outIf,
+        });
+      }
+
+      return results;
     },
 
     async flushRulesByComment(commentPrefix: string): Promise<void> {

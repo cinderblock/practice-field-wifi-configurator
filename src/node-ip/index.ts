@@ -7,6 +7,7 @@ export type {
   ArpingOptions,
   SysctlOptions,
   IptablesOptions,
+  ForwardCounter,
 } from './types.js';
 export { createBackend } from './platform.js';
 export { createLinuxBackend } from './linux.js';

@@ -72,6 +72,10 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
       );
     },
 
+    async getForwardCounters() {
+      return [];
+    },
+
     async flushRulesByComment(commentPrefix: string) {
       if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
       console.log(`[dry-run] Would flush all iptables rules with comment prefix "${commentPrefix}"`);

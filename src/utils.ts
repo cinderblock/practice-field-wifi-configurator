@@ -1,8 +1,13 @@
-import { StationName } from './types.js';
+import type { StationName } from './types.js';
 import CIDRMatcher from 'cidr-matcher';
 
 export function capitalizeFirstLetter(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+/** Returns the MUI-friendly hex color for a station's alliance. */
+export function allianceColor(station: StationName): string {
+  return station.startsWith('red') ? '#d32f2f' : '#1565c0';
 }
 
 export function prettyStationName(station: StationName) {

@@ -18,7 +18,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import { MatchConfig, MatchPhase, StationName, StationNameList } from '../../../src/types';
-import { prettyStationName } from '../../../src/utils';
+import { allianceColor, prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   useLatest,
@@ -62,10 +62,6 @@ const phaseLabels: Record<MatchPhase, string> = {
   endgame: 'Endgame',
   postMatch: 'Post-Match',
 };
-
-function allianceColor(station: StationName): string {
-  return station.startsWith('red') ? '#d32f2f' : '#1565c0';
-}
 
 // ── Global E-Stop ───────────────────────────────────────────────────
 

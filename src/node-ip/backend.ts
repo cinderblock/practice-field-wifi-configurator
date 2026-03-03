@@ -1,4 +1,4 @@
-import type { InterfaceInfo, VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions } from './types.js';
+import type { InterfaceInfo, VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, ForwardCounter } from './types.js';
 
 /** OS-agnostic network management backend */
 export interface NetworkBackend {
@@ -43,4 +43,7 @@ export interface NetworkBackend {
 
   /** Delete all iptables rules whose comment contains the given prefix. */
   flushRulesByComment(commentPrefix: string): Promise<void>;
+
+  /** Get packet/byte counters for FORWARD rules matching the comment prefix. */
+  getForwardCounters(commentPrefix: string): Promise<ForwardCounter[]>;
 }

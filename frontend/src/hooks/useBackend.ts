@@ -3,7 +3,9 @@ import {
   InternetToggle,
   MatchConfig,
   MatchState,
+  NetworkStats,
   isMatchState,
+  isNetworkStats,
   StationName,
   StationUpdate,
   StatusEntry,
@@ -164,8 +166,9 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 }
 
 let currentMatchState: MatchState | null = null;
+let currentNetworkStats: NetworkStats | null = null;
 
-type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState;
+type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -217,6 +220,11 @@ function handleMatchState(state: MatchState) {
   events.dispatchEvent(new CustomEvent('matchState', { detail: state }));
 }
 
+function handleNetworkStats(stats: NetworkStats) {
+  currentNetworkStats = stats;
+  events.dispatchEvent(new CustomEvent('networkStats', { detail: stats }));
+}
+
 function receiveMessage(entry: string) {
   const detail = JSON.parse(entry) as Message;
 
@@ -227,6 +235,11 @@ function receiveMessage(entry: string) {
 
   if (isMatchState(detail)) {
     handleMatchState(detail);
+    return;
+  }
+
+  if (isNetworkStats(detail)) {
+    handleNetworkStats(detail);
     return;
   }
 
@@ -304,6 +317,20 @@ export function useMatchState(): MatchState | null {
     const handler = (e: Event) => setState((e as CustomEvent).detail);
     events.addEventListener('matchState', handler);
     return () => events.removeEventListener('matchState', handler);
+  }, []);
+
+  return state;
+}
+
+// ── Network Stats ───────────────────────────────────────────────────
+
+export function useNetworkStats(): NetworkStats | null {
+  const [state, setState] = useState<NetworkStats | null>(currentNetworkStats);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('networkStats', handler);
+    return () => events.removeEventListener('networkStats', handler);
   }, []);
 
   return state;

@@ -10,6 +10,7 @@ import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
 import { stopAllDHCP } from './networkManager.js';
+import { buildNetworkStats } from './networkStats.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -63,7 +64,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const matchEngine = new MatchEngine(s => radioManager.getTeamForStation(s));
 
   // Initialize WebSocket server
-  const { wss } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
+  const { wss, broadcast } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {
@@ -77,12 +78,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       if (!syslogServer) return;
 
       syslogServer.on('message', msg => {
-        const data = JSON.stringify(msg);
-
-        wss.clients.forEach(client => {
-          if (client.readyState !== WebSocket.OPEN) return;
-          client.send(data);
-        });
+        broadcast(msg);
       });
 
       // TODO: Load system IP
@@ -107,6 +103,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         }
       });
     });
+  }
+
+  // Broadcast iptables forwarding counters to all clients every 5 seconds
+  if (net) {
+    let latestNetworkStats: Awaited<ReturnType<typeof buildNetworkStats>> | null = null;
+
+    // Send cached stats immediately when a new client connects
+    wss.on('connection', ws => {
+      if (latestNetworkStats) ws.send(JSON.stringify(latestNetworkStats));
+    });
+
+    setInterval(async () => {
+      try {
+        latestNetworkStats = await buildNetworkStats(net!, IPTABLES_COMMENT_PREFIX);
+        broadcast(latestNetworkStats);
+      } catch (err) {
+        console.error('Error polling network stats:', err);
+      }
+    }, 5000);
   }
 
   // Clean up iptables rules on graceful shutdown
