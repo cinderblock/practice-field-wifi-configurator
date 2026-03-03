@@ -33,30 +33,8 @@ function getInternetIndicator(state: ConnectivityState) {
 }
 
 function getPfmsIndicator(state: ConnectivityState) {
-  const { pfmsHttp, pfmsHttpFailReason, wsConnected } = state;
-
-  if (pfmsHttp === 'checking') return { color: 'text.disabled' as DotColor, tooltip: 'Checking PFMS...' };
-
-  const httpOk = pfmsHttp === 'ok';
-
-  if (httpOk && wsConnected) return { color: 'success.main' as DotColor, tooltip: 'PFMS connected' };
-
-  if (httpOk && !wsConnected)
-    return { color: 'warning.main' as DotColor, tooltip: 'WebSocket disconnected (server reachable)' };
-
-  if (!httpOk && wsConnected)
-    return { color: 'warning.main' as DotColor, tooltip: 'HTTP health failed (WS OK — check proxy /health route)' };
-
-  // Both down
-  if (pfmsHttpFailReason === 'rejected') {
-    return { color: 'error.main' as DotColor, tooltip: 'Connection rejected — possible HTTPS/cert issue' };
-  }
-
-  if (state.internet === 'ok') {
-    return { color: 'error.main' as DotColor, tooltip: 'PFMS unreachable (server may be down)' };
-  }
-
-  return { color: 'error.main' as DotColor, tooltip: 'No connectivity' };
+  if (state.wsConnected) return { color: 'success.main' as DotColor, tooltip: 'PFMS connected' };
+  return { color: 'error.main' as DotColor, tooltip: 'PFMS disconnected' };
 }
 
 export function StatusBar() {
