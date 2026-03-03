@@ -76,7 +76,7 @@ type Status = {
   robot: CommonFlags;
 };
 
-type LogDataMessage = {
+export type LogDataMessage = {
   type: 0x16;
   roundTripTime: number;
   lostPackets: number;
@@ -104,7 +104,7 @@ type DSPingMessage = {
   type: 0x1c;
 };
 
-type DSMessage =
+export type DSMessage =
   | TeamNumberMessage
   | WPILibVersionMessage
   | RIOVersionMessage
@@ -242,7 +242,7 @@ type Metrics = FieldRadioMetrics | CommsMetrics | LaptopMetrics | RobotRadioMetr
 
 type Tags = Metrics[];
 
-type DsStatus = {
+export type DsStatus = {
   EStop: boolean;
   robotComms: boolean;
   radioPing: boolean;
@@ -264,7 +264,7 @@ function byteToDsStatus(byte: number): DsStatus {
   };
 }
 
-type UdpMessage = {
+export type UdpMessage = {
   sequence: number;
   commVersion: number;
   status: DsStatus;

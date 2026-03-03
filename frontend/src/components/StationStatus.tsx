@@ -17,7 +17,14 @@ import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
 import TableHead from '@mui/material/TableHead';
 import { StationName, SavedWiFiSetting } from '../../../src/types';
-import { useLatest, sendNewConfig, sendInternetToggle, useUpdateCallback } from '../hooks/useBackend';
+import {
+  useLatest,
+  sendNewConfig,
+  sendInternetToggle,
+  useUpdateCallback,
+  useLatestTelemetry,
+  useTelemetryCallback,
+} from '../hooks/useBackend';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
@@ -32,7 +39,8 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ClearIcon from '@mui/icons-material/Clear';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
-import { StationChart, GroupedChart, handleStatusUpdate } from './StationChart';
+import { StationChart, GroupedChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
+import Chip from '@mui/material/Chip';
 
 // Helper function to format numbers with thin space as thousands separator
 function formatNumberWithThinSpace(num: number | undefined): string {
@@ -59,6 +67,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   // Always register the chart data collection handler, even if charts aren't visible
   // This ensures chart data is collected from page load, not just when charts are first shown
   useUpdateCallback(handleStatusUpdate);
+  useTelemetryCallback(handleTelemetryUpdate);
+
+  const telemetry = useLatestTelemetry(station);
 
   if (!latest) {
     return <Typography>Loading...</Typography>;
@@ -358,6 +369,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                     <StationChart station={station} metric="bandwidth" height="60px" />
                     <StationChart station={station} metric="dataAge" height="60px" />
                     <StationChart station={station} metric="quality" height="60px" />
+                    <StationChart station={station} metric="batteryVoltage" height="60px" />
+                    <StationChart station={station} metric="dsCpuPercent" height="60px" />
+                    <StationChart station={station} metric="robotStatus" height="60px" />
                   </>
                 ) : (
                   <>
@@ -379,6 +393,13 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                     <GroupedChart
                       station={station}
                       metrics={['quality', 'bandwidth', 'dataAge']}
+                      height="60px"
+                      defaultMetricIndex={0}
+                      marginBottom={0.5}
+                    />
+                    <GroupedChart
+                      station={station}
+                      metrics={['batteryVoltage', 'dsCpuPercent', 'robotStatus']}
                       height="60px"
                       defaultMetricIndex={0}
                       marginBottom={0.5}
@@ -499,6 +520,132 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         </TableRow>
                       </TableBody>
                     </Table>
+
+                    {/* Robot Telemetry Group (only shown when telemetry data exists) */}
+                    {telemetry && (
+                      <>
+                        <Table
+                          size="small"
+                          sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                        >
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ textAlign: 'right' }}>Battery</TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>RTT</TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>Lost Pkts</TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>CAN</TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>DS CPU</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(76, 175, 80)', textAlign: 'right' }}>
+                                {telemetry.batteryVoltage?.toFixed(1)} V
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                {telemetry.rttMs !== undefined ? `${telemetry.rttMs} ms` : '—'}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                {telemetry.lostPackets !== undefined ? telemetry.lostPackets : '—'}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                {telemetry.canUtil !== undefined ? `${telemetry.canUtil}%` : '—'}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
+                                {telemetry.dsCpuPercent !== undefined ? `${telemetry.dsCpuPercent}%` : '—'}
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+
+                        {/* Status Chips */}
+                        {telemetry.dsStatus && (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                            <Chip
+                              label={
+                                telemetry.dsStatus.mode === 'teleOp'
+                                  ? 'TeleOp'
+                                  : telemetry.dsStatus.mode === 'auto'
+                                    ? 'Auto'
+                                    : 'Test'
+                              }
+                              size="small"
+                              sx={{
+                                backgroundColor:
+                                  telemetry.dsStatus.mode === 'teleOp'
+                                    ? 'rgb(33, 150, 243)'
+                                    : telemetry.dsStatus.mode === 'auto'
+                                      ? 'rgb(76, 175, 80)'
+                                      : 'rgb(255, 152, 0)',
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                height: 20,
+                              }}
+                            />
+                            <Chip
+                              label={telemetry.dsStatus.robotComms ? 'Comms' : 'No Comms'}
+                              size="small"
+                              sx={{
+                                backgroundColor: telemetry.dsStatus.robotComms
+                                  ? 'rgb(76, 175, 80)'
+                                  : 'rgb(244, 67, 54)',
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                height: 20,
+                              }}
+                            />
+                            <Chip
+                              label={telemetry.dsStatus.radioPing ? 'Radio' : 'No Radio'}
+                              size="small"
+                              sx={{
+                                backgroundColor: telemetry.dsStatus.radioPing
+                                  ? 'rgb(33, 150, 243)'
+                                  : 'rgb(244, 67, 54)',
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                height: 20,
+                              }}
+                            />
+                            <Chip
+                              label={telemetry.dsStatus.rioPing ? 'RIO' : 'No RIO'}
+                              size="small"
+                              sx={{
+                                backgroundColor: telemetry.dsStatus.rioPing ? 'rgb(0, 188, 212)' : 'rgb(244, 67, 54)',
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                height: 20,
+                              }}
+                            />
+                            {telemetry.dsStatus.eStop && (
+                              <Chip
+                                label="E-STOP"
+                                size="small"
+                                sx={{
+                                  backgroundColor: 'rgb(244, 67, 54)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                  fontWeight: 'bold',
+                                }}
+                              />
+                            )}
+                            {telemetry.brownout && (
+                              <Chip
+                                label="BROWNOUT"
+                                size="small"
+                                sx={{
+                                  backgroundColor: 'rgb(255, 152, 0)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                  fontWeight: 'bold',
+                                }}
+                              />
+                            )}
+                          </Box>
+                        )}
+                      </>
+                    )}
                   </Box>
                 )}
               </>

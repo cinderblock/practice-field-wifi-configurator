@@ -5,9 +5,11 @@ import {
   MatchConfig,
   MatchState,
   NetworkStats,
+  TelemetryUpdate,
   isAppLogMessage,
   isMatchState,
   isNetworkStats,
+  isTelemetryUpdate,
   StationName,
   StationUpdate,
   StatusEntry,
@@ -138,10 +140,20 @@ export function useAppLogCallback(cb: AppLogCallback) {
   useEventListener('appLog', cb);
 }
 
+type TelemetryCallback = (e: TelemetryUpdate) => void;
+
+export function useTelemetryCallback(cb: TelemetryCallback) {
+  useEventListener('telemetry', cb);
+}
+
 function useEventListener(type: 'update', cb: StatusUpdateCallback): void;
 function useEventListener(type: 'radio', cb: RadioMessageCallback): void;
 function useEventListener(type: 'appLog', cb: AppLogCallback): void;
-function useEventListener(type: 'update' | 'radio' | 'appLog', callback: StatusUpdateCallback | RadioMessageCallback | AppLogCallback) {
+function useEventListener(type: 'telemetry', cb: TelemetryCallback): void;
+function useEventListener(
+  type: 'update' | 'radio' | 'appLog' | 'telemetry',
+  callback: StatusUpdateCallback | RadioMessageCallback | AppLogCallback | TelemetryCallback,
+) {
   const cb: EventListener = useCallback(
     event => {
       const { detail } = event as CustomEvent;
@@ -177,7 +189,7 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 
-type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage;
+type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage | TelemetryUpdate;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -238,11 +250,20 @@ function handleAppLog(msg: AppLogMessage) {
   events.dispatchEvent(new CustomEvent('appLog', { detail: msg }));
 }
 
+function handleTelemetry(update: TelemetryUpdate) {
+  events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
+}
+
 function receiveMessage(entry: string) {
   const detail = JSON.parse(entry) as Message;
 
   if (isErrorEntry(detail)) {
     handleErrorEntry(detail);
+    return;
+  }
+
+  if (isTelemetryUpdate(detail)) {
+    handleTelemetry(detail);
     return;
   }
 
@@ -310,6 +331,23 @@ export function getServerTime(): number {
  */
 export function serverToBrowserTime(serverTimestamp: number): number {
   return serverTimestamp - timeOffset;
+}
+
+// ── Robot Telemetry ─────────────────────────────────────────────────
+
+export function useLatestTelemetry(station: StationName): TelemetryUpdate | undefined {
+  const [latest, setLatest] = useState<TelemetryUpdate | undefined>();
+
+  useTelemetryCallback(
+    useCallback(
+      (update: TelemetryUpdate) => {
+        if (update.station === station) setLatest(update);
+      },
+      [station],
+    ),
+  );
+
+  return latest;
 }
 
 // ── WebSocket Connection State ───────────────────────────────────────

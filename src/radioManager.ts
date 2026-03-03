@@ -215,17 +215,19 @@ class RadioManager {
 
     if (this.radioManagementInterface) {
       jobs.push(
-        configureNetwork(teamsConfig, this.radioManagementInterface, this.firmwareMode === 'PRACTICE').then(async () => {
-          // Apply internet access rules after network is configured
-          for (const station in this.activeConfig) {
-            const s = station as StationName;
-            const team = teamsConfig[s];
-            const ia = this.activeConfig[s]?.internetAccess;
-            if (team && ia !== undefined) {
-              await setInternetAccess(s, team, this.radioManagementInterface!, ia);
+        configureNetwork(teamsConfig, this.radioManagementInterface, this.firmwareMode === 'PRACTICE').then(
+          async () => {
+            // Apply internet access rules after network is configured
+            for (const station in this.activeConfig) {
+              const s = station as StationName;
+              const team = teamsConfig[s];
+              const ia = this.activeConfig[s]?.internetAccess;
+              if (team && ia !== undefined) {
+                await setInternetAccess(s, team, this.radioManagementInterface!, ia);
+              }
             }
-          }
-        }),
+          },
+        ),
       );
     }
 
@@ -304,6 +306,19 @@ class RadioManager {
     }
 
     await setInternetAccess(stationId, team, this.radioManagementInterface, enabled);
+  }
+
+  getTeamMappings(): Record<number, StationName> {
+    const mappings: Record<number, StationName> = {};
+    for (const station in this.activeConfig) {
+      const { ssid } = this.activeConfig[station as StationName] ?? {};
+      if (!ssid) continue;
+      const team = parseInt(ssid.split('-', 2)[0]);
+      if (team && !(team in mappings)) {
+        mappings[team] = station as StationName;
+      }
+    }
+    return mappings;
   }
 
   async clearAllConfigurations(): Promise<void> {

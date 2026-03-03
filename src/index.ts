@@ -12,6 +12,7 @@ import { MatchEngine } from './matchEngine.js';
 import { stopAllDHCP } from './networkManager.js';
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast } from './appLogger.js';
+import { TelemetryManager } from './telemetryManager.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -91,12 +92,17 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   }
 
   if (StartFMS) {
+    const telemetryManager = new TelemetryManager(
+      () => radioManager.getTeamMappings(),
+      update => broadcast(update),
+    );
+
     runFMS().then(fms => {
       if (!fms) return;
 
       fms.on('message', msg => {
-        console.log('Message from DS:');
-        console.log(msg);
+        // Route telemetry to stations via WebSocket
+        telemetryManager.processFmsEvent(msg);
 
         // Auto-discover DS addresses for the match engine
         if ('teamNumber' in msg.data && 'sequence' in msg.data) {

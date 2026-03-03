@@ -470,6 +470,34 @@ export function isAdminClearEStop(msg: unknown): msg is AdminClearEStop {
   return true;
 }
 
+// ── Robot Telemetry ─────────────────────────────────────────────────
+
+export interface TelemetryUpdate {
+  type: 'telemetry';
+  station: StationName;
+  timestamp: number;
+  batteryVoltage: number;
+  rttMs?: number;
+  lostPackets?: number;
+  canUtil?: number;
+  dsCpuPercent?: number;
+  brownout?: boolean;
+  dsStatus?: {
+    eStop: boolean;
+    robotComms: boolean;
+    radioPing: boolean;
+    rioPing: boolean;
+    enabled: boolean;
+    mode: 'teleOp' | 'test' | 'auto';
+  };
+}
+
+export function isTelemetryUpdate(msg: unknown): msg is TelemetryUpdate {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as TelemetryUpdate).type === 'telemetry';
+}
+
 // ── Network Stats ───────────────────────────────────────────────────
 
 export interface StationNetworkStats {

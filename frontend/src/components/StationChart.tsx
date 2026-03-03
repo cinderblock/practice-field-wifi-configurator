@@ -1,10 +1,21 @@
 import { useState } from 'react';
 import { Box, Typography, useTheme } from '@mui/material';
 import SmoothieComponent, { TimeSeries } from 'react-smoothie';
-import { StationName, StatusEntry, StationNameList } from '../../../src/types';
-import { useUpdateCallback, serverToBrowserTime } from '../hooks/useBackend';
+import { StationName, StatusEntry, StationNameList, TelemetryUpdate } from '../../../src/types';
+import { useUpdateCallback, useTelemetryCallback, serverToBrowserTime } from '../hooks/useBackend';
 
-export type MetricType = 'signalLevels' | 'snr' | 'rates' | 'packets' | 'bytes' | 'bandwidth' | 'quality' | 'dataAge';
+export type MetricType =
+  | 'signalLevels'
+  | 'snr'
+  | 'rates'
+  | 'packets'
+  | 'bytes'
+  | 'bandwidth'
+  | 'quality'
+  | 'dataAge'
+  | 'batteryVoltage'
+  | 'dsCpuPercent'
+  | 'robotStatus';
 
 interface StationChartProps {
   station: StationName;
@@ -34,6 +45,15 @@ const stationTimeSeries: Record<
     qualityWarning: TimeSeries;
     qualityNone: TimeSeries;
     qualityNotLinked: TimeSeries;
+    // Telemetry (from FMS/Driver Station)
+    batteryVoltage: TimeSeries;
+    dsCpuPercent: TimeSeries;
+    robotComms: TimeSeries;
+    radioPing: TimeSeries;
+    rioPing: TimeSeries;
+    eStop: TimeSeries;
+    brownout: TimeSeries;
+    enabled: TimeSeries;
   }
 > = {} as any;
 
@@ -57,6 +77,14 @@ for (const stationName of StationNameList) {
     qualityWarning: new TimeSeries(),
     qualityNone: new TimeSeries(),
     qualityNotLinked: new TimeSeries(),
+    batteryVoltage: new TimeSeries(),
+    dsCpuPercent: new TimeSeries(),
+    robotComms: new TimeSeries(),
+    radioPing: new TimeSeries(),
+    rioPing: new TimeSeries(),
+    eStop: new TimeSeries(),
+    brownout: new TimeSeries(),
+    enabled: new TimeSeries(),
   };
 }
 
@@ -89,6 +117,14 @@ function clearStationTimeSeries(stationName: StationName) {
   series.qualityWarning.clear();
   series.qualityNone.clear();
   series.qualityNotLinked.clear();
+  series.batteryVoltage.clear();
+  series.dsCpuPercent.clear();
+  series.robotComms.clear();
+  series.radioPing.clear();
+  series.rioPing.clear();
+  series.eStop.clear();
+  series.brownout.clear();
+  series.enabled.clear();
 }
 
 // Set up a single listener at module level that populates all station time series
@@ -162,6 +198,27 @@ export function handleStatusUpdate(entry: StatusEntry) {
     timeSeries.qualityWarning.append(timestamp, connectionQuality === 'warning' ? 1 : 0);
     timeSeries.qualityNone.append(timestamp, connectionQuality === '' ? 1 : 0);
   }
+}
+
+// Handle telemetry updates from FMS/Driver Station
+export function handleTelemetryUpdate(entry: TelemetryUpdate) {
+  const timeSeries = stationTimeSeries[entry.station];
+  if (!timeSeries) return;
+
+  const timestamp = serverToBrowserTime(entry.timestamp);
+
+  if (entry.batteryVoltage !== undefined) timeSeries.batteryVoltage.append(timestamp, entry.batteryVoltage);
+  if (entry.dsCpuPercent !== undefined) timeSeries.dsCpuPercent.append(timestamp, entry.dsCpuPercent);
+
+  if (entry.dsStatus) {
+    timeSeries.robotComms.append(timestamp, entry.dsStatus.robotComms ? 1 : 0);
+    timeSeries.radioPing.append(timestamp, entry.dsStatus.radioPing ? 1 : 0);
+    timeSeries.rioPing.append(timestamp, entry.dsStatus.rioPing ? 1 : 0);
+    timeSeries.eStop.append(timestamp, entry.dsStatus.eStop ? 1 : 0);
+    timeSeries.enabled.append(timestamp, entry.dsStatus.enabled ? 1 : 0);
+  }
+
+  if (entry.brownout !== undefined) timeSeries.brownout.append(timestamp, entry.brownout ? 1 : 0);
 }
 
 type ChartConfig = {
@@ -285,6 +342,70 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
     unit: 'ms',
     series: [{ data: 'dataAgeMs', label: 'Data Age', color: { r: 200, g: 150, b: 100 }, lineWidth: 2 }],
   },
+  batteryVoltage: {
+    title: 'Battery',
+    unit: 'V',
+    minValue: 0,
+    maxValue: 14,
+    series: [{ data: 'batteryVoltage', label: 'Voltage', color: { r: 76, g: 175, b: 80 }, lineWidth: 2 }],
+  },
+  dsCpuPercent: {
+    title: 'DS CPU',
+    unit: '%',
+    minValue: 0,
+    maxValue: 100,
+    series: [{ data: 'dsCpuPercent', label: 'CPU', color: { r: 80, g: 150, b: 255 }, lineWidth: 2 }],
+  },
+  robotStatus: {
+    title: 'Robot Status',
+    minValue: 0,
+    maxValue: 1,
+    hideLabels: true,
+    series: [
+      {
+        data: 'robotComms',
+        label: 'Comms',
+        fillStyle: 'rgba(76, 175, 80, 0.7)',
+        color: { r: 76, g: 175, b: 80 },
+        lineWidth: 0,
+      },
+      {
+        data: 'radioPing',
+        label: 'Radio',
+        fillStyle: 'rgba(33, 150, 243, 0.7)',
+        color: { r: 33, g: 150, b: 243 },
+        lineWidth: 0,
+      },
+      {
+        data: 'rioPing',
+        label: 'RIO',
+        fillStyle: 'rgba(0, 188, 212, 0.7)',
+        color: { r: 0, g: 188, b: 212 },
+        lineWidth: 0,
+      },
+      {
+        data: 'enabled',
+        label: 'Enabled',
+        fillStyle: 'rgba(139, 195, 74, 0.7)',
+        color: { r: 139, g: 195, b: 74 },
+        lineWidth: 0,
+      },
+      {
+        data: 'eStop',
+        label: 'E-Stop',
+        fillStyle: 'rgba(244, 67, 54, 0.7)',
+        color: { r: 244, g: 67, b: 54 },
+        lineWidth: 0,
+      },
+      {
+        data: 'brownout',
+        label: 'Brownout',
+        fillStyle: 'rgba(255, 152, 0, 0.7)',
+        color: { r: 255, g: 152, b: 0 },
+        lineWidth: 0,
+      },
+    ],
+  },
 };
 
 export function StationChart({ station, metric, height = '60px', marginBottom = 2 }: StationChartProps) {
@@ -294,6 +415,7 @@ export function StationChart({ station, metric, height = '60px', marginBottom = 
   // Each chart registers the same handler, but the handler deduplicates based on timestamp
   // This ensures data keeps populating even when charts are unmounted/remounted
   useUpdateCallback(handleStatusUpdate);
+  useTelemetryCallback(handleTelemetryUpdate);
 
   const isDarkMode = theme.palette.mode === 'dark';
   const backgroundColor = isDarkMode ? theme.palette.background.paper : '#ffffff';
