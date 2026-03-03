@@ -353,7 +353,7 @@ export function LogsPage() {
         {/* Search */}
         <TextField
           size="small"
-          placeholder="Filter\u2026"
+          placeholder="Filter…"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           slotProps={{
