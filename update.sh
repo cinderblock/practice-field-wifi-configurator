@@ -8,7 +8,7 @@ fi
 # Run the latest version of this script after updating
 if [ "$1" != "continue" ]; then
   git pull
-  exec "$0" continue
+  exec "$(realpath "$0")" continue
 fi
 
 if [ -d node_modules ]; then
