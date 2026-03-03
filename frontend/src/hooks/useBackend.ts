@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  AppLogMessage,
   InternetToggle,
   MatchConfig,
   MatchState,
   NetworkStats,
+  isAppLogMessage,
   isMatchState,
   isNetworkStats,
   StationName,
@@ -130,9 +132,16 @@ export function useRadioMessageCallback(cb: RadioMessageCallback) {
   useEventListener('radio', cb);
 }
 
+type AppLogCallback = (e: AppLogMessage) => void;
+
+export function useAppLogCallback(cb: AppLogCallback) {
+  useEventListener('appLog', cb);
+}
+
 function useEventListener(type: 'update', cb: StatusUpdateCallback): void;
 function useEventListener(type: 'radio', cb: RadioMessageCallback): void;
-function useEventListener(type: 'update' | 'radio', callback: StatusUpdateCallback | RadioMessageCallback) {
+function useEventListener(type: 'appLog', cb: AppLogCallback): void;
+function useEventListener(type: 'update' | 'radio' | 'appLog', callback: StatusUpdateCallback | RadioMessageCallback | AppLogCallback) {
   const cb: EventListener = useCallback(
     event => {
       const { detail } = event as CustomEvent;
@@ -168,7 +177,7 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 
-type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats;
+type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -225,6 +234,10 @@ function handleNetworkStats(stats: NetworkStats) {
   events.dispatchEvent(new CustomEvent('networkStats', { detail: stats }));
 }
 
+function handleAppLog(msg: AppLogMessage) {
+  events.dispatchEvent(new CustomEvent('appLog', { detail: msg }));
+}
+
 function receiveMessage(entry: string) {
   const detail = JSON.parse(entry) as Message;
 
@@ -240,6 +253,11 @@ function receiveMessage(entry: string) {
 
   if (isNetworkStats(detail)) {
     handleNetworkStats(detail);
+    return;
+  }
+
+  if (isAppLogMessage(detail)) {
+    handleAppLog(detail);
     return;
   }
 

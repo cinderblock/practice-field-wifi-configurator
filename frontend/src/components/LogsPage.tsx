@@ -7,13 +7,13 @@ import InputAdornment from '@mui/material/InputAdornment';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import type { StatusEntry, Status } from '../../../src/types';
+import type { AppLogMessage, StatusEntry, Status } from '../../../src/types';
 import type { Message as RadioMessage } from 'syslog-server';
-import { useHistory, useUpdateCallback, useRadioMessageCallback } from '../hooks/useBackend';
+import { useHistory, useUpdateCallback, useRadioMessageCallback, useAppLogCallback } from '../hooks/useBackend';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-type LogSource = 'status' | 'radio';
+type LogSource = 'status' | 'radio' | 'app';
 
 interface LogEntry {
   id: number;
@@ -84,6 +84,15 @@ function radioMessageToLog(msg: RadioMessage): Omit<LogEntry, 'id'> {
     source: 'radio',
     message: `[${msg.host}] ${text}`,
     level,
+  };
+}
+
+function appLogToLogEntry(msg: AppLogMessage): Omit<LogEntry, 'id'> {
+  return {
+    timestamp: msg.timestamp,
+    source: 'app',
+    message: msg.message,
+    level: msg.level,
   };
 }
 
@@ -162,11 +171,11 @@ const LogRow = memo(function LogRow({ log, searchTerm }: { log: LogEntry; search
           textAlign: 'center',
           fontSize: '0.65rem',
           fontWeight: 700,
-          color: log.source === 'status' ? '#66bb6a' : '#42a5f5',
+          color: log.source === 'status' ? '#66bb6a' : log.source === 'radio' ? '#42a5f5' : '#ffa726',
           opacity: 0.85,
         }}
       >
-        {log.source === 'status' ? 'STS' : 'RAD'}
+        {log.source === 'status' ? 'STS' : log.source === 'radio' ? 'RAD' : 'APP'}
       </span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.78rem' }}>
         {highlightMatches(log.message, searchTerm)}
@@ -181,6 +190,7 @@ export function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showStatus, setShowStatus] = useState(true);
   const [showRadio, setShowRadio] = useState(true);
+  const [showApp, setShowApp] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -241,20 +251,27 @@ export function LogsPage() {
     }, []),
   );
 
+  useAppLogCallback(
+    useCallback((msg: AppLogMessage) => {
+      setLogs(prev => appendLog(prev, { id: nextId++, ...appLogToLogEntry(msg) }));
+    }, []),
+  );
+
   // ── Filtering ─────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     // Short-circuit: no filtering needed
-    if (showStatus && showRadio && !searchTerm) return logs;
+    if (showStatus && showRadio && showApp && !searchTerm) return logs;
 
     const lowerSearch = searchTerm.toLowerCase();
     return logs.filter(log => {
       if (log.source === 'status' && !showStatus) return false;
       if (log.source === 'radio' && !showRadio) return false;
+      if (log.source === 'app' && !showApp) return false;
       if (lowerSearch && !log.message.toLowerCase().includes(lowerSearch)) return false;
       return true;
     });
-  }, [logs, showStatus, showRadio, searchTerm]);
+  }, [logs, showStatus, showRadio, showApp, searchTerm]);
 
   // ── Scroll management ─────────────────────────────────────────────
 
@@ -347,6 +364,13 @@ export function LogsPage() {
           color="info"
           variant={showRadio ? 'filled' : 'outlined'}
           onClick={() => setShowRadio(s => !s)}
+          size="small"
+        />
+        <Chip
+          label="App"
+          color="warning"
+          variant={showApp ? 'filled' : 'outlined'}
+          onClick={() => setShowApp(s => !s)}
           size="small"
         />
 

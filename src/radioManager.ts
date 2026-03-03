@@ -1,4 +1,5 @@
 import { configureNetwork, setInternetAccess } from './networkManager.js';
+import { appError } from './appLogger.js';
 import {
   AdditionalChannelStatistic,
   AllChannels,
@@ -114,8 +115,7 @@ class RadioManager {
       const radioUpdate: RadioUpdate = await response.json();
 
       if (!isValidRadioUpdate(radioUpdate)) {
-        console.error('Invalid radio status:');
-        console.error(radioUpdate);
+        appError('Invalid radio status: ' + JSON.stringify(radioUpdate));
 
         throw new Error('Invalid radio status');
       }
@@ -128,7 +128,7 @@ class RadioManager {
       submit(radioUpdate);
     } catch (error) {
       if (this.connected) {
-        console.error('Error fetching radio status:', error);
+        appError('Error fetching radio status: ' + (error instanceof Error ? error.message : String(error)));
         this.connected = false;
         submit();
       }

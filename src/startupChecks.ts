@@ -1,4 +1,5 @@
 import { isValidRadioUpdate, type RadioUpdate } from './types.js';
+import { appWarn } from './appLogger.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
 /**
@@ -50,19 +51,19 @@ export function detectFirmwareMode(version: string): 'PRACTICE' | 'OFFSEASON' | 
 
   if (upper.includes('PRACTICE')) {
     console.log(`Radio firmware: PRACTICE (${version})`);
-    console.warn(
-      'WARNING: PRACTICE firmware detected. VLAN management and routing will not work as expected. Switch to OFFSEASON firmware for full functionality.',
+    appWarn(
+      'PRACTICE firmware detected. VLAN management and routing will not work as expected. Switch to OFFSEASON firmware for full functionality.',
     );
     return 'PRACTICE';
   }
 
   if (upper.includes('FRC')) {
     console.log(`Radio firmware: FRC (${version})`);
-    console.warn('WARNING: FRC firmware detected. This mode requires bearer token authentication.');
+    appWarn('FRC firmware detected. This mode requires bearer token authentication.');
     return 'FRC';
   }
 
-  console.warn(`Radio firmware: UNKNOWN (${version})`);
+  appWarn(`Radio firmware: UNKNOWN (${version})`);
   return 'UNKNOWN';
 }
 

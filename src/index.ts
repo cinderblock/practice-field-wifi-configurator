@@ -11,6 +11,7 @@ import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
 import { stopAllDHCP } from './networkManager.js';
 import { buildNetworkStats } from './networkStats.js';
+import { setBroadcast } from './appLogger.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -65,6 +66,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize WebSocket server
   const { wss, broadcast } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
+  setBroadcast(broadcast);
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {

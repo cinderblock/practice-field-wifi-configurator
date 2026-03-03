@@ -1,6 +1,7 @@
 import dgram from 'dgram';
 import { makeDSPacket, Control, UdpSendPort } from './fmsServer.js';
 import { MatchPhase, MatchConfig, MatchState, StationName, StationNameList, StationControlState } from './types.js';
+import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
 const MAX_PERIOD = 300;
@@ -44,7 +45,7 @@ export class MatchEngine {
 
   startMatch(config: MatchConfig) {
     if (this.phase !== 'idle' && this.phase !== 'postMatch') {
-      console.warn(`Cannot start match in phase ${this.phase}`);
+      appWarn(`Cannot start match in phase ${this.phase}`);
       return;
     }
 
@@ -59,7 +60,7 @@ export class MatchEngine {
     };
 
     if (sanitized.stations.length === 0) {
-      console.warn('No valid stations selected, cannot start match');
+      appWarn('No valid stations selected, cannot start match');
       return;
     }
 
@@ -286,7 +287,7 @@ export class MatchEngine {
     });
 
     this.udpSocket.send(packet, 0, packet.length, UdpSendPort, ip, err => {
-      if (err) console.error(`Failed to send DS packet to ${station} (${ip}):`, err);
+      if (err) appError(`Failed to send DS packet to ${station} (${ip}): ${err.message}`);
     });
   }
 

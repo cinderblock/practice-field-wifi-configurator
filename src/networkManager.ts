@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { StationName, StationNameList } from './types.js';
+import { appInfo, appWarn } from './appLogger.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
@@ -143,7 +144,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
       const conflict = await net.arping({ interfaceName: ifName, address: us });
       arpResults.set(station, conflict);
       if (conflict) {
-        console.warn(`Address conflict: ${us} is already in use on ${ifName}, skipping`);
+        appWarn(`Address conflict: ${us} is already in use on ${ifName}, skipping`);
       }
     }),
   );
@@ -180,7 +181,7 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     }
   }
 
-  console.log('Network configuration applied');
+  appInfo('Network configuration applied');
 }
 
 /** Enable or disable internet access (NAT + forwarding) for a team subnet. */

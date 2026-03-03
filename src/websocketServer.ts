@@ -13,6 +13,7 @@ import {
 } from './types.js';
 import { getRealClientIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
+import { appError, appWarn } from './appLogger.js';
 import { MatchEngine } from './matchEngine.js';
 
 export interface WebSocketContext {
@@ -80,7 +81,7 @@ export function setupWebSocket(
       try {
         data = JSON.parse(message);
       } catch {
-        console.error('Invalid JSON from client:', message);
+        appError('Invalid JSON from client');
         ws.send(JSON.stringify({ error: 'Invalid JSON', details: 'Could not parse message' }));
         return;
       }
@@ -92,13 +93,13 @@ export function setupWebSocket(
 
       if (isStationUpdate(data)) {
         radioManager.configure(data.station, data).catch(err => {
-          console.error('Error configuring station:', err);
+          appError('Error configuring station: ' + err.message);
           ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
         });
         // TODO: handle multiple simultaneous configurations gracefully
       } else if (isInternetToggle(data)) {
         radioManager.toggleInternetAccess(data.station, data.enabled).catch(err => {
-          console.error('Error toggling internet access:', err);
+          appError('Error toggling internet access: ' + err.message);
           ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
         });
       } else if (isAdminStartMatch(data)) {
@@ -114,7 +115,7 @@ export function setupWebSocket(
       } else if (isAdminClearEStop(data)) {
         matchEngine.clearEStop(data.station);
       } else {
-        console.warn('Unknown message type from client:', sanitizedConfig);
+        appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }
     });
   });

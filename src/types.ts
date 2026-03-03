@@ -490,6 +490,23 @@ export function isNetworkStats(msg: unknown): msg is NetworkStats {
   return (msg as NetworkStats).type === 'networkStats';
 }
 
+// ── App Log Messages ────────────────────────────────────────────────
+
+export type LogLevel = 'info' | 'warn' | 'error';
+
+export interface AppLogMessage {
+  type: 'appLog';
+  timestamp: number;
+  level: LogLevel;
+  message: string;
+}
+
+export function isAppLogMessage(msg: unknown): msg is AppLogMessage {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as AppLogMessage).type === 'appLog';
+}
+
 // ── Saved WiFi Types ────────────────────────────────────────────────
 
 export interface SavedWiFiSetting {
