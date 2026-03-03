@@ -4,7 +4,7 @@ import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/materia
 import Backdrop from '@mui/material/Backdrop';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
-import { useHistory, useLatest, getServerTime } from '../hooks/useBackend.js';
+import { useHistory, useLatest, serverToBrowserTime } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
 import { StatusBar } from '../components/StatusBar';
 
@@ -23,24 +23,20 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const isConnected = latest?.radioUpdate !== undefined;
   const isNetworkFault = latest !== undefined && !isConnected; // Backend is up, radio not responding
 
-  // State to force re-renders for real-time countdown (using server-adjusted time)
-  const [now, setNow] = useState(getServerTime());
+  // Track elapsed seconds since configuration started, using a stable browser-local
+  // anchor so the countdown doesn't jitter as the server time offset shifts.
+  const [elapsedSec, setElapsedSec] = useState(0);
 
-  // Update time whenever we get a new status update (to sync with offset changes)
-  // Skip when configuring — the setInterval below handles it, and running both
-  // causes the countdown to alternate between two values.
   useEffect(() => {
-    if (!isConfiguring) setNow(getServerTime());
-  }, [latest, isConfiguring]);
+    if (!isConfiguring || !lastActive) {
+      setElapsedSec(0);
+      return;
+    }
 
-  // Update the current time continuously when reconfiguring
-  useEffect(() => {
-    if (!isConfiguring || !lastActive) return;
-
-    const interval = setInterval(() => {
-      setNow(getServerTime());
-    }, 100); // Update every 100ms for smooth countdown
-
+    const startBrowserTime = serverToBrowserTime(lastActive);
+    const update = () => setElapsedSec((Date.now() - startBrowserTime) / 1000);
+    update();
+    const interval = setInterval(update, 100);
     return () => clearInterval(interval);
   }, [isConfiguring, lastActive]);
 
@@ -74,7 +70,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                     : !isLoading &&
                       isConnected &&
                       lastActive &&
-                      `Estimated time remaining: ${(EstimatedReconfigurationTime - (now - lastActive) / 1000).toFixed(1)} seconds`}
+                      `Estimated time remaining: ${(EstimatedReconfigurationTime - elapsedSec).toFixed(1)} seconds`}
               </Typography>
             </Grid>
           </Backdrop>
