@@ -68,19 +68,23 @@ export function startDHCP(station: StationName, team: number | undefined, interf
     return;
   }
 
-  const proc = spawn('dnsmasq', [
-    '--no-daemon',
-    '--port=0', // disable DNS
-    `--interface=${ifName}`,
-    '--bind-interfaces',
-    `--dhcp-range=${rangeStart},${rangeEnd},255.255.255.0,1h`,
-    `--dhcp-option=3,${gateway}`, // router
-    '--dhcp-option=6', // no DNS servers
-    `--dhcp-leasefile=/tmp/dnsmasq-${station}.leases`,
-    '--log-dhcp',
-    '--log-facility=-', // log to stderr instead of syslog
-    '--no-ping',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(
+    'dnsmasq',
+    [
+      '--no-daemon',
+      '--port=0', // disable DNS
+      `--interface=${ifName}`,
+      '--bind-interfaces',
+      `--dhcp-range=${rangeStart},${rangeEnd},255.255.255.0,1h`,
+      `--dhcp-option=3,${gateway}`, // router
+      '--dhcp-option=6', // no DNS servers
+      `--dhcp-leasefile=/tmp/dnsmasq-${station}.leases`,
+      '--log-dhcp',
+      '--log-facility=-', // log to stderr instead of syslog
+      '--no-ping',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
 
   proc.stdout!.on('data', (data: Buffer) => {
     for (const line of data.toString().trim().split('\n')) {

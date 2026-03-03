@@ -220,8 +220,7 @@ export function createLinuxBackend(): NetworkBackend {
 
       // Expected columns: pkts bytes target prot opt in out source destination [match-extensions]
       // Example: 1234  567890 ACCEPT  all  --  eth0.red1  *  0.0.0.0/0  0.0.0.0/0  /* pfms-fwd-red1 */
-      const lineRegex =
-        /^\s*(\d+)\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+\S+\s+.*\/\*\s*(\S+)\s*\*\//;
+      const lineRegex = /^\s*(\d+)\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+)\s+\S+\s+\S+\s+.*\/\*\s*(\S+)\s*\*\//;
 
       const results: ForwardCounter[] = [];
       for (const line of output.split('\n')) {

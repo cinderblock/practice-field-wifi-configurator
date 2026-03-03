@@ -1,4 +1,12 @@
-import type { InterfaceInfo, VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, ForwardCounter } from './types.js';
+import type {
+  InterfaceInfo,
+  VlanOptions,
+  AddAddressOptions,
+  ArpingOptions,
+  SysctlOptions,
+  IptablesOptions,
+  ForwardCounter,
+} from './types.js';
 
 /** OS-agnostic network management backend */
 export interface NetworkBackend {
