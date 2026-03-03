@@ -69,7 +69,7 @@ export function StatusBar() {
       sx={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
         height: 24,
         px: 1,
         backgroundColor: 'background.paper',
