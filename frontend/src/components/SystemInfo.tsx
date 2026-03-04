@@ -1,8 +1,7 @@
 import Typography from '@mui/material/Typography';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Box from '@mui/material/Box';
-import { useLatest, useRadioMessages } from '../hooks/useBackend';
+import { useLatest } from '../hooks/useBackend';
 
 export function SystemInfo() {
   const latest = useLatest();
@@ -21,13 +20,6 @@ export function SystemInfo() {
           <Typography>
             Channel: {channel} ({channelBandwidth})
           </Typography>
-          <Box sx={{ fontFamily: 'Monospace' }}>
-            {useRadioMessages().map(msg => (
-              <Typography key={msg.date.valueOf()} variant="body2">
-                {msg.message}
-              </Typography>
-            ))}
-          </Box>
         </CardContent>
       </Card>
     </>
