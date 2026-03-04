@@ -12,8 +12,12 @@ const EstimatedReconfigurationTime = 35; // seconds
 
 export function WrapAll({ children }: { children: React.ReactNode }) {
   const latest = useLatest();
+  // .slice() to avoid mutating the state array — .reverse() is in-place and
+  // would cause lastActive to oscillate between the first and last ACTIVE
+  // entries on alternating renders.
   const lastActive =
     useHistory()
+      .slice()
       .reverse()
       .find(h => h.radioUpdate?.status === 'ACTIVE')?.timestamp || null;
 
