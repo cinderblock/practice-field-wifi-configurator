@@ -220,7 +220,7 @@ function handleStatusEntry(detail: StatusEntry) {
 
   const alpha = 0.1;
   // Use exponential moving average to smooth out network latency variations
-  // This gives alpha% weight to the OLD offset and (1-alpha)% to the new offset for stability
+  // This gives (1-alpha) weight to the old offset and alpha weight to the new measurement
   timeOffset = timeOffset * (1 - alpha) + newOffset * alpha;
 
   history.push(detail);
