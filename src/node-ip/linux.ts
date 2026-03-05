@@ -115,7 +115,7 @@ export function createLinuxBackend(): NetworkBackend {
         if (opts.broadcast) args.push('broadcast', opts.broadcast);
         await ip(...args);
       } catch (err: unknown) {
-        if (isExecError(err) && err.stderr.includes('File exists')) return;
+        if (isExecError(err) && (err.stderr.includes('File exists') || err.stderr.includes('Address already assigned'))) return;
         throw err;
       }
     },
