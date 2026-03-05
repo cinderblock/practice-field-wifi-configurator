@@ -396,7 +396,11 @@ class RadioManager {
 
   private notifyConfigChange() {
     for (const listener of this.configChangeListeners) {
-      try { listener(); } catch (err) { console.error('Error in config change listener:', err); }
+      try {
+        listener();
+      } catch (err) {
+        console.error('Error in config change listener:', err);
+      }
     }
   }
 

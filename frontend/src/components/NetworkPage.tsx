@@ -88,7 +88,11 @@ function StationDevicesCard({ station, scan }: { station: StationName; scan?: St
           <Typography variant="subtitle1" fontWeight="bold">
             {prettyStationName(station)} — Team {scan.team}
           </Typography>
-          <Chip label={`${aliveCount} / ${scan.hosts.length}`} size="small" color={aliveCount > 0 ? 'success' : 'default'} />
+          <Chip
+            label={`${aliveCount} / ${scan.hosts.length}`}
+            size="small"
+            color={aliveCount > 0 ? 'success' : 'default'}
+          />
         </Box>
         <Table size="small">
           <TableHead>

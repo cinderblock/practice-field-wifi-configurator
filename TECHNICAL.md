@@ -36,7 +36,7 @@ A frontend client sends a WebSocket message with `{ station, ssid, wpaKey }`. He
      - **Add MASQUERADE** — `iptables -t nat -A POSTROUTING -o eth0.red1 -j MASQUERADE` so guest WiFi traffic is NATed to the team VLAN
    - If no team:
      - **Bring down** — `ip link set eth0.red1 down`
-   - **Start DHCP server** *(OFFSEASON only)* — serves `10.TE.AM.100–199`, gateway `10.TE.AM.254` (configurable). Skipped in PRACTICE mode since the AP handles DHCP (gateway = `10.TE.AM.4`).
+   - **Start DHCP server** _(OFFSEASON only)_ — serves `10.TE.AM.100–199`, gateway `10.TE.AM.254` (configurable). Skipped in PRACTICE mode since the AP handles DHCP (gateway = `10.TE.AM.4`).
 
    **b. Radio configuration** (`radioManager.ts`):
    - **POST /configuration** — sends `{ stationConfigurations: { red1: { ssid, wpaKey }, ... } }` to the radio
@@ -59,7 +59,7 @@ When the cron schedule fires (or manually triggered):
 Without the `YOLO` environment variable set:
 
 - Network operations log what they would do but make no OS changes (dry-run backend)
-- DHCP servers are not started *(OFFSEASON mode only — PRACTICE mode relies on the AP for DHCP regardless)*
+- DHCP servers are not started _(OFFSEASON mode only — PRACTICE mode relies on the AP for DHCP regardless)_
 - The routing health check is skipped
 - Radio communication still works normally (it's always live)
 

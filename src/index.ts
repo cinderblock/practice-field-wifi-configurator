@@ -53,10 +53,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       await checkRequiredTools(tools);
     }
     net = process.env.YOLO ? createBackend() : createDryRunBackend();
-    // Steamboat serves multiple roles on this interface:
+    // pFMS serves multiple roles on this interface:
     const expectedIps = [
       '10.0.100.5', // FMS
-      '10.0.100.40', // Syslog server
+      // We reconfigure the radio to use our IP instead of listening on an extra interface
+      // '10.0.100.40', // Syslog server
     ];
     await checkInterfaceIps(VlanInterface, expectedIps, net);
 

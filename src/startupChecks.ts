@@ -114,7 +114,9 @@ export async function checkRequiredTools(tools: string[]): Promise<void> {
 
   if (missing.length > 0) {
     console.error(`Missing required tools: ${missing.join(', ')}`);
-    console.error(`Install with: sudo apt install ${missing.map(t => t === 'arping' ? 'iputils-arping' : t).join(' ')}`);
+    console.error(
+      `Install with: sudo apt install ${missing.map(t => (t === 'arping' ? 'iputils-arping' : t)).join(' ')}`,
+    );
     process.exit(78); // EX_CONFIG per sysexits.h
   }
 }

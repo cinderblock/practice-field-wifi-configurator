@@ -192,7 +192,15 @@ let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 let currentSubnetScan: SubnetScanResults | null = null;
 
-type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage | TelemetryUpdate | SubnetScanResults;
+type Message =
+  | StatusEntry
+  | ErrorMessage
+  | RadioMessage
+  | MatchState
+  | NetworkStats
+  | AppLogMessage
+  | TelemetryUpdate
+  | SubnetScanResults;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {

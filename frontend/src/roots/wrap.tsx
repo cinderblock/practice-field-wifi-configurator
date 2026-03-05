@@ -25,8 +25,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   // When the page is refreshed mid-reconfiguration, the server's history window
   // (default 60 s) may have already pruned all ACTIVE entries.  Fall back to the
   // first CONFIGURING entry so the countdown still has an anchor point.
-  const firstConfiguring =
-    hist.find(h => h.radioUpdate?.status === 'CONFIGURING')?.timestamp || null;
+  const firstConfiguring = hist.find(h => h.radioUpdate?.status === 'CONFIGURING')?.timestamp || null;
   const reconfigStart = lastActive ?? firstConfiguring;
 
   const isLoading = latest === undefined || latest.radioUpdate === undefined;
@@ -78,7 +77,13 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
           <CssBaseline />
           <StatusBar />
           <Backdrop open={isConfiguring || !isConnected} sx={{ zIndex: 9999 }}>
-            <Grid container direction="column" justifyContent="center" alignItems="center" sx={{ height: '100%', userSelect: 'none' }}>
+            <Grid
+              container
+              direction="column"
+              justifyContent="center"
+              alignItems="center"
+              sx={{ height: '100%', userSelect: 'none' }}
+            >
               <Typography variant="h4" sx={{ mb: 2 }}>
                 {isLoading
                   ? 'Loading...'

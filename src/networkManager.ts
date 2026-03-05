@@ -151,16 +151,26 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
     if (prevTeam) {
       await net.flushAddresses(ifName);
       await net.iptables({
-        chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT',
-        comment: `${commentPrefix}fwd-${station}`, action: '-D',
+        chain: 'FORWARD',
+        inInterface: ifName,
+        jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-${station}`,
+        action: '-D',
       });
       await net.iptables({
-        chain: 'FORWARD', outInterface: ifName, jump: 'ACCEPT',
-        comment: `${commentPrefix}fwd-in-${station}`, action: '-D',
+        chain: 'FORWARD',
+        outInterface: ifName,
+        jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-in-${station}`,
+        action: '-D',
       });
       await net.iptables({
-        table: 'nat', chain: 'POSTROUTING', outInterface: ifName, jump: 'MASQUERADE',
-        comment: `${commentPrefix}nat-vlan-${station}`, action: '-D',
+        table: 'nat',
+        chain: 'POSTROUTING',
+        outInterface: ifName,
+        jump: 'MASQUERADE',
+        comment: `${commentPrefix}nat-vlan-${station}`,
+        action: '-D',
       });
     }
 
@@ -181,17 +191,27 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
 
       // Add forwarding rules
       await net.iptables({
-        chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT',
-        comment: `${commentPrefix}fwd-${station}`, action: '-A',
+        chain: 'FORWARD',
+        inInterface: ifName,
+        jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-${station}`,
+        action: '-A',
       });
       await net.iptables({
-        chain: 'FORWARD', outInterface: ifName, jump: 'ACCEPT',
-        comment: `${commentPrefix}fwd-in-${station}`, action: '-A',
+        chain: 'FORWARD',
+        outInterface: ifName,
+        jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-in-${station}`,
+        action: '-A',
       });
-      // MASQUERADE traffic entering the VLAN so return traffic comes back to steamboat
+      // MASQUERADE traffic entering the VLAN so return traffic comes back to the same host
       await net.iptables({
-        table: 'nat', chain: 'POSTROUTING', outInterface: ifName, jump: 'MASQUERADE',
-        comment: `${commentPrefix}nat-vlan-${station}`, action: '-A',
+        table: 'nat',
+        chain: 'POSTROUTING',
+        outInterface: ifName,
+        jump: 'MASQUERADE',
+        comment: `${commentPrefix}nat-vlan-${station}`,
+        action: '-A',
       });
     } else {
       await net.setInterfaceDown(ifName);

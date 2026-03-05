@@ -106,9 +106,7 @@ function StationControlCard({
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {showCheckbox && (
-              <Checkbox checked={participating} onChange={onToggle} size="small" sx={{ mr: 0.5 }} />
-            )}
+            {showCheckbox && <Checkbox checked={participating} onChange={onToggle} size="small" sx={{ mr: 0.5 }} />}
             <Box>
               <Typography variant="subtitle1" fontWeight="bold">
                 {title}

@@ -150,11 +150,9 @@ export class SubnetScanner {
 
   private async runFping(station: StationName, rangeStart: string, rangeEnd: string): Promise<Set<string> | null> {
     try {
-      const { stdout } = await execFile(
-        'fping',
-        ['-a', '-r', '0', '-t', '200', '-q', '-g', rangeStart, rangeEnd],
-        { timeout: 15_000 },
-      );
+      const { stdout } = await execFile('fping', ['-a', '-r', '0', '-t', '200', '-q', '-g', rangeStart, rangeEnd], {
+        timeout: 15_000,
+      });
       return SubnetScanner.parseAliveIps(stdout);
     } catch (err: unknown) {
       // fping exits 1 when some hosts are unreachable (the common case).
@@ -176,7 +174,12 @@ export class SubnetScanner {
   }
 
   private static parseAliveIps(stdout: string): Set<string> {
-    return new Set(stdout.trim().split('\n').filter(line => line.trim()));
+    return new Set(
+      stdout
+        .trim()
+        .split('\n')
+        .filter(line => line.trim()),
+    );
   }
 
   static teamSubnet(team: number): string {
