@@ -3,7 +3,7 @@ import { runSyslogServer } from './runSyslogServer.js';
 import { setupWebSocket } from './websocketServer.js';
 import { runFMS } from './fmsServer.js';
 import { startConfigurationScheduler } from './scheduler.js';
-import { waitForRadio, detectFirmwareMode, checkInterfaceIps } from './startupChecks.js';
+import { waitForRadio, detectFirmwareMode, checkInterfaceIps, checkRequiredTools } from './startupChecks.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
@@ -44,6 +44,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
+    if (process.env.YOLO) {
+      await checkRequiredTools(['arping', 'iptables', 'dnsmasq']);
+    }
     net = process.env.YOLO ? createBackend() : createDryRunBackend();
     // Steamboat serves multiple roles on this interface:
     const expectedIps = [

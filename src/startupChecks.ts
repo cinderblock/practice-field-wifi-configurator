@@ -96,6 +96,31 @@ export async function checkInterfaceIps(iface: string, expectedIps: string[], ne
   }
 }
 
+/**
+ * Verify that required system tools are available on the PATH.
+ * Exits the process with an error if any are missing.
+ */
+export async function checkRequiredTools(tools: string[]): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const exec = promisify(execFile);
+
+  const missing: string[] = [];
+  for (const tool of tools) {
+    try {
+      await exec('which', [tool]);
+    } catch {
+      missing.push(tool);
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error(`Missing required tools: ${missing.join(', ')}`);
+    console.error(`Install with: sudo apt install ${missing.map(t => t === 'arping' ? 'iputils-arping' : t).join(' ')}`);
+    process.exit(78); // EX_CONFIG per sysexits.h
+  }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
