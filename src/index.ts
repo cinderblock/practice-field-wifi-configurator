@@ -80,6 +80,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const { wss, broadcast } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
   setBroadcast(broadcast);
 
+  // Push updated match state (team numbers) when station configs change
+  radioManager.addConfigChangeListener(() => broadcast(matchEngine.getState()));
+
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {
     startConfigurationScheduler(radioManager, RadioClearSchedule, RadioClearTimezone, matchEngine);
@@ -128,19 +131,23 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   if (net) {
     let latestNetworkStats: Awaited<ReturnType<typeof buildNetworkStats>> | null = null;
 
-    // Send cached stats immediately when a new client connects
-    wss.on('connection', ws => {
-      if (latestNetworkStats) ws.send(JSON.stringify(latestNetworkStats));
-    });
-
-    setInterval(async () => {
+    async function refreshNetworkStats() {
       try {
         latestNetworkStats = await buildNetworkStats(net!, IPTABLES_COMMENT_PREFIX);
         broadcast(latestNetworkStats);
       } catch (err) {
         console.error('Error polling network stats:', err);
       }
-    }, 5000);
+    }
+
+    // Send cached stats immediately when a new client connects
+    wss.on('connection', ws => {
+      if (latestNetworkStats) ws.send(JSON.stringify(latestNetworkStats));
+    });
+
+    // Fetch immediately so first clients don't wait 5s
+    refreshNetworkStats();
+    setInterval(refreshNetworkStats, 5000);
   }
 
   // Clean up iptables rules on graceful shutdown

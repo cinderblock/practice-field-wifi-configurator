@@ -28,6 +28,7 @@ class RadioManager {
   private readonly historyDuration = Number(process.env.RADIO_HISTORY_DURATION_MS) || 60000; // 60 seconds default
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
+  private configChangeListeners: (() => void)[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
   private lastBroadcastEntry: StatusEntry | null = null;
   private lastBroadcastTime: number = 0;
@@ -191,6 +192,7 @@ class RadioManager {
 
     if (config) this.activeConfig[stationId] = config;
     else delete this.activeConfig[stationId];
+    this.notifyConfigChange();
 
     // Bail if just staging the change
     if (!stage) await this.commitConfiguration();
@@ -331,6 +333,7 @@ class RadioManager {
 
     try {
       for (const stationId in this.activeConfig) delete this.activeConfig[stationId as StationName];
+      this.notifyConfigChange();
 
       await this.commitConfiguration();
 
@@ -384,6 +387,17 @@ class RadioManager {
   addStatusListener(listener: StatusListener): () => void {
     this.updateListeners.push(listener);
     return () => this.updateListeners.splice(this.updateListeners.indexOf(listener), 1);
+  }
+
+  addConfigChangeListener(listener: () => void): () => void {
+    this.configChangeListeners.push(listener);
+    return () => this.configChangeListeners.splice(this.configChangeListeners.indexOf(listener), 1);
+  }
+
+  private notifyConfigChange() {
+    for (const listener of this.configChangeListeners) {
+      try { listener(); } catch (err) { console.error('Error in config change listener:', err); }
+    }
   }
 
   getStationForTeam(teamNumber: number): StationName | undefined {
