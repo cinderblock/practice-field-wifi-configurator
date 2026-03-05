@@ -47,12 +47,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
-    if (process.env.YOLO) {
-      const tools = ['iptables', 'arping', 'fping'];
-      if (firmwareMode !== 'PRACTICE') tools.push('dnsmasq');
-      await checkRequiredTools(tools);
-    }
-    net = process.env.YOLO ? createBackend() : createDryRunBackend();
+    const tools = ['iptables', 'arping', 'fping'];
+    if (firmwareMode !== 'PRACTICE') tools.push('dnsmasq');
+    await checkRequiredTools(tools);
+    net = process.env.DRY_RUN ? createDryRunBackend() : createBackend();
     // pFMS serves multiple roles on this interface:
     const expectedIps = [
       '10.0.100.5', // FMS
@@ -90,7 +88,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       latestSubnetScan = results;
       broadcast(results);
     },
-    !process.env.YOLO,
   );
   let latestSubnetScan: ReturnType<SubnetScanner['getResults']> | null = null;
   subnetScanner.start(10_000);

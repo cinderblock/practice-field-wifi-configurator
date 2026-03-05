@@ -4,7 +4,7 @@ import { appInfo, appWarn } from './appLogger.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
-const net: NetworkBackend = process.env.YOLO ? createBackend() : createDryRunBackend();
+const net: NetworkBackend = process.env.DRY_RUN ? createDryRunBackend() : createBackend();
 const commentPrefix = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 const vlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
 if (vlanHostOctet < 220 || vlanHostOctet > 254) {
@@ -59,7 +59,7 @@ export function startDHCPServer(station: StationName, team: number | undefined, 
   const rangeEnd = teamIp(team, 199);
   const ifName = `${interfaceName}.${station}`;
 
-  if (!process.env.YOLO) {
+  if (process.env.DRY_RUN) {
     console.log(`[dry-run] DHCP server not started for ${station} (${team})`);
     console.log(`  Interface: ${ifName}`);
     console.log(`  Range: ${rangeStart} - ${rangeEnd}`);

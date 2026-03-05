@@ -56,7 +56,7 @@ When the cron schedule fires (or manually triggered):
 
 ## Dry-Run Mode
 
-Without the `YOLO` environment variable set:
+With the `DRY_RUN` environment variable set:
 
 - Network operations log what they would do but make no OS changes (dry-run backend)
 - DHCP servers are not started _(OFFSEASON mode only — PRACTICE mode relies on the AP for DHCP regardless)_
