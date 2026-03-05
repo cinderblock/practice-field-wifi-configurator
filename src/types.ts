@@ -386,6 +386,8 @@ export type StationControlState = {
   mode: Mode;
 };
 
+export type MatchEndReason = 'normal' | 'stopped' | 'estop';
+
 export type MatchState = {
   type: 'matchState';
   phase: MatchPhase;
@@ -394,6 +396,7 @@ export type MatchState = {
   config: MatchConfig | null;
   stationStates: Partial<Record<StationName, StationControlState>>;
   connectedStations: StationName[];
+  endReason?: MatchEndReason;
 };
 
 export function isMatchState(msg: unknown): msg is MatchState {

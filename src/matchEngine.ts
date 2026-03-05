@@ -1,6 +1,6 @@
 import dgram from 'dgram';
 import { makeDSPacket, Control, UdpSendPort } from './fmsServer.js';
-import { MatchPhase, MatchConfig, MatchState, StationName, StationNameList, StationControlState } from './types.js';
+import { MatchPhase, MatchConfig, MatchState, MatchEndReason, StationName, StationNameList, StationControlState } from './types.js';
 import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
@@ -26,6 +26,7 @@ export class MatchEngine {
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
+  private endReason: MatchEndReason | undefined;
   private teamResolver: TeamResolver;
 
   constructor(teamResolver?: TeamResolver) {
@@ -67,6 +68,7 @@ export class MatchEngine {
     this.config = sanitized;
     this.matchNumber++;
     this.totalMatchTime = 0;
+    this.endReason = undefined;
     this.phase = 'countdown';
     this.remainingTime = 3; // 3-second countdown
 
@@ -90,6 +92,7 @@ export class MatchEngine {
   stopMatch() {
     if (this.phase === 'idle' || this.phase === 'postMatch') return;
     this.disableAll();
+    this.endReason = 'stopped';
     this.phase = 'postMatch';
     this.stopTick();
     this.sendPacketsToAll();
@@ -103,6 +106,7 @@ export class MatchEngine {
       state.eStop = true;
       state.enabled = false;
     }
+    this.endReason = 'estop';
     this.phase = 'postMatch';
     this.stopTick();
     // Send e-stop packets to ALL stations with known DS addresses, not just participating
@@ -170,6 +174,7 @@ export class MatchEngine {
       config: this.config,
       stationStates,
       connectedStations: [...this.dsAddresses.keys()],
+      endReason: this.endReason,
     };
   }
 
@@ -224,6 +229,7 @@ export class MatchEngine {
 
       case 'teleop':
       case 'endgame':
+        this.endReason = 'normal';
         this.phase = 'postMatch';
         this.remainingTime = 0;
         this.disableAll();
