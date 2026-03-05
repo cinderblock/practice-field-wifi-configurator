@@ -38,43 +38,39 @@ function describeIp(host: DiscoveredHost): string | null {
 }
 
 function StationStatsCard({ station, stats }: { station: StationName; stats?: StationNetworkStats }) {
+  if (!stats) return null;
+
   return (
     <Card sx={{ mb: 1, borderLeft: `4px solid ${allianceColor(station)}` }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
           {prettyStationName(station)}
         </Typography>
-        {stats ? (
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
-            <Box />
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
-              Packets
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
-              Bytes
-            </Typography>
-
-            <Typography variant="body2">From robot</Typography>
-            <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
-              {stats.rxPackets.toLocaleString()}
-            </Typography>
-            <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
-              {formatBytes(stats.rxBytes)}
-            </Typography>
-
-            <Typography variant="body2">To robot</Typography>
-            <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
-              {stats.txPackets.toLocaleString()}
-            </Typography>
-            <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
-              {formatBytes(stats.txBytes)}
-            </Typography>
-          </Box>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            No forwarding rules active
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
+          <Box />
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+            Packets
           </Typography>
-        )}
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+            Bytes
+          </Typography>
+
+          <Typography variant="body2">From robot</Typography>
+          <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+            {stats.rxPackets.toLocaleString()}
+          </Typography>
+          <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+            {formatBytes(stats.rxBytes)}
+          </Typography>
+
+          <Typography variant="body2">To robot</Typography>
+          <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+            {stats.txPackets.toLocaleString()}
+          </Typography>
+          <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+            {formatBytes(stats.txBytes)}
+          </Typography>
+        </Box>
       </CardContent>
     </Card>
   );
@@ -130,6 +126,7 @@ export function NetworkPage() {
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
 
+  const hasAnyStats = networkStats && Object.keys(networkStats.stations).length > 0;
   const hasAnyDevices = subnetScan && Object.values(subnetScan.stations).some(s => s && s.hosts.length > 0);
 
   return (
@@ -138,13 +135,7 @@ export function NetworkPage() {
         Network Status
       </Typography>
 
-      {!networkStats ? (
-        <Card>
-          <CardContent>
-            <Typography color="text.secondary">Waiting for network stats...</Typography>
-          </CardContent>
-        </Card>
-      ) : (
+      {hasAnyStats && (
         <Card>
           <CardContent>
             <Typography variant="h5" gutterBottom>
@@ -153,12 +144,12 @@ export function NetworkPage() {
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
-                  <StationStatsCard key={s} station={s} stats={networkStats.stations[s]} />
+                  <StationStatsCard key={s} station={s} stats={networkStats!.stations[s]} />
                 ))}
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
-                  <StationStatsCard key={s} station={s} stats={networkStats.stations[s]} />
+                  <StationStatsCard key={s} station={s} stats={networkStats!.stations[s]} />
                 ))}
               </Grid>
             </Grid>
