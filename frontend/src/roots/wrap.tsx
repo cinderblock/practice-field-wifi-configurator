@@ -15,11 +15,19 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   // .slice() to avoid mutating the state array — .reverse() is in-place and
   // would cause lastActive to oscillate between the first and last ACTIVE
   // entries on alternating renders.
+  const hist = useHistory();
   const lastActive =
-    useHistory()
+    hist
       .slice()
       .reverse()
       .find(h => h.radioUpdate?.status === 'ACTIVE')?.timestamp || null;
+
+  // When the page is refreshed mid-reconfiguration, the server's history window
+  // (default 60 s) may have already pruned all ACTIVE entries.  Fall back to the
+  // first CONFIGURING entry so the countdown still has an anchor point.
+  const firstConfiguring =
+    hist.find(h => h.radioUpdate?.status === 'CONFIGURING')?.timestamp || null;
+  const reconfigStart = lastActive ?? firstConfiguring;
 
   const isLoading = latest === undefined || latest.radioUpdate === undefined;
   const { status } = latest?.radioUpdate || {};
@@ -46,11 +54,11 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   }, [isDefinitelyDone]);
 
   useEffect(() => {
-    if (!isConfiguring || !lastActive) return;
+    if (!isConfiguring || !reconfigStart) return;
 
     // Compute the browser-local anchor only once per reconfiguration cycle
     if (startTimeRef.current === null) {
-      startTimeRef.current = serverToBrowserTime(lastActive);
+      startTimeRef.current = serverToBrowserTime(reconfigStart);
     }
 
     const startBrowserTime = startTimeRef.current;
@@ -58,7 +66,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
     update();
     const interval = setInterval(update, 100);
     return () => clearInterval(interval);
-  }, [isConfiguring, lastActive]);
+  }, [isConfiguring, reconfigStart]);
 
   // Enable dark mode for the entire app (system default)
   const theme = createTheme({ colorSchemes: { dark: true } });
@@ -90,7 +98,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
                 </Typography>
               ) : (
                 isConnected &&
-                lastActive && (
+                reconfigStart && (
                   <>
                     <Typography
                       variant="h1"
