@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary.js';
 import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/material';
 import Backdrop from '@mui/material/Backdrop';
-import CircularProgress from '@mui/material/CircularProgress';
+import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useHistory, useLatest, serverToBrowserTime } from '../hooks/useBackend.js';
 import GithubCorner from '../components/GithubCorner';
@@ -69,31 +69,48 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <StatusBar />
-          <Backdrop open={isConfiguring || !isConnected} style={{ zIndex: 9999 }}>
-            <Grid container direction="column" justifyContent="center" alignItems="center" style={{ height: '100%' }}>
-              <Typography variant="h2" style={{ marginBottom: '1rem', userSelect: 'none' }}>
+          <Backdrop open={isConfiguring || !isConnected} sx={{ zIndex: 9999 }}>
+            <Grid container direction="column" justifyContent="center" alignItems="center" sx={{ height: '100%', userSelect: 'none' }}>
+              <Typography variant="h4" sx={{ mb: 2 }}>
                 {isLoading
-                  ? 'Loading'
+                  ? 'Loading...'
                   : isNetworkFault
-                    ? 'Network Fault. Field Radio Unreachable'
+                    ? 'Network Fault. Field Radio Unreachable...'
                     : isConnected
-                      ? 'Reconfiguration in progress'
-                      : 'Radio connecting'}
-                ...
+                      ? 'Reconfiguration in progress...'
+                      : 'Radio connecting...'}
               </Typography>
-              <CircularProgress style={{ width: '25vw', height: '25vw' }} />
-              <Typography style={{ marginTop: '1rem', userSelect: 'none' }}>
-                {!latest
-                  ? 'Connecting to backend...'
-                  : isNetworkFault
-                    ? 'The field radio is not responding. Check power, cabling, and IP configuration.'
-                    : !isLoading &&
-                      isConnected &&
-                      lastActive &&
-                      (elapsedSec < EstimatedReconfigurationTime
-                        ? `Estimated time remaining: ${(EstimatedReconfigurationTime - elapsedSec).toFixed(1)} seconds`
-                        : 'Reconfiguration taking longer than expected...')}
-              </Typography>
+
+              {/* Hero countdown or status message */}
+              {!latest ? (
+                <Typography variant="h5">Connecting to backend...</Typography>
+              ) : isNetworkFault ? (
+                <Typography variant="h6" sx={{ maxWidth: 500, textAlign: 'center' }}>
+                  The field radio is not responding. Check power, cabling, and IP configuration.
+                </Typography>
+              ) : (
+                isConnected &&
+                lastActive && (
+                  <>
+                    <Typography
+                      variant="h1"
+                      sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
+                    >
+                      {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
+                    </Typography>
+                    <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
+                      {elapsedSec < EstimatedReconfigurationTime
+                        ? 'seconds remaining'
+                        : 'Reconfiguration taking longer than expected...'}
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min(100, (elapsedSec / EstimatedReconfigurationTime) * 100)}
+                      sx={{ width: '100%', maxWidth: 500, height: 10, borderRadius: 5 }}
+                    />
+                  </>
+                )
+              )}
             </Grid>
           </Backdrop>
           <Box sx={{ my: 1 }} />
