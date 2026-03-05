@@ -4,6 +4,7 @@ import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
@@ -100,13 +101,18 @@ function StationControlCard({
       sx={{
         mb: 1,
         borderLeft: `4px solid ${allianceColor(station)}`,
-        opacity: showCheckbox && !participating ? 0.5 : 1,
       }}
     >
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {showCheckbox && <Checkbox checked={participating} onChange={onToggle} size="small" sx={{ mr: 0.5 }} />}
+            {showCheckbox && (
+              <FormControlLabel
+                control={<Checkbox checked={participating} onChange={onToggle} size="small" />}
+                label="In match"
+                sx={{ mr: 0.5 }}
+              />
+            )}
             <Box>
               <Typography variant="subtitle1" fontWeight="bold">
                 {title}
