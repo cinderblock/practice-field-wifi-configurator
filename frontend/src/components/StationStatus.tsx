@@ -24,11 +24,13 @@ import {
   useUpdateCallback,
   useLatestTelemetry,
   useTelemetryCallback,
+  useNetworkStats,
+  useSubnetScan,
 } from '../hooks/useBackend';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
-import { prettyStationName } from '../../../src/utils';
+import { describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
 import { Box, FormControlLabel, Switch, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { CopyToClipboard } from './CopyToClipboard';
@@ -70,6 +72,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   useTelemetryCallback(handleTelemetryUpdate);
 
   const telemetry = useLatestTelemetry(station);
+  const networkStats = useNetworkStats();
+  const subnetScan = useSubnetScan();
 
   if (!latest) {
     return <Typography>Loading...</Typography>;
@@ -521,6 +525,46 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                       </TableBody>
                     </Table>
 
+                    {/* IP Forwarding Counters (iptables FORWARD rules) */}
+                    {networkStats?.stations[station] && (() => {
+                      const fwd = networkStats.stations[station]!;
+                      return (
+                        <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>IP Forwarding</TableCell>
+                              <Tooltip title="Packet count">
+                                <TableCell sx={{ textAlign: 'right' }}>Packets</TableCell>
+                              </Tooltip>
+                              <Tooltip title="Byte count">
+                                <TableCell sx={{ textAlign: 'right' }}>Bytes</TableCell>
+                              </Tooltip>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell>From robot</TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
+                                {fwd.rxPackets.toLocaleString()}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
+                                {formatBytes(fwd.rxBytes)}
+                              </TableCell>
+                            </TableRow>
+                            <TableRow>
+                              <TableCell>To robot</TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
+                                {fwd.txPackets.toLocaleString()}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
+                                {formatBytes(fwd.txBytes)}
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      );
+                    })()}
+
                     {/* Robot Telemetry Group (only shown when telemetry data exists) */}
                     {telemetry && (
                       <>
@@ -646,6 +690,55 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         )}
                       </>
                     )}
+                    {/* Subnet Scan — discovered devices on the team VLAN */}
+                    {(() => {
+                      const scan = subnetScan?.stations[station];
+                      if (!scan || scan.hosts.length === 0) return null;
+                      const aliveCount = scan.hosts.filter(h => h.alive).length;
+                      return (
+                        <Box sx={{ mt: 0.5 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, mb: 0.25 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Subnet {scan.subnet}
+                            </Typography>
+                            <Chip
+                              label={`${aliveCount} / ${scan.hosts.length}`}
+                              size="small"
+                              color={aliveCount > 0 ? 'success' : 'default'}
+                              sx={{ height: 18, fontSize: '0.7rem' }}
+                            />
+                          </Box>
+                          <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>IP</TableCell>
+                                <TableCell>Status</TableCell>
+                                <TableCell>Device</TableCell>
+                                <TableCell>Last Seen</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {scan.hosts.map(host => (
+                                <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
+                                  <TableCell sx={{ fontFamily: 'monospace' }}>{host.ip}</TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={host.alive ? 'UP' : 'DOWN'}
+                                      size="small"
+                                      color={host.alive ? 'success' : 'error'}
+                                      variant={host.alive ? 'filled' : 'outlined'}
+                                      sx={{ height: 18, fontSize: '0.7rem' }}
+                                    />
+                                  </TableCell>
+                                  <TableCell>{describeIp(host) ?? ''}</TableCell>
+                                  <TableCell>{formatAge(host.lastSeen)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </Box>
+                      );
+                    })()}
                   </Box>
                 )}
               </>

@@ -11,31 +11,9 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 
-import { DiscoveredHost, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
-import { allianceColor, prettyStationName } from '../../../src/utils';
+import { StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
+import { allianceColor, describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
 import { useNetworkStats, useSubnetScan } from '../hooks/useBackend';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function formatAge(ts: number): string {
-  const seconds = Math.round((Date.now() - ts) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  return `${Math.round(seconds / 3600)}h ago`;
-}
-
-function describeIp(host: DiscoveredHost): string | null {
-  const lastOctet = parseInt(host.ip.split('.')[3]);
-  if (lastOctet === 1) return 'Radio';
-  if (lastOctet === 2) return 'roboRIO';
-  if (lastOctet >= 100 && lastOctet <= 199) return 'DHCP client';
-  return null;
-}
 
 function StationStatsCard({ station, stats }: { station: StationName; stats?: StationNetworkStats }) {
   if (!stats) return null;

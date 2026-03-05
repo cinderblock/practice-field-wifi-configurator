@@ -1,5 +1,27 @@
-import type { StationName } from './types.js';
+import type { DiscoveredHost, StationName } from './types.js';
 import CIDRMatcher from 'cidr-matcher';
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+export function formatAge(ts: number): string {
+  const seconds = Math.round((Date.now() - ts) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
+}
+
+export function describeIp(host: DiscoveredHost): string | null {
+  const lastOctet = parseInt(host.ip.split('.')[3]);
+  if (lastOctet === 1) return 'Radio';
+  if (lastOctet === 2) return 'roboRIO';
+  if (lastOctet >= 100 && lastOctet <= 199) return 'DHCP client';
+  return null;
+}
 
 export function capitalizeFirstLetter(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
