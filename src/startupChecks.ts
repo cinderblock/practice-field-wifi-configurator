@@ -51,9 +51,7 @@ export function detectFirmwareMode(version: string): 'PRACTICE' | 'OFFSEASON' | 
 
   if (upper.includes('PRACTICE')) {
     console.log(`Radio firmware: PRACTICE (${version})`);
-    appWarn(
-      'PRACTICE firmware detected. VLAN management and routing will not work as expected. Switch to OFFSEASON firmware for full functionality.',
-    );
+    console.log('PRACTICE firmware handles DHCP — skipping dnsmasq for team subnets.');
     return 'PRACTICE';
   }
 

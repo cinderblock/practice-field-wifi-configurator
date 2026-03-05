@@ -45,7 +45,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
     if (process.env.YOLO) {
-      await checkRequiredTools(['arping', 'iptables', 'dnsmasq']);
+      const tools = ['iptables', 'arping'];
+      if (firmwareMode !== 'PRACTICE') tools.push('dnsmasq');
+      await checkRequiredTools(tools);
     }
     net = process.env.YOLO ? createBackend() : createDryRunBackend();
     // Steamboat serves multiple roles on this interface:

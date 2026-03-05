@@ -6,6 +6,10 @@ import type { NetworkBackend } from './node-ip/index.js';
 
 const net: NetworkBackend = process.env.YOLO ? createBackend() : createDryRunBackend();
 const commentPrefix = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
+const vlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
+if (vlanHostOctet < 220 || vlanHostOctet > 254) {
+  throw new Error(`VLAN_HOST_OCTET must be between 220 and 254 (got ${vlanHostOctet})`);
+}
 
 function teamIp(team: number, end: number | string = '') {
   if (team < 1 || team > 25599) {
@@ -26,36 +30,31 @@ function teamIp(team: number, end: number | string = '') {
   return `10.${high}.${low}.${end}`;
 }
 
+// ── DHCP Server (dnsmasq, OFFSEASON mode) ──────────────────────────
+
 /** Track running dnsmasq processes per station */
-const dhcpProcesses = new Map<StationName, ChildProcess>();
+const dhcpServerProcesses = new Map<StationName, ChildProcess>();
 
 /** Stop a running DHCP server for a station */
-function stopDHCP(station: StationName) {
-  const proc = dhcpProcesses.get(station);
+function stopDHCPServer(station: StationName) {
+  const proc = dhcpServerProcesses.get(station);
   if (proc) {
     proc.kill();
-    dhcpProcesses.delete(station);
+    dhcpServerProcesses.delete(station);
     console.log(`DHCP server stopped for ${station}`);
   }
 }
 
-/** Stop all running DHCP servers (for cleanup on shutdown) */
-export function stopAllDHCP() {
-  for (const station of dhcpProcesses.keys()) {
-    stopDHCP(station);
-  }
-}
-
-export function startDHCP(station: StationName, team: number | undefined, interfaceName: string) {
+export function startDHCPServer(station: StationName, team: number | undefined, interfaceName: string) {
   // Always stop the previous instance for this station
-  stopDHCP(station);
+  stopDHCPServer(station);
 
   if (team === undefined) {
     console.log(`No team for ${station}, skipping DHCP server`);
     return;
   }
 
-  const gateway = teamIp(team, 4);
+  const gateway = teamIp(team, vlanHostOctet);
   const rangeStart = teamIp(team, 100);
   const rangeEnd = teamIp(team, 199);
   const ifName = `${interfaceName}.${station}`;
@@ -99,7 +98,7 @@ export function startDHCP(station: StationName, team: number | undefined, interf
   });
 
   proc.on('exit', (code, signal) => {
-    dhcpProcesses.delete(station);
+    dhcpServerProcesses.delete(station);
     if (signal) {
       console.log(`DHCP server for ${station} killed by ${signal}`);
     } else if (code !== 0) {
@@ -107,9 +106,20 @@ export function startDHCP(station: StationName, team: number | undefined, interf
     }
   });
 
-  dhcpProcesses.set(station, proc);
+  dhcpServerProcesses.set(station, proc);
   console.log(`DHCP server started for ${station} (team ${team}) on ${ifName}`);
 }
+
+// ── Cleanup ────────────────────────────────────────────────────────
+
+/** Stop all running DHCP servers (for cleanup on shutdown) */
+export function stopAllDHCP() {
+  for (const station of dhcpServerProcesses.keys()) {
+    stopDHCPServer(station);
+  }
+}
+
+// ── Network configuration ──────────────────────────────────────────
 
 // TODO: load this map from the radio config
 const vlanMap = {
@@ -121,70 +131,74 @@ const vlanMap = {
   blue3: 60,
 };
 
-async function updateNetworkConfig(stations: Stations, physical_interface: string) {
-  // Phase 1: Create VLANs and bring up interfaces with teams (required before arping)
+/** Track what's currently configured per station to avoid unnecessary teardown */
+let previousStations: Stations = {} as Stations;
+
+async function updateNetworkConfig(stations: Stations, physical_interface: string, practiceMode: boolean) {
   for (const station of StationNameList) {
     const team = stations[station];
+    const prevTeam = previousStations[station];
     const vlanId = vlanMap[station];
     const ifName = `${physical_interface}.${station}`;
 
+    // Ensure the VLAN interface exists
     await net.createVlan({ parent: physical_interface, vlanId, name: ifName });
-    await net.flushAddresses(ifName);
+
+    // Skip stations that haven't changed
+    if (team === prevTeam) continue;
+
+    // Tear down the old config for this station
+    if (prevTeam) {
+      await net.flushAddresses(ifName);
+      await net.iptables({
+        chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-${station}`, action: '-D',
+      });
+      await net.iptables({
+        chain: 'FORWARD', outInterface: ifName, jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-in-${station}`, action: '-D',
+      });
+      await net.iptables({
+        table: 'nat', chain: 'POSTROUTING', outInterface: ifName, jump: 'MASQUERADE',
+        comment: `${commentPrefix}nat-vlan-${station}`, action: '-D',
+      });
+    }
 
     if (team) {
       await net.setInterfaceUp(ifName);
+
+      const us = teamIp(team, vlanHostOctet);
+
+      if (!practiceMode) {
+        const conflict = await net.arping({ interfaceName: ifName, address: us });
+        if (conflict) {
+          appWarn(`Address conflict: ${us} is already in use on ${ifName}, skipping`);
+          continue;
+        }
+      }
+
+      await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
+
+      // Add forwarding rules
+      await net.iptables({
+        chain: 'FORWARD', inInterface: ifName, jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-${station}`, action: '-A',
+      });
+      await net.iptables({
+        chain: 'FORWARD', outInterface: ifName, jump: 'ACCEPT',
+        comment: `${commentPrefix}fwd-in-${station}`, action: '-A',
+      });
+      // MASQUERADE traffic entering the VLAN so return traffic comes back to steamboat
+      await net.iptables({
+        table: 'nat', chain: 'POSTROUTING', outInterface: ifName, jump: 'MASQUERADE',
+        comment: `${commentPrefix}nat-vlan-${station}`, action: '-A',
+      });
     } else {
       await net.setInterfaceDown(ifName);
     }
   }
 
-  // Phase 2: Run arping probes in parallel for all stations with teams
-  const arpResults = new Map<StationName, boolean>();
-  await Promise.all(
-    StationNameList.filter(s => stations[s]).map(async station => {
-      const team = stations[station]!;
-      const ifName = `${physical_interface}.${station}`;
-      const us = teamIp(team, 4);
-      const conflict = await net.arping({ interfaceName: ifName, address: us });
-      arpResults.set(station, conflict);
-      if (conflict) {
-        appWarn(`Address conflict: ${us} is already in use on ${ifName}, skipping`);
-      }
-    }),
-  );
-
-  // Phase 3: Apply addresses and forwarding rules
-  for (const station of StationNameList) {
-    const team = stations[station];
-    const ifName = `${physical_interface}.${station}`;
-
-    const fwdOut = {
-      chain: 'FORWARD',
-      inInterface: ifName,
-      jump: 'ACCEPT',
-      comment: `${commentPrefix}fwd-${station}`,
-    } as const;
-    const fwdIn = {
-      chain: 'FORWARD',
-      outInterface: ifName,
-      jump: 'ACCEPT',
-      comment: `${commentPrefix}fwd-in-${station}`,
-    } as const;
-
-    if (team) {
-      if (arpResults.get(station)) continue;
-
-      const us = teamIp(team, 4);
-      await net.addAddress({ interfaceName: ifName, address: us, prefixLength: 24 });
-
-      await net.iptables({ ...fwdOut, action: '-A' });
-      await net.iptables({ ...fwdIn, action: '-A' });
-    } else {
-      await net.iptables({ ...fwdOut, action: '-D' });
-      await net.iptables({ ...fwdIn, action: '-D' });
-    }
-  }
-
+  previousStations = { ...stations };
   appInfo('Network configuration applied');
 }
 
@@ -218,16 +232,13 @@ export async function setInternetAccess(
 
 type Stations = Record<StationName, number | undefined>;
 
-export async function configureNetwork(stations: Stations, interfaceName: string, skipDHCP = false) {
+export async function configureNetwork(stations: Stations, interfaceName: string, practiceMode = false) {
   console.log('configureNetwork');
-  await updateNetworkConfig(stations, interfaceName);
+  await updateNetworkConfig(stations, interfaceName, practiceMode);
 
-  if (skipDHCP) {
-    console.log('Skipping DHCP (PRACTICE firmware handles it)');
-    return;
-  }
+  if (practiceMode) return;
 
   for (const station of StationNameList) {
-    startDHCP(station, stations[station], interfaceName);
+    startDHCPServer(station, stations[station], interfaceName);
   }
 }
