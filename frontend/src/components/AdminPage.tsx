@@ -6,7 +6,6 @@ import CardContent from '@mui/material/CardContent';
 import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import TextField from '@mui/material/TextField';
@@ -76,7 +75,17 @@ function GlobalEStopSection() {
 
 // ── Per-Station Controls ────────────────────────────────────────────
 
-function StationControlCard({ station }: { station: StationName }) {
+function StationControlCard({
+  station,
+  participating,
+  onToggle,
+  showCheckbox,
+}: {
+  station: StationName;
+  participating?: boolean;
+  onToggle?: () => void;
+  showCheckbox?: boolean;
+}) {
   const matchState = useMatchState();
   const latest = useLatest();
   const stationState = matchState?.stationStates[station];
@@ -91,32 +100,38 @@ function StationControlCard({ station }: { station: StationName }) {
       sx={{
         mb: 1,
         borderLeft: `4px solid ${allianceColor(station)}`,
+        opacity: showCheckbox && !participating ? 0.5 : 1,
       }}
     >
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box>
-            <Typography variant="subtitle1" fontWeight="bold">
-              {title}
-              {subtitle && (
-                <Typography component="span" variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>
-                  {subtitle}
-                </Typography>
-              )}
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
-              {isRobotLinked ? (
-                <Chip label="Robot Linked" size="small" color="success" variant="outlined" />
-              ) : teamNumber ? (
-                <Chip label="No Robot" size="small" variant="outlined" color="warning" />
-              ) : (
-                <Chip label="No Team" size="small" variant="outlined" />
-              )}
-              {stationState?.eStop && <Chip label="E-STOP" size="small" color="error" />}
-              {stationState?.enabled && <Chip label="Enabled" size="small" color="success" />}
-              {!stationState?.enabled && !stationState?.eStop && (
-                <Chip label="Disabled" size="small" variant="outlined" />
-              )}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {showCheckbox && (
+              <Checkbox checked={participating} onChange={onToggle} size="small" sx={{ mr: 0.5 }} />
+            )}
+            <Box>
+              <Typography variant="subtitle1" fontWeight="bold">
+                {title}
+                {subtitle && (
+                  <Typography component="span" variant="body2" sx={{ ml: 1, color: 'text.secondary' }}>
+                    {subtitle}
+                  </Typography>
+                )}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                {isRobotLinked ? (
+                  <Chip label="Robot Linked" size="small" color="success" variant="outlined" />
+                ) : teamNumber ? (
+                  <Chip label="No Robot" size="small" variant="outlined" color="warning" />
+                ) : (
+                  <Chip label="No Team" size="small" variant="outlined" />
+                )}
+                {stationState?.eStop && <Chip label="E-STOP" size="small" color="error" />}
+                {stationState?.enabled && <Chip label="Enabled" size="small" color="success" />}
+                {!stationState?.enabled && !stationState?.eStop && (
+                  <Chip label="Disabled" size="small" variant="outlined" />
+                )}
+              </Box>
             </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -147,7 +162,15 @@ function StationControlCard({ station }: { station: StationName }) {
   );
 }
 
-function StationControlSection() {
+function StationControlSection({
+  stations,
+  toggleStation,
+  showCheckboxes,
+}: {
+  stations: StationName[];
+  toggleStation: (s: StationName) => void;
+  showCheckboxes: boolean;
+}) {
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -157,12 +180,24 @@ function StationControlSection() {
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
-              <StationControlCard key={s} station={s} />
+              <StationControlCard
+                key={s}
+                station={s}
+                participating={stations.includes(s)}
+                onToggle={() => toggleStation(s)}
+                showCheckbox={showCheckboxes}
+              />
             ))}
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
-              <StationControlCard key={s} station={s} />
+              <StationControlCard
+                key={s}
+                station={s}
+                participating={stations.includes(s)}
+                onToggle={() => toggleStation(s)}
+                showCheckbox={showCheckboxes}
+              />
             ))}
           </Grid>
         </Grid>
@@ -197,17 +232,11 @@ function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: Ma
 
 // ── Match Control ───────────────────────────────────────────────────
 
-function MatchSetupForm() {
+function MatchSetupForm({ stations }: { stations: StationName[] }) {
   const [autoDuration, setAutoDuration] = useState(DEFAULT_AUTO);
   const [teleopDuration, setTeleopDuration] = useState(DEFAULT_TELEOP);
   const [endgameDuration, setEndgameDuration] = useState(DEFAULT_ENDGAME);
   const [pauseDuration, setPauseDuration] = useState(DEFAULT_PAUSE);
-  const [stations, setStations] = useState<StationName[]>([...StationNameList]);
-  const matchState = useMatchState();
-
-  const toggleStation = (s: StationName) => {
-    setStations(prev => (prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]));
-  };
 
   const handleStart = () => {
     const config: MatchConfig = {
@@ -272,23 +301,6 @@ function MatchSetupForm() {
         </Grid>
       </Grid>
 
-      <Typography variant="subtitle2" gutterBottom>
-        Participating Stations
-      </Typography>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0 }}>
-        {StationNameList.map(s => {
-          const team = matchState?.stationStates[s]?.teamNumber;
-          const label = team ? `Team ${team} (${prettyStationName(s)})` : prettyStationName(s);
-          return (
-            <FormControlLabel
-              key={s}
-              control={<Checkbox checked={stations.includes(s)} onChange={() => toggleStation(s)} size="small" />}
-              label={label}
-            />
-          );
-        })}
-      </Box>
-
       <Button
         variant="contained"
         color="success"
@@ -348,13 +360,13 @@ function MatchLiveDisplay() {
   );
 }
 
-function MatchControlSection() {
+function MatchControlSection({ stations }: { stations: StationName[] }) {
   const matchState = useMatchState();
   const isIdle = !matchState || matchState.phase === 'idle' || matchState.phase === 'postMatch';
 
   return (
     <Card sx={{ mb: 3 }}>
-      <CardContent>{isIdle ? <MatchSetupForm /> : <MatchLiveDisplay />}</CardContent>
+      <CardContent>{isIdle ? <MatchSetupForm stations={stations} /> : <MatchLiveDisplay />}</CardContent>
     </Card>
   );
 }
@@ -362,6 +374,14 @@ function MatchControlSection() {
 // ── Admin Page ──────────────────────────────────────────────────────
 
 export function AdminPage() {
+  const matchState = useMatchState();
+  const isIdle = !matchState || matchState.phase === 'idle' || matchState.phase === 'postMatch';
+  const [stations, setStations] = useState<StationName[]>([...StationNameList]);
+
+  const toggleStation = (s: StationName) => {
+    setStations(prev => (prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]));
+  };
+
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
       <Typography variant="h3" gutterBottom>
@@ -369,8 +389,8 @@ export function AdminPage() {
       </Typography>
 
       <GlobalEStopSection />
-      <MatchControlSection />
-      <StationControlSection />
+      <MatchControlSection stations={stations} />
+      <StationControlSection stations={stations} toggleStation={toggleStation} showCheckboxes={isIdle} />
     </Container>
   );
 }
