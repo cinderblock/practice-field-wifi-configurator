@@ -86,16 +86,24 @@ export function setupWebSocket(
       console.log('Received message:', sanitizedConfig);
 
       if (isStationUpdate(data)) {
-        radioManager.configure(data.station, data).catch(err => {
-          appError('Error configuring station: ' + err.message);
-          ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
-        });
+        if (matchEngine.isMatchActive()) {
+          ws.send(JSON.stringify({ error: 'Cannot reconfigure stations during an active match' }));
+        } else {
+          radioManager.configure(data.station, data).catch(err => {
+            appError('Error configuring station: ' + err.message);
+            ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
+          });
+        }
         // TODO: handle multiple simultaneous configurations gracefully
       } else if (isInternetToggle(data)) {
-        radioManager.toggleInternetAccess(data.station, data.enabled).catch(err => {
-          appError('Error toggling internet access: ' + err.message);
-          ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
-        });
+        if (matchEngine.isMatchActive()) {
+          ws.send(JSON.stringify({ error: 'Cannot toggle internet access during an active match' }));
+        } else {
+          radioManager.toggleInternetAccess(data.station, data.enabled).catch(err => {
+            appError('Error toggling internet access: ' + err.message);
+            ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
+          });
+        }
       } else if (isAdminStartMatch(data)) {
         matchEngine.startMatch(data.config);
       } else if (isAdminStopMatch(data)) {

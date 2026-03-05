@@ -3,7 +3,6 @@ import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { MatchEngine } from './matchEngine.js';
-import type { MatchPhase } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -27,11 +26,9 @@ async function detectPlayer(): Promise<string | null> {
 
 export class MatchAudio {
   private player: string | null = null;
-  private initialized = false;
 
   async init(): Promise<void> {
     this.player = await detectPlayer();
-    this.initialized = true;
 
     if (!this.player) {
       console.log('Match audio: no playback binary found, sounds disabled');
@@ -67,16 +64,13 @@ export class MatchAudio {
   }
 
   attachToEngine(engine: MatchEngine): void {
-    let lastPhase: MatchPhase = 'idle';
+    let lastPhase = 'idle';
 
     engine.addStateListener(state => {
-      const phase = state.phase;
-      if (phase === lastPhase) return;
+      if (state.phase === lastPhase) return;
+      lastPhase = state.phase;
 
-      const prevPhase = lastPhase;
-      lastPhase = phase;
-
-      switch (phase) {
+      switch (state.phase) {
         case 'auto':
           // countdown → auto: charge horn
           this.play('start');

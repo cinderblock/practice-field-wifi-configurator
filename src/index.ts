@@ -82,7 +82,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {
-    startConfigurationScheduler(radioManager, RadioClearSchedule, RadioClearTimezone);
+    startConfigurationScheduler(radioManager, RadioClearSchedule, RadioClearTimezone, matchEngine);
   } else {
     console.log('RADIO_CLEAR_SCHEDULE environment variable is not set. Skipping scheduled configuration clearing.');
   }

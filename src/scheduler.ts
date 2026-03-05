@@ -1,5 +1,6 @@
 import { CronJob } from 'cron';
 import RadioManager from './radioManager.js';
+import type { MatchEngine } from './matchEngine.js';
 
 /**
  * Configuration Scheduler for Radio Management
@@ -9,11 +10,20 @@ import RadioManager from './radioManager.js';
  * - RADIO_CLEAR_TIMEZONE: Timezone for the cron schedule (optional, defaults to system TZ)
  */
 
-export function startConfigurationScheduler(radioManager: RadioManager, schedule: string, timezone?: string): void {
+export function startConfigurationScheduler(
+  radioManager: RadioManager,
+  schedule: string,
+  timezone: string | undefined,
+  matchEngine: MatchEngine,
+): void {
   try {
     const cronJob = new CronJob(
       schedule,
       async () => {
+        if (matchEngine.isMatchActive()) {
+          console.log('Scheduled configuration clear skipped: match is active');
+          return;
+        }
         console.log(`Scheduled task triggered: Clearing all radio configurations`);
         try {
           await radioManager.clearAllConfigurations();

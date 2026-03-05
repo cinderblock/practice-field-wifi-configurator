@@ -148,6 +148,10 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  isMatchActive(): boolean {
+    return this.phase !== 'idle' && this.phase !== 'postMatch';
+  }
+
   addStateListener(fn: (state: MatchState) => void): () => void {
     this.listeners.push(fn);
     return () => {
@@ -157,12 +161,11 @@ export class MatchEngine {
   }
 
   getState(): MatchState {
-    const isActive = this.phase !== 'idle' && this.phase !== 'postMatch';
     const stationStates: Partial<Record<StationName, StationControlState>> = {};
     for (const station of StationNameList) {
       const state = { ...this.stationStates.get(station)! };
       // When idle, resolve live team numbers; during a match, use the snapshot
-      if (!isActive) state.teamNumber = this.teamResolver(station);
+      if (!this.isMatchActive()) state.teamNumber = this.teamResolver(station);
       stationStates[station] = state;
     }
 
