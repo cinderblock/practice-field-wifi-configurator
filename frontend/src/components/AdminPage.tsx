@@ -6,11 +6,6 @@ import CardContent from '@mui/material/CardContent';
 import Checkbox from '@mui/material/Checkbox';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogTitle from '@mui/material/DialogTitle';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -66,39 +61,16 @@ const phaseLabels: Record<MatchPhase, string> = {
 // ── Global E-Stop ───────────────────────────────────────────────────
 
 function GlobalEStopSection() {
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
   return (
-    <>
-      <Button
-        variant="contained"
-        color="error"
-        fullWidth
-        sx={{ fontSize: '1.5rem', py: 2.5, mb: 3, fontWeight: 'bold' }}
-        onClick={() => setConfirmOpen(true)}
-      >
-        EMERGENCY STOP ALL
-      </Button>
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>Confirm Emergency Stop</DialogTitle>
-        <DialogContent>
-          <DialogContentText>This will E-Stop ALL stations and end the current match. Are you sure?</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              sendAdminGlobalEStop();
-              setConfirmOpen(false);
-            }}
-          >
-            E-Stop All
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+    <Button
+      variant="contained"
+      color="error"
+      fullWidth
+      sx={{ fontSize: '1.5rem', py: 2.5, mb: 3, fontWeight: 'bold' }}
+      onClick={() => sendAdminGlobalEStop()}
+    >
+      EMERGENCY STOP ALL
+    </Button>
   );
 }
 
