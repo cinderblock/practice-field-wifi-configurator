@@ -1,19 +1,40 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
+import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 
-import { StationName, StationNetworkStats } from '../../../src/types';
+import { DiscoveredHost, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
 import { allianceColor, prettyStationName } from '../../../src/utils';
-import { useNetworkStats } from '../hooks/useBackend';
+import { useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatAge(ts: number): string {
+  const seconds = Math.round((Date.now() - ts) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
+}
+
+function describeIp(host: DiscoveredHost): string | null {
+  const lastOctet = parseInt(host.ip.split('.')[3]);
+  if (lastOctet === 1) return 'Radio';
+  if (lastOctet === 2) return 'roboRIO';
+  if (lastOctet >= 100 && lastOctet <= 199) return 'DHCP client';
+  return null;
 }
 
 function StationStatsCard({ station, stats }: { station: StationName; stats?: StationNetworkStats }) {
@@ -59,8 +80,57 @@ function StationStatsCard({ station, stats }: { station: StationName; stats?: St
   );
 }
 
+function StationDevicesCard({ station, scan }: { station: StationName; scan?: StationSubnetScan }) {
+  if (!scan || scan.hosts.length === 0) return null;
+
+  const aliveCount = scan.hosts.filter(h => h.alive).length;
+
+  return (
+    <Card sx={{ mb: 1, borderLeft: `4px solid ${allianceColor(station)}` }}>
+      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="subtitle1" fontWeight="bold">
+            {prettyStationName(station)} — Team {scan.team}
+          </Typography>
+          <Chip label={`${aliveCount} / ${scan.hosts.length}`} size="small" color={aliveCount > 0 ? 'success' : 'default'} />
+        </Box>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>IP</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Description</TableCell>
+              <TableCell>Last Seen</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {scan.hosts.map(host => (
+              <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
+                <TableCell sx={{ fontFamily: 'monospace', py: 0.5 }}>{host.ip}</TableCell>
+                <TableCell sx={{ py: 0.5 }}>
+                  <Chip
+                    label={host.alive ? 'UP' : 'DOWN'}
+                    size="small"
+                    color={host.alive ? 'success' : 'error'}
+                    variant={host.alive ? 'filled' : 'outlined'}
+                  />
+                </TableCell>
+                <TableCell sx={{ py: 0.5 }}>{describeIp(host) ?? ''}</TableCell>
+                <TableCell sx={{ py: 0.5 }}>{formatAge(host.lastSeen)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function NetworkPage() {
   const networkStats = useNetworkStats();
+  const subnetScan = useSubnetScan();
+
+  const hasAnyDevices = subnetScan && Object.values(subnetScan.stations).some(s => s && s.hosts.length > 0);
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
@@ -89,6 +159,28 @@ export function NetworkPage() {
               <Grid size={{ xs: 12, md: 6 }}>
                 {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
                   <StationStatsCard key={s} station={s} stats={networkStats.stations[s]} />
+                ))}
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasAnyDevices && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="h5" gutterBottom>
+              Discovered Devices
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
+                  <StationDevicesCard key={s} station={s} scan={subnetScan!.stations[s]} />
+                ))}
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
+                  <StationDevicesCard key={s} station={s} scan={subnetScan!.stations[s]} />
                 ))}
               </Grid>
             </Grid>

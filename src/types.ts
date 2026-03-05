@@ -521,6 +521,33 @@ export function isNetworkStats(msg: unknown): msg is NetworkStats {
   return (msg as NetworkStats).type === 'networkStats';
 }
 
+// ── Subnet Scan ─────────────────────────────────────────────────────
+
+export interface DiscoveredHost {
+  ip: string;
+  alive: boolean;
+  firstSeen: number;
+  lastSeen: number;
+}
+
+export interface StationSubnetScan {
+  team: number;
+  subnet: string;
+  hosts: DiscoveredHost[];
+  lastScanTime: number;
+}
+
+export interface SubnetScanResults {
+  type: 'subnetScan';
+  stations: Partial<Record<StationName, StationSubnetScan>>;
+}
+
+export function isSubnetScanResults(msg: unknown): msg is SubnetScanResults {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  return (msg as SubnetScanResults).type === 'subnetScan';
+}
+
 // ── App Log Messages ────────────────────────────────────────────────
 
 export type LogLevel = 'info' | 'warn' | 'error';

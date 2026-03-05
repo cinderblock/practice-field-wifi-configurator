@@ -14,6 +14,8 @@ import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
+import { SubnetScanner } from './subnetScanner.js';
+import { StationNameList } from './types.js';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -46,7 +48,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
     if (process.env.YOLO) {
-      const tools = ['iptables', 'arping'];
+      const tools = ['iptables', 'arping', 'fping'];
       if (firmwareMode !== 'PRACTICE') tools.push('dnsmasq');
       await checkRequiredTools(tools);
     }
@@ -80,8 +82,33 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const { wss, broadcast } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
   setBroadcast(broadcast);
 
+  // Subnet scanning for device discovery on team VLANs
+  const subnetScanner = new SubnetScanner(
+    s => radioManager.getTeamForStation(s),
+    results => {
+      latestSubnetScan = results;
+      broadcast(results);
+    },
+    !process.env.YOLO,
+  );
+  let latestSubnetScan: ReturnType<SubnetScanner['getResults']> | null = null;
+  subnetScanner.start(10_000);
+
+  wss.on('connection', ws => {
+    if (latestSubnetScan) ws.send(JSON.stringify(latestSubnetScan));
+  });
+
   // Push updated match state (team numbers) when station configs change
-  radioManager.addConfigChangeListener(() => broadcast(matchEngine.getState()));
+  // Also clear subnet scan data for stations that lost their team
+  radioManager.addConfigChangeListener(() => {
+    broadcast(matchEngine.getState());
+    for (const station of StationNameList) {
+      if (radioManager.getTeamForStation(station) === null) {
+        subnetScanner.clearStation(station);
+      }
+    }
+    broadcast(subnetScanner.getResults());
+  });
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {

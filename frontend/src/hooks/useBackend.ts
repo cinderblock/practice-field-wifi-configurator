@@ -5,10 +5,12 @@ import {
   MatchConfig,
   MatchState,
   NetworkStats,
+  SubnetScanResults,
   TelemetryUpdate,
   isAppLogMessage,
   isMatchState,
   isNetworkStats,
+  isSubnetScanResults,
   isTelemetryUpdate,
   StationName,
   StationUpdate,
@@ -188,8 +190,9 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
+let currentSubnetScan: SubnetScanResults | null = null;
 
-type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage | TelemetryUpdate;
+type Message = StatusEntry | ErrorMessage | RadioMessage | MatchState | NetworkStats | AppLogMessage | TelemetryUpdate | SubnetScanResults;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -250,6 +253,11 @@ function handleAppLog(msg: AppLogMessage) {
   events.dispatchEvent(new CustomEvent('appLog', { detail: msg }));
 }
 
+function handleSubnetScan(scan: SubnetScanResults) {
+  currentSubnetScan = scan;
+  events.dispatchEvent(new CustomEvent('subnetScan', { detail: scan }));
+}
+
 function handleTelemetry(update: TelemetryUpdate) {
   events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
 }
@@ -269,6 +277,11 @@ function receiveMessage(entry: string) {
 
   if (isMatchState(detail)) {
     handleMatchState(detail);
+    return;
+  }
+
+  if (isSubnetScanResults(detail)) {
+    handleSubnetScan(detail);
     return;
   }
 
@@ -387,6 +400,20 @@ export function useNetworkStats(): NetworkStats | null {
     const handler = (e: Event) => setState((e as CustomEvent).detail);
     events.addEventListener('networkStats', handler);
     return () => events.removeEventListener('networkStats', handler);
+  }, []);
+
+  return state;
+}
+
+// ── Subnet Scan ─────────────────────────────────────────────────────
+
+export function useSubnetScan(): SubnetScanResults | null {
+  const [state, setState] = useState<SubnetScanResults | null>(currentSubnetScan);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('subnetScan', handler);
+    return () => events.removeEventListener('subnetScan', handler);
   }, []);
 
   return state;
