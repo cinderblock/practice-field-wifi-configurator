@@ -1,17 +1,27 @@
-# Practice Field Configurator
+# Practice Field Management System
 
-A web interface for configuring practice field access points.
+A web interface for configuring practice field access points and enabling team laptop ↔ robot routing.
 
 ## Setup
 
-1. Install system dependencies (Linux, for VLAN/DHCP management):
+Works with [`PRACTICE` or `OFFSEASON` firmware](https://frc-radio.vivid-hosting.net/access-points/fms-ap-firmware-releases) on the VH-113 AP (or VH-109).
+`PRACTICE` recommended for simplicity and programmer connectivity.
+
+Currently, only Linux is supported due to dependencies on `iptables` and `iputils-arping` for VLAN and routing management.
+The app must be run with root privileges to manage VLAN interfaces and routing rules.
+Future versions may support other platforms.
+
+1. Install system dependencies (Linux, for VLAN/routing):
 
 ```bash
-sudo apt install dnsmasq-base iputils-arping
+sudo apt install fping iptables iputils-arping
 ```
 
-`dnsmasq-base` provides the `dnsmasq` binary (without the system service) for per-VLAN DHCP.
-`iputils-arping` provides `arping` for duplicate address detection before claiming team gateway IPs.
+- `fping` provides fast parallel pinging for the subnet scanner (device discovery on team VLANs).
+- `iptables` is required for MASQUERADE rules that enable site network ↔ robot routing.
+- `iputils-arping` provides `arping` for duplicate address detection (used in OFFSEASON firmware mode only).
+
+> **OFFSEASON firmware only:** also install `dnsmasq-base` for per-VLAN DHCP serving.
 
 2. Install Node.js dependencies:
 
@@ -41,67 +51,65 @@ The backend will be available at http://localhost:3000, however it is also proxi
 
 ## Network Architecture
 
-The VH-113 field radio runs **OFFSEASON** AP firmware (no DHCP, firewall between VLANs). Steamboat acts as the DHCP server and inter-VLAN router for all team subnets, and bridges team traffic to the site's guest WiFi so laptops can reach robots.
+The VH-113 field radio runs **`PRACTICE`** (or `OFFSEASON`) AP firmware. The AP handles DHCP on team VLANs directly; the pFMS host adds VLAN interfaces and MASQUERADE rules to route traffic between team subnets and the site network so laptops can reach robots and internet.
 
 ```mermaid
 graph TD
     Internet["Internet"]
-    UFG["UniFi Gateway<br/>(site router)"]
+    Router["Site Router"]
     Laptops@{ shape: docs, label: "Team Laptops / Phones"}
-    Steamboat["Steamboat<br/>(PFMS + DHCP + router)"]
-    AP["VH-113 AP<br/>OFFSEASON firmware<br/>10.0.100.2"]
+
+    subgraph pFMS["pFMS Host"]
+        APP["pFMS App"]
+        TRUNK["Trunk Interface<br/>10.0.100.5 (management)<br/>10.TE.AM.254 (per VLAN)"]
+        APP -. "configures" .-> TRUNK
+    end
+
+    AP["VH-113 AP<br/>PRACTICE firmware<br/>10.0.100.2"]
     Robots@{ shape: st-rect, label: "Robots"}
-
-    Internet --- UFG
-
-    UFG -- "10.255.0.0/20<br/>(main network)" --- Steamboat
-    UFG -- "10.55.0.0/16<br/>(guest WiFi)" --- Laptops
-
     VLANs@{ shape: st-rect, label: "VLANs 10–60<br/>10.TE.AM.0/24 each"}
 
-    Steamboat -- "trunk<br/>(10.0.100.0/24)" --- AP
-    Steamboat --- VLANs --- AP
+    Internet --- Router
+    Router -- "main network" --- APP
+
+    APP -- "HTTP REST" --> AP
+    TRUNK -- "MASQUERADE" --- VLANs -- "trunk" --- AP
     AP -- "6 GHz Wi-Fi" --- Robots
 
-    Laptops -. "10.TE.AM.x" .-> UFG -. "static route" .-> Steamboat
+    Laptops -. "10.TE.AM.x" .-> Router -. "static route" .-> TRUNK
+    Router -- "guest/laptop network" --- Laptops
 ```
 
 ### Subnets
 
-| Subnet        | CIDR            | Managed by    | Purpose                                                             |
-| ------------- | --------------- | ------------- | ------------------------------------------------------------------- |
-| Main network  | `10.255.0.0/20` | UniFi Gateway | Servers, infrastructure                                             |
-| Guest WiFi    | `10.55.0.0/16`  | UniFi Gateway | Team laptops, phones (site-specific, conflicts with team 5500-5599) |
-| Field control | `10.0.100.0/24` | UniFi/Static  | AP management, FMS                                                  |
-| Team VLANs    | `10.TE.AM.0/24` | **Steamboat** | Per-team isolation (e.g. team 1234 → `10.12.34.0/24`)               |
+| Subnet        | CIDR            | Managed by    | Purpose                                               |
+| ------------- | --------------- | ------------- | ----------------------------------------------------- |
+| Main network  | (site-specific) | Site router   | Servers, infrastructure                               |
+| Guest WiFi    | (site-specific) | Site router   | Team laptops, phones                                  |
+| Field control | `10.0.100.0/24` | Static        | AP management, FMS                                    |
+| Team VLANs    | `10.TE.AM.0/24` | **AP (DHCP)** | Per-team isolation (e.g. team 1234 → `10.12.34.0/24`) |
 
-### Radio Firmware: Why OFFSEASON
-
-The VH-113 AP has three firmware variants:
-
-| Mode          | DHCP                        | Firewall | Auth         | Use case                           |
-| ------------- | --------------------------- | -------- | ------------ | ---------------------------------- |
-| **PRACTICE**  | AP runs DHCP on VLANs 10-90 | Disabled | None         | Simple setup, no routing control   |
-| **OFFSEASON** | None — external             | Enabled  | None         | Full control over DHCP and routing |
-| **FRC**       | None — external             | Enabled  | Bearer token | Competition                        |
-
-**PRACTICE** mode is simpler but the AP becomes the router for team subnets with no way to add routes to the site network. **OFFSEASON** mode lets Steamboat run DHCP and act as the gateway for each team VLAN, enabling routing between team subnets and the guest WiFi.
-
-### Steamboat's Network Responsibilities
+### pFMS Host Network Responsibilities
 
 1. **VLAN interfaces** — trunk port carries VLANs 10-60 + 100; OS creates sub-interfaces (e.g. `eth0.10`, `eth0.20`)
-2. **DHCP** — serves `10.TE.AM.100-199` on each active team's VLAN via `dnsmasq`, gateway = Steamboat (`10.TE.AM.4`)
-3. **Inter-VLAN routing** — IP forwarding between team subnets and the guest WiFi subnet
-4. **Radio configuration** — HTTP REST to `10.0.100.2` (already working)
+2. **VLAN IP** — assigns itself `10.TE.AM.254` (configurable via `VLAN_HOST_OCTET`) on each active team's VLAN as a routing anchor
+3. **Inter-VLAN routing** — IP forwarding + MASQUERADE rules between team subnets and the site network
+4. **Radio configuration** — HTTP REST to `10.0.100.2`
 5. **Syslog / FMS** — optional services for field telemetry
+
+> **OFFSEASON firmware:** the pFMS host also runs `dnsmasq` per VLAN to serve DHCP (gateway = `10.TE.AM.254`), since the AP does not.
 
 ### Routing: Guest WiFi ↔ Team Subnets
 
-For laptops on guest WiFi (`10.55.0.x`) to reach robots on team subnets (`10.TE.AM.x`):
+For laptops on the site's guest/laptop network to reach robots on team subnets (`10.TE.AM.x`):
 
-1. **UniFi Gateway** needs a static route: `10.0.0.0/8` → Steamboat's main IP (one-time config, team-agnostic)
-2. **Steamboat** has direct access to team VLANs via trunk and routes between them and its main interface
+1. **Site router** needs a static route: `10.0.0.0/8` → the pFMS host's main IP (one-time config, team-agnostic)
+2. **pFMS host** has direct access to team VLANs via trunk and routes between them and its main interface
 3. **Teams** use hardcoded IPs (e.g. `10.12.34.2` for roboRIO) — no DNS needed
+
+### Device Discovery
+
+The backend periodically scans each configured team's subnet using `fping`, pinging `.1–.253` every 10 seconds. Discovered devices (IPs that have responded at least once) are tracked with up/down status and first/last-seen timestamps, and broadcast to frontend clients. Results appear in the **Discovered Devices** section on the Network page and are cleared when station config is cleared.
 
 See [TECHNICAL.md](TECHNICAL.md) for details on the startup sequence, configuration flow, and dry-run mode.
 
@@ -228,6 +236,7 @@ server {
 - `SYSLOG_ENDPOINT`: Set to 'true' to enable syslog server
 - `RADIO_CLEAR_SCHEDULE`: Cron expression for scheduled configuration clearing
 - `RADIO_CLEAR_TIMEZONE`: Timezone for scheduled clearing
+- `VLAN_HOST_OCTET`: Host octet for the pFMS host's IP on each team VLAN (default: `254`, range: `220–254`). E.g. `254` → pFMS host is `10.TE.AM.254`. Set lower to avoid conflicts with other devices on the subnet.
 - `TRUSTED_PROXIES`: Comma-separated list of trusted proxy IPs/CIDR blocks for real client IP detection
 
 ### Trusted Proxies Configuration
