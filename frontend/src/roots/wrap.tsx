@@ -75,7 +75,12 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
       <ErrorBoundary>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <StatusBar />
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+            <StatusBar />
+            <Box sx={{ flex: 1, overflowY: 'auto' }}>
+              {children}
+            </Box>
+          </Box>
           <Backdrop open={isConfiguring || !isConnected} sx={{ zIndex: 9999 }}>
             <Grid
               container
@@ -126,8 +131,6 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               )}
             </Grid>
           </Backdrop>
-          <Box sx={{ my: 1 }} />
-          {children}
           <GithubCorner href="https://github.com/cinderblock/practice-field-wifi-configurator" />
         </ThemeProvider>
       </ErrorBoundary>
