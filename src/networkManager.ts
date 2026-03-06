@@ -149,7 +149,9 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
 
     // Tear down the old config for this station
     if (prevTeam) {
-      await net.flushAddresses(ifName);
+      // Remove the specific old team IP rather than flushing all addresses — avoids
+      // disturbing IPv6 link-local and other addresses managed outside this code.
+      await net.removeAddress({ interfaceName: ifName, address: teamIp(prevTeam, vlanHostOctet), prefixLength: 24 });
       await net.iptables({
         chain: 'FORWARD',
         inInterface: ifName,
@@ -178,6 +180,17 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
       await net.setInterfaceUp(ifName);
 
       const us = teamIp(team, vlanHostOctet);
+
+      // Remove any stale IPv4 addresses that don't belong to this team.
+      // This covers the process-restart case where previousStations is empty
+      // and the teardown above was skipped, leaving addresses from a prior session.
+      const interfaces = await net.listInterfaces(ifName);
+      for (const addr of interfaces[0]?.addresses ?? []) {
+        if (addr.family === 'inet' && addr.address !== us) {
+          appWarn(`Removing stale address ${addr.address}/${addr.prefixLength} from ${ifName}`);
+          await net.removeAddress({ interfaceName: ifName, address: addr.address, prefixLength: addr.prefixLength });
+        }
+      }
 
       if (!practiceMode) {
         const conflict = await net.arping({ interfaceName: ifName, address: us });
