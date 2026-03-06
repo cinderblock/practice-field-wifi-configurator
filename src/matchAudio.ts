@@ -26,6 +26,7 @@ async function detectPlayer(): Promise<string | null> {
 
 export class MatchAudio {
   private player: string | null = null;
+  private availableSounds = new Set<SoundName>();
 
   async init(): Promise<void> {
     this.player = await detectPlayer();
@@ -35,9 +36,15 @@ export class MatchAudio {
       return;
     }
 
-    // Verify at least one sound file exists
-    const testFile = resolve(SOUNDS_DIR, 'start.wav');
-    if (!existsSync(testFile)) {
+    // Cache which sound files exist
+    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort'];
+    for (const sound of allSounds) {
+      if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
+        this.availableSounds.add(sound);
+      }
+    }
+
+    if (this.availableSounds.size === 0) {
       console.log(`Match audio: sounds directory missing (${SOUNDS_DIR}), sounds disabled`);
       this.player = null;
       return;
@@ -48,9 +55,9 @@ export class MatchAudio {
 
   play(sound: SoundName): void {
     if (!this.player) return;
+    if (!this.availableSounds.has(sound)) return;
 
     const file = resolve(SOUNDS_DIR, `${sound}.wav`);
-    if (!existsSync(file)) return;
 
     const args = this.player === 'ffplay' ? ['-nodisp', '-autoexit', file] : [file];
 
