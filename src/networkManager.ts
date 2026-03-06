@@ -1,4 +1,7 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import { StationName, StationNameList } from './types.js';
 import { appInfo, appWarn } from './appLogger.js';
 import { createBackend, createDryRunBackend } from './node-ip/index.js';
@@ -45,9 +48,19 @@ function stopDHCPServer(station: StationName) {
   }
 }
 
-export function startDHCPServer(station: StationName, team: number | undefined, interfaceName: string) {
-  // Always stop the previous instance for this station
+export async function startDHCPServer(station: StationName, team: number | undefined, interfaceName: string) {
+  // Always stop the previous instance for this station (in-process tracking)
   stopDHCPServer(station);
+
+  const ifName = `${interfaceName}.${station}`;
+
+  // Kill any orphaned dnsmasq processes from a previous session that we no longer
+  // have a handle to (pkill exits 1 when nothing matched — that is expected and ignored).
+  try {
+    await execFileAsync('pkill', ['-f', `--interface=${ifName}`]);
+  } catch {
+    // No matching process found, or pkill not available — both are fine.
+  }
 
   if (team === undefined) {
     console.log(`No team for ${station}, skipping DHCP server`);
@@ -57,7 +70,6 @@ export function startDHCPServer(station: StationName, team: number | undefined, 
   const gateway = teamIp(team, vlanHostOctet);
   const rangeStart = teamIp(team, 100);
   const rangeEnd = teamIp(team, 199);
-  const ifName = `${interfaceName}.${station}`;
 
   if (process.env.DRY_RUN) {
     console.log(`[dry-run] DHCP server not started for ${station} (${team})`);
@@ -272,6 +284,6 @@ export async function configureNetwork(stations: Stations, interfaceName: string
   if (practiceMode) return;
 
   for (const station of StationNameList) {
-    startDHCPServer(station, stations[station], interfaceName);
+    await startDHCPServer(station, stations[station], interfaceName);
   }
 }
