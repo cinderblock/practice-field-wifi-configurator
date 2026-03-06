@@ -185,7 +185,7 @@ export class MatchEngine {
       config: this.config,
       stationStates,
       connectedStations: [...this.dsAddresses.keys()],
-      endReason: this.endReason,
+      endReason: this.phase === 'postMatch' ? this.endReason : undefined,
     };
   }
 
