@@ -31,13 +31,13 @@ function connect() {
   // TODO: Reconnect
   const nws = new WebSocket(url);
 
-  // First message is history
-  nws.onmessage = history => {
-    processHistory(history.data);
-    // Subsequent messages are updates
-    nws!.onmessage = update => {
-      receiveMessage(update.data);
-    };
+  nws.onmessage = msg => {
+    const parsed = JSON.parse(msg.data);
+    if (Array.isArray(parsed)) {
+      processHistory(parsed);
+    } else {
+      receiveMessage(parsed);
+    }
   };
 
   nws.onopen = () => {
@@ -71,8 +71,7 @@ const radioMessages: RadioMessage[] = [];
 // Track time offset between server and client (serverTime - clientTime)
 let timeOffset = 0;
 
-function processHistory(json: string) {
-  const entries = JSON.parse(json) as StatusEntry[];
+function processHistory(entries: StatusEntry[]) {
   // TODO: Validate
   history.push(...entries);
 
@@ -270,8 +269,7 @@ function handleTelemetry(update: TelemetryUpdate) {
   events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
 }
 
-function receiveMessage(entry: string) {
-  const detail = JSON.parse(entry) as Message;
+function receiveMessage(detail: Message) {
 
   if (isErrorEntry(detail)) {
     handleErrorEntry(detail);
