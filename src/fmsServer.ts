@@ -104,7 +104,7 @@ type DSPingMessage = {
   type: 0x1c;
 };
 
-type DSMessage =
+export type DSMessage =
   | TeamNumberMessage
   | WPILibVersionMessage
   | RIOVersionMessage
