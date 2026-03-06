@@ -263,22 +263,22 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
     unit: 'Mbps',
     minValue: 0,
     series: [
-      { data: 'rxRateMbps', label: 'RX', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
-      { data: 'txRateMbps', label: 'TX', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
+      { data: 'rxRateMbps', label: 'From Robot', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
+      { data: 'txRateMbps', label: 'To Robot', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
     ],
   },
   packets: {
     title: 'Packets',
     series: [
-      { data: 'rxPackets', label: 'RX', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
-      { data: 'txPackets', label: 'TX', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
+      { data: 'rxPackets', label: 'From Robot', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
+      { data: 'txPackets', label: 'To Robot', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
     ],
   },
   bytes: {
     title: 'Bytes',
     series: [
-      { data: 'rxBytes', label: 'RX', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
-      { data: 'txBytes', label: 'TX', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
+      { data: 'rxBytes', label: 'From Robot', color: { r: 255, g: 80, b: 80 }, lineWidth: 2 },
+      { data: 'txBytes', label: 'To Robot', color: { r: 80, g: 255, b: 80 }, lineWidth: 2 },
     ],
   },
   bandwidth: {
