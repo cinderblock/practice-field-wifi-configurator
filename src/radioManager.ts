@@ -22,6 +22,7 @@ class RadioManager {
   private updateInterval: NodeJS.Timeout | null = null;
   private connected: boolean = false;
   private configuring = false;
+  private commitQueue: Promise<void> = Promise.resolve();
   private scanning: null | Promise<ReadyScanResults> = null;
   private readonly pollInterval = 100;
   private readonly timeout = this.pollInterval * 3;
@@ -198,7 +199,14 @@ class RadioManager {
     if (!stage) await this.commitConfiguration();
   }
 
-  async commitConfiguration(): Promise<void> {
+  commitConfiguration(): Promise<void> {
+    // Serialize concurrent calls — each queues after the previous one so
+    // previousStations in networkManager is never read mid-update.
+    this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
+    return this.commitQueue;
+  }
+
+  private async doCommitConfiguration(): Promise<void> {
     const config = { stationConfigurations: this.activeConfig };
 
     // Log the configuration to be sent for debugging
