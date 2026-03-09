@@ -146,8 +146,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // Route telemetry to stations via WebSocket
         telemetryManager.processFmsEvent(msg);
 
-        // Auto-discover DS addresses for the match engine
-        if ('teamNumber' in msg.data && 'sequence' in msg.data) {
+        // Auto-discover DS addresses for the match engine.
+        // Match on any message carrying teamNumber — TCP 0x18 and UDP both do.
+        if ('teamNumber' in msg.data) {
           const station = radioManager.getStationForTeam(msg.data.teamNumber);
           if (station) matchEngine.setDSAddress(station, msg.address);
         }
