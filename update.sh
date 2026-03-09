@@ -53,6 +53,6 @@ cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 if [ "$UI_ONLY" == "true" ]; then
   echo "UI updated — backend not restarted."
 else
-  echo "Restarting $SERVICE"
-  sudo systemctl restart "$SERVICE"
+  echo "Reloading $SERVICE"
+  sudo systemctl reload "$SERVICE"
 fi

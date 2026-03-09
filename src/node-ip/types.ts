@@ -68,6 +68,17 @@ export interface IpRuleOptions {
   table: number;
 }
 
+/** A parsed entry from `ip rule list` */
+export interface IpRuleInfo {
+  priority: number;
+  /** Source address or "all" */
+  src?: string;
+  /** Destination CIDR or "all" */
+  dst?: string;
+  /** Routing table number or name (e.g. "main", "local") */
+  table?: string;
+}
+
 /** Options for routing table entry management */
 export interface RouteOptions {
   destination: string;

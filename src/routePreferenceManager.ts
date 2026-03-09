@@ -85,3 +85,44 @@ export async function cleanupAllPreferences(): Promise<void> {
     await clearRoutePreference(ip);
   }
 }
+
+/**
+ * Reads existing `ip rule` entries from the kernel and restores the in-memory
+ * preferences map. Call this on startup after a graceful restart so the server
+ * stays in sync with rules that were left in place.
+ *
+ * Returns the number of preferences restored.
+ */
+export async function restorePreferencesFromKernel(): Promise<number> {
+  const tableToStation = new Map<number, StationName>();
+  for (const [station, tableId] of Object.entries(vlanMap) as [StationName, number][]) {
+    tableToStation.set(tableId, station as StationName);
+  }
+
+  const rules = await net.listIpRules();
+  let count = 0;
+
+  for (const rule of rules) {
+    // Skip system rules (src "all") and rules without a specific destination
+    if (!rule.src || rule.src === 'all') continue;
+    if (!rule.dst || rule.dst === 'all') continue;
+    if (!rule.table) continue;
+
+    const tableId = Number(rule.table);
+    if (isNaN(tableId)) continue;
+
+    const station = tableToStation.get(tableId);
+    if (!station) continue; // Not one of our per-station tables
+
+    // Parse team number from subnet 10.<high>.<low>.0/24
+    const match = rule.dst.match(/^10\.(\d+)\.(\d+)\.0\/24$/);
+    if (!match) continue;
+
+    const team = Number(match[1]) * 100 + Number(match[2]);
+    preferences.set(rule.src, { station, team, subnet: rule.dst });
+    count++;
+    console.log(`Restored route preference: ${rule.src} → ${station} (team ${team})`);
+  }
+
+  return count;
+}

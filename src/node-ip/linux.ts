@@ -12,6 +12,7 @@ import type {
   IpRuleOptions,
   RouteOptions,
   ForwardCounter,
+  IpRuleInfo,
 } from './types.js';
 
 const execFile = promisify(execFileCb);
@@ -247,6 +248,22 @@ export function createLinuxBackend(): NetworkBackend {
       }
 
       return results;
+    },
+
+    async listIpRules(): Promise<IpRuleInfo[]> {
+      interface RawRule {
+        priority: number;
+        src?: string;
+        dst?: string;
+        table?: string;
+      }
+      const entries = await ipJson<RawRule[]>('rule', 'list');
+      return entries.map(e => ({
+        priority: e.priority,
+        src: e.src,
+        dst: e.dst,
+        table: e.table,
+      }));
     },
 
     async addIpRule(opts: IpRuleOptions): Promise<void> {

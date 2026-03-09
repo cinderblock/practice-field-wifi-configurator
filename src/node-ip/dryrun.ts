@@ -1,5 +1,5 @@
 import type { NetworkBackend } from './backend.js';
-import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, IpRuleOptions, RouteOptions } from './types.js';
+import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, IpRuleOptions, RouteOptions, IpRuleInfo } from './types.js';
 
 /**
  * Creates a dry-run backend that logs operations instead of executing them.
@@ -79,6 +79,11 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     async flushRulesByComment(commentPrefix: string) {
       if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
       console.log(`[dry-run] Would flush all iptables rules with comment prefix "${commentPrefix}"`);
+    },
+
+    async listIpRules(): Promise<IpRuleInfo[]> {
+      if (inner) return inner.listIpRules();
+      return [];
     },
 
     async addIpRule(opts: IpRuleOptions) {

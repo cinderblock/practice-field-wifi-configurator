@@ -1,3 +1,4 @@
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { configureNetwork, setInternetAccess } from './networkManager.js';
 import { appError } from './appLogger.js';
 import {
@@ -10,6 +11,7 @@ import {
   ReadyScanResults,
   ScanResults,
   StationName,
+  StationNameList,
   Status,
   StatusEntry,
 } from './types.js';
@@ -31,6 +33,7 @@ class RadioManager {
   private updateListeners: StatusListener[] = [];
   private configChangeListeners: (() => void)[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
+  private readonly activeConfigPath = process.env.ACTIVE_CONFIG_FILE ?? 'active-config.json';
   private lastBroadcastEntry: StatusEntry | null = null;
   private lastBroadcastTime: number = 0;
   private readonly maxBroadcastInterval = 15000;
@@ -40,9 +43,41 @@ class RadioManager {
     private readonly radioManagementInterface?: string,
     private readonly firmwareMode?: string,
   ) {
+    this.loadActiveConfig();
     this.startPolling();
     if (this.radioManagementInterface) {
       console.log('Radio management interface:', this.radioManagementInterface);
+    }
+  }
+
+  private saveActiveConfig(): void {
+    try {
+      writeFileSync(this.activeConfigPath, JSON.stringify(this.activeConfig, null, 2));
+    } catch (err) {
+      console.error('Failed to persist active config:', err);
+    }
+  }
+
+  private loadActiveConfig(): void {
+    if (!existsSync(this.activeConfigPath)) return;
+    try {
+      const raw = JSON.parse(readFileSync(this.activeConfigPath, 'utf8'));
+      const validStations = new Set<string>(StationNameList);
+      for (const [station, config] of Object.entries(raw)) {
+        if (!validStations.has(station)) continue;
+        if (
+          config &&
+          typeof config === 'object' &&
+          typeof (config as any).ssid === 'string' &&
+          typeof (config as any).wpaKey === 'string'
+        ) {
+          this.activeConfig[station as StationName] = config as { ssid: string; wpaKey: string; internetAccess?: boolean };
+        }
+      }
+      const stations = Object.keys(this.activeConfig);
+      if (stations.length) console.log(`Restored active config for: ${stations.join(', ')}`);
+    } catch (err) {
+      console.error('Failed to restore active config:', err);
     }
   }
 
@@ -193,6 +228,7 @@ class RadioManager {
 
     if (config) this.activeConfig[stationId] = config;
     else delete this.activeConfig[stationId];
+    this.saveActiveConfig();
     this.notifyConfigChange();
 
     // Bail if just staging the change
@@ -307,7 +343,10 @@ class RadioManager {
 
     config.internetAccess = enabled;
 
-    if (!this.radioManagementInterface) return;
+    if (!this.radioManagementInterface) {
+      this.saveActiveConfig();
+      return;
+    }
 
     const team = parseInt(config.ssid.split('-', 2)[0]) || undefined;
     if (!team) {
@@ -316,6 +355,7 @@ class RadioManager {
     }
 
     await setInternetAccess(stationId, team, this.radioManagementInterface, enabled);
+    this.saveActiveConfig();
   }
 
   getTeamMappings(): Record<number, StationName> {
@@ -345,6 +385,7 @@ class RadioManager {
 
       await this.commitConfiguration();
 
+      this.saveActiveConfig();
       console.log(`Successfully cleared all radio configurations`);
     } catch (error) {
       console.error(`Error clearing configurations:`, error);

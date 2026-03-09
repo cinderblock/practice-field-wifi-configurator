@@ -6,6 +6,7 @@ import type {
   SysctlOptions,
   IptablesOptions,
   IpRuleOptions,
+  IpRuleInfo,
   RouteOptions,
   ForwardCounter,
 } from './types.js';
@@ -56,6 +57,9 @@ export interface NetworkBackend {
 
   /** Get packet/byte counters for FORWARD rules matching the comment prefix. */
   getForwardCounters(commentPrefix: string): Promise<ForwardCounter[]>;
+
+  /** List all IP policy routing rules currently in the kernel. */
+  listIpRules(): Promise<IpRuleInfo[]>;
 
   /** Add an IP policy routing rule. No-op if already exists. */
   addIpRule(opts: IpRuleOptions): Promise<void>;
