@@ -5,6 +5,8 @@ import type {
   ArpingOptions,
   SysctlOptions,
   IptablesOptions,
+  IpRuleOptions,
+  RouteOptions,
   ForwardCounter,
 } from './types.js';
 
@@ -54,4 +56,16 @@ export interface NetworkBackend {
 
   /** Get packet/byte counters for FORWARD rules matching the comment prefix. */
   getForwardCounters(commentPrefix: string): Promise<ForwardCounter[]>;
+
+  /** Add an IP policy routing rule. No-op if already exists. */
+  addIpRule(opts: IpRuleOptions): Promise<void>;
+
+  /** Remove an IP policy routing rule. No-op if not present. */
+  removeIpRule(opts: IpRuleOptions): Promise<void>;
+
+  /** Add a route to a specific routing table. No-op if already exists. */
+  addRoute(opts: RouteOptions): Promise<void>;
+
+  /** Remove a route from a specific routing table. No-op if not present. */
+  removeRoute(opts: RouteOptions): Promise<void>;
 }

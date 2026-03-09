@@ -61,6 +61,12 @@ export function toCidr(ip: string): string {
   throw new Error(`Invalid ip: ${ip}`);
 }
 
+/** Strips IPv4-mapped IPv6 prefix (::ffff:) so we always work with plain IPv4 strings. */
+export function normalizeIp(ip: string): string {
+  if (ip.startsWith('::ffff:')) return ip.slice(7);
+  return ip;
+}
+
 /**
  * Extracts the real client IP from request headers, considering trusted proxies
  * @param socketRemoteAddress - The remote address from the socket

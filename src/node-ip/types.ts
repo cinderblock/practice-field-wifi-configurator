@@ -61,6 +61,20 @@ export interface ForwardCounter {
   outInterface?: string;
 }
 
+/** Options for IP policy routing rule management */
+export interface IpRuleOptions {
+  from: string;
+  to?: string;
+  table: number;
+}
+
+/** Options for routing table entry management */
+export interface RouteOptions {
+  destination: string;
+  device: string;
+  table: number;
+}
+
 /** Options for iptables rule manipulation */
 export interface IptablesOptions {
   action: '-A' | '-D' | '-I' | '-C';

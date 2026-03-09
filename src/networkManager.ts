@@ -134,7 +134,7 @@ export function stopAllDHCP() {
 // ── Network configuration ──────────────────────────────────────────
 
 // TODO: load this map from the radio config
-const vlanMap = {
+export const vlanMap: Record<StationName, number> = {
   red1: 10,
   red2: 20,
   red3: 30,
@@ -186,6 +186,8 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
         comment: `${commentPrefix}nat-vlan-${station}`,
         action: '-D',
       });
+      // Remove the per-station routing table entry used for laptop route preferences
+      await net.removeRoute({ destination: teamIp(prevTeam, '0/24'), device: ifName, table: vlanId });
     }
 
     if (team) {
@@ -238,6 +240,9 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
         comment: `${commentPrefix}nat-vlan-${station}`,
         action: '-A',
       });
+      // Add a per-station routing table entry so laptops can select which robot to talk to
+      // when multiple stations share the same team subnet (same team, different robot suffix)
+      await net.addRoute({ destination: teamIp(team, '0/24'), device: ifName, table: vlanId });
     } else {
       await net.setInterfaceDown(ifName);
     }

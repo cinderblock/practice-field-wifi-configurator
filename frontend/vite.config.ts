@@ -20,6 +20,9 @@ function stationRoutes(): Plugin {
         if (url === '/network') {
           req.url = '/network.html';
         }
+        if (url === '/route') {
+          req.url = '/route.html';
+        }
         next();
       });
     },
@@ -50,6 +53,7 @@ export default defineConfig({
         admin: 'admin.html',
         logs: 'logs.html',
         network: 'network.html',
+        route: 'route.html',
       },
     },
   },

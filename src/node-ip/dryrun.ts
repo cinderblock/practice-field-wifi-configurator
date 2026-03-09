@@ -1,5 +1,5 @@
 import type { NetworkBackend } from './backend.js';
-import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions } from './types.js';
+import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, IpRuleOptions, RouteOptions } from './types.js';
 
 /**
  * Creates a dry-run backend that logs operations instead of executing them.
@@ -79,6 +79,22 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     async flushRulesByComment(commentPrefix: string) {
       if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
       console.log(`[dry-run] Would flush all iptables rules with comment prefix "${commentPrefix}"`);
+    },
+
+    async addIpRule(opts: IpRuleOptions) {
+      console.log(`[dry-run] Would add ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`);
+    },
+
+    async removeIpRule(opts: IpRuleOptions) {
+      console.log(`[dry-run] Would remove ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`);
+    },
+
+    async addRoute(opts: RouteOptions) {
+      console.log(`[dry-run] Would add route: ${opts.destination} dev ${opts.device} table ${opts.table}`);
+    },
+
+    async removeRoute(opts: RouteOptions) {
+      console.log(`[dry-run] Would remove route: ${opts.destination} dev ${opts.device} table ${opts.table}`);
     },
   };
 }

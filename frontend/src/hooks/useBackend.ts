@@ -12,6 +12,9 @@ import {
   isNetworkStats,
   isSubnetScanResults,
   isTelemetryUpdate,
+  isRoutePreferenceState,
+  RoutePreferenceState,
+  RoutePreferenceMsg,
   StationName,
   StationUpdate,
   StatusEntry,
@@ -190,6 +193,7 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 let currentSubnetScan: SubnetScanResults | null = null;
+let currentRoutePreferenceState: RoutePreferenceState | null = null;
 
 type Message =
   | StatusEntry
@@ -199,7 +203,8 @@ type Message =
   | NetworkStats
   | AppLogMessage
   | TelemetryUpdate
-  | SubnetScanResults;
+  | SubnetScanResults
+  | RoutePreferenceState;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -269,7 +274,17 @@ function handleTelemetry(update: TelemetryUpdate) {
   events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
 }
 
+function handleRoutePreferenceState(state: RoutePreferenceState) {
+  currentRoutePreferenceState = state;
+  events.dispatchEvent(new CustomEvent('routePreferenceState', { detail: state }));
+}
+
 function receiveMessage(detail: Message) {
+
+  if (isRoutePreferenceState(detail)) {
+    handleRoutePreferenceState(detail);
+    return;
+  }
 
   if (isErrorEntry(detail)) {
     handleErrorEntry(detail);
@@ -449,4 +464,22 @@ export function sendAdminStationDisable(station: StationName) {
 
 export function sendAdminClearEStop(station?: StationName) {
   ws?.send(JSON.stringify({ type: 'adminClearEStop', station }));
+}
+
+// ── Route Preferences ───────────────────────────────────────────────
+
+export function useRoutePreferenceState(): RoutePreferenceState | null {
+  const [state, setState] = useState<RoutePreferenceState | null>(currentRoutePreferenceState);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('routePreferenceState', handler);
+    return () => events.removeEventListener('routePreferenceState', handler);
+  }, []);
+
+  return state;
+}
+
+export function sendRoutePreference(station: RoutePreferenceMsg['station']) {
+  ws?.send(JSON.stringify({ type: 'routePreference', station } satisfies RoutePreferenceMsg));
 }

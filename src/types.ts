@@ -565,6 +565,43 @@ export function isAppLogMessage(msg: unknown): msg is AppLogMessage {
   return (msg as AppLogMessage).type === 'appLog';
 }
 
+// ── Route Preferences ───────────────────────────────────────────────
+
+/** Sent from client to server to set or clear a routing preference */
+export type RoutePreferenceMsg = {
+  type: 'routePreference';
+  /** Which station to route to, or null to clear the preference */
+  station: StationName | null;
+};
+
+export function isRoutePreferenceMsg(msg: unknown): msg is RoutePreferenceMsg {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RoutePreferenceMsg;
+  if (m.type !== 'routePreference') return false;
+  if (m.station !== null && !StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
+/** Sent from server to client with their routing preference state */
+export type RoutePreferenceState = {
+  type: 'routePreferenceState';
+  /** The IP address of the connected client */
+  yourIp: string;
+  /** The currently active routing preference, or null if none */
+  preference: StationName | null;
+  /**
+   * Teams that are assigned to more than one station simultaneously.
+   * Keys are team numbers (as strings), values are the stations they appear on.
+   * Only teams with 2+ stations are included.
+   */
+  conflictingTeams: Record<string, StationName[]>;
+};
+
+export function isRoutePreferenceState(msg: unknown): msg is RoutePreferenceState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as RoutePreferenceState).type === 'routePreferenceState';
+}
+
 // ── Saved WiFi Types ────────────────────────────────────────────────
 
 export interface SavedWiFiSetting {

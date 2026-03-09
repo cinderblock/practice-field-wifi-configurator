@@ -10,6 +10,7 @@ import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
 import { stopAllDHCP } from './networkManager.js';
+import { onConfigChange as onRouteConfigChange, cleanupAllPreferences } from './routePreferenceManager.js';
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
@@ -78,7 +79,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   matchAudio.attachToEngine(matchEngine);
 
   // Initialize WebSocket server
-  const { wss, broadcast } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
+  const { wss, broadcast, broadcastRouteState } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
   setBroadcast(broadcast);
 
   // Subnet scanning for device discovery on team VLANs
@@ -106,6 +107,8 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
     }
     broadcast(subnetScanner.getResults());
+    // Clear stale routing preferences then push updated state to all clients
+    onRouteConfigChange(s => radioManager.getTeamForStation(s)).then(() => broadcastRouteState());
   });
 
   // Initialize scheduled configuration clearing
@@ -175,15 +178,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     setInterval(refreshNetworkStats, 5000);
   }
 
-  // Clean up iptables rules on graceful shutdown
+  // Clean up iptables rules and ip rules on graceful shutdown
   if (net) {
     const cleanup = () => {
       stopAllDHCP();
-      console.log('Cleaning up iptables rules...');
-      net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX).then(
+      console.log('Cleaning up network rules...');
+      Promise.all([
+        net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX),
+        cleanupAllPreferences(),
+      ]).then(
         () => process.exit(0),
         err => {
-          console.error('Error during iptables cleanup:', err);
+          console.error('Error during cleanup:', err);
           process.exit(1);
         },
       );

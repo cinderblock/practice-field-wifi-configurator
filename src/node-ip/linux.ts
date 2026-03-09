@@ -9,6 +9,8 @@ import type {
   ArpingOptions,
   SysctlOptions,
   IptablesOptions,
+  IpRuleOptions,
+  RouteOptions,
   ForwardCounter,
 } from './types.js';
 
@@ -245,6 +247,48 @@ export function createLinuxBackend(): NetworkBackend {
       }
 
       return results;
+    },
+
+    async addIpRule(opts: IpRuleOptions): Promise<void> {
+      const args = ['from', opts.from];
+      if (opts.to) args.push('to', opts.to);
+      args.push('table', String(opts.table));
+      try {
+        await ip('rule', 'add', ...args);
+      } catch (err) {
+        if (isExecError(err) && err.stderr.includes('File exists')) return;
+        throw err;
+      }
+    },
+
+    async removeIpRule(opts: IpRuleOptions): Promise<void> {
+      const args = ['from', opts.from];
+      if (opts.to) args.push('to', opts.to);
+      args.push('table', String(opts.table));
+      try {
+        await ip('rule', 'del', ...args);
+      } catch (err) {
+        if (isExecError(err) && (err.stderr.includes('No such') || err.stderr.includes('No rule'))) return;
+        throw err;
+      }
+    },
+
+    async addRoute(opts: RouteOptions): Promise<void> {
+      try {
+        await ip('route', 'add', opts.destination, 'dev', opts.device, 'table', String(opts.table));
+      } catch (err) {
+        if (isExecError(err) && err.stderr.includes('File exists')) return;
+        throw err;
+      }
+    },
+
+    async removeRoute(opts: RouteOptions): Promise<void> {
+      try {
+        await ip('route', 'del', opts.destination, 'dev', opts.device, 'table', String(opts.table));
+      } catch (err) {
+        if (isExecError(err) && (err.stderr.includes('No such') || err.stderr.includes('No route'))) return;
+        throw err;
+      }
     },
 
     async flushRulesByComment(commentPrefix: string): Promise<void> {
