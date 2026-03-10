@@ -10,19 +10,28 @@ import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
 import { stopAllDHCP } from './networkManager.js';
-import { onConfigChange as onRouteConfigChange, cleanupAllPreferences, restorePreferencesFromKernel } from './routePreferenceManager.js';
+import {
+  onConfigChange as onRouteConfigChange,
+  cleanupAllPreferences,
+  restorePreferencesFromKernel,
+} from './routePreferenceManager.js';
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
 import { StationNameList } from './types.js';
+import { existsSync, rmSync } from 'node:fs';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
 // When true, skip flushing iptables/ip rules on startup and restore preferences from the kernel.
-// Use after a graceful restart (SIGUSR1) to avoid disrupting existing network state.
-const KeepNetwork = process.env.KEEP_NETWORK === 'true';
+// Set automatically by a graceful reload (systemctl reload writes /run/pfms-keep-network before
+// sending SIGHUP). Can also be forced via KEEP_NETWORK=true env var for manual overrides.
+const KEEP_NETWORK_FLAG = '/run/pfms-keep-network';
+const keepNetworkFlagExists = existsSync(KEEP_NETWORK_FLAG);
+if (keepNetworkFlagExists) rmSync(KEEP_NETWORK_FLAG, { force: true });
+const KeepNetwork = keepNetworkFlagExists || process.env.KEEP_NETWORK === 'true';
 
 // Configuration
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2'; // Probably don't need to override this
@@ -97,7 +106,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   matchAudio.attachToEngine(matchEngine);
 
   // Initialize WebSocket server
-  const { wss, broadcast, broadcastRouteState } = setupWebSocket(radioManager, matchEngine, WebSocketPort, trustedProxyMatcher);
+  const { wss, broadcast, broadcastRouteState } = setupWebSocket(
+    radioManager,
+    matchEngine,
+    WebSocketPort,
+    trustedProxyMatcher,
+  );
   setBroadcast(broadcast);
 
   // Subnet scanning for device discovery on team VLANs
@@ -202,10 +216,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     const fullCleanup = () => {
       stopAllDHCP();
       console.log('Cleaning up network rules...');
-      Promise.all([
-        net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX),
-        cleanupAllPreferences(),
-      ]).then(
+      Promise.all([net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX), cleanupAllPreferences()]).then(
         () => process.exit(0),
         err => {
           console.error('Error during cleanup:', err);
@@ -214,8 +225,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       );
     };
 
-    // SIGUSR1: exit without touching network state so the next startup can pick up
-    // where this one left off. Start the new process with KEEP_NETWORK=true.
+    // SIGHUP (systemctl reload): exit without touching network state. systemd will
+    // write /run/pfms-keep-network before sending SIGHUP, so the next startup skips
+    // the iptables flush and restores routing preferences from the kernel.
     const gracefulExit = () => {
       stopAllDHCP();
       console.log('Graceful exit: network rules preserved.');
@@ -224,7 +236,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
     process.on('SIGTERM', fullCleanup);
     process.on('SIGINT', fullCleanup);
-    process.on('SIGUSR1', gracefulExit);
+    process.on('SIGHUP', gracefulExit);
   }
 
   // After a graceful restart, restore routing preferences from the kernel so the
