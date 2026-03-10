@@ -30,17 +30,8 @@ else
   npm run build
 fi
 
-# Auto-detect deployment based on working directory name
-case "$(basename "$PWD")" in
-  practice-field-management-system)
-    DEPLOY_BASE=/opt/practice-field-management-system
-    SERVICE=practice-field-management-system.service
-    ;;
-  *)
-    DEPLOY_BASE=/opt/practice-field-wifi
-    SERVICE=practice-field-wifi-configurator.service
-    ;;
-esac
+DEPLOY_BASE=/opt/practice-field-management-system
+SERVICE=practice-field-management-system.service
 
 echo "Deploying to $DEPLOY_BASE"
 
