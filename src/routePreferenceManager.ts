@@ -62,7 +62,9 @@ export async function onConfigChange(getTeamForStation: (s: StationName) => numb
  * Computes which teams are assigned to more than one station.
  * Returns a map of teamNumber → [station1, station2, ...].
  */
-export function getConflictingTeams(getTeamForStation: (s: StationName) => number | null): Record<string, StationName[]> {
+export function getConflictingTeams(
+  getTeamForStation: (s: StationName) => number | null,
+): Record<string, StationName[]> {
   const teamToStations = new Map<number, StationName[]>();
   for (const station of StationNameList) {
     const team = getTeamForStation(station);

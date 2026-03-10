@@ -27,6 +27,7 @@ import {
   useNetworkStats,
   useSubnetScan,
 } from '../hooks/useBackend';
+import { MatchPanel } from './MatchPanel';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
@@ -202,786 +203,840 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   return (
-    <Card
-      style={{
-        marginBottom: full ? undefined : '1rem',
-        height: full ? 'calc(100vh - 4rem)' : '22em',
-        ...borderStyle,
-      }}
-    >
-      <CardContent sx={full ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}>
-        <Typography variant="h5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            {pretty}
-            <SSIDDisplay ssid={stationSsid} hashedWpaKey={hashedWpaKey} />
-            {enableStaging && hasStagedChange(station) && (
-              <>
-                <span style={{ userSelect: 'none' }}> → </span>
-                <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
-              </>
-            )}
-          </Box>
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {/** APPLY ALL STAGED CHANGES BUTTON */}
-            {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
-              <Tooltip
-                title={`Apply all staged changes (${
-                  Object.values(stagedChanges).filter(change => change !== null).length
-                } stations)`}
-              >
-                <IconButton
-                  onClick={handleApplyAllStagedChanges}
-                  size="small"
-                  sx={{
-                    color: '#e65100',
-                    backgroundColor: '#fff3e0',
-                    '&:hover': {
-                      backgroundColor: '#ffb74d',
-                      color: '#bf360c',
-                    },
-                  }}
+    <>
+      <MatchPanel station={station} />
+      <Card
+        style={{
+          marginBottom: full ? undefined : '1rem',
+          height: full ? 'calc(100vh - 4rem)' : '22em',
+          ...borderStyle,
+        }}
+      >
+        <CardContent sx={full ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}>
+          <Typography variant="h5" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              {pretty}
+              <SSIDDisplay ssid={stationSsid} hashedWpaKey={hashedWpaKey} />
+              {enableStaging && hasStagedChange(station) && (
+                <>
+                  <span style={{ userSelect: 'none' }}> → </span>
+                  <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
+                </>
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {/** APPLY ALL STAGED CHANGES BUTTON */}
+              {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
+                <Tooltip
+                  title={`Apply all staged changes (${
+                    Object.values(stagedChanges).filter(change => change !== null).length
+                  } stations)`}
                 >
-                  <PlayArrowIcon />
-                </IconButton>
-              </Tooltip>
-            )}
-            {/** CLEAR BUTTON */}
-            {(stationSsid || (enableStaging && hasStagedChange(station))) && (
-              <Tooltip title="Clear station configuration">
-                <IconButton
-                  onClick={handleClearStation}
-                  size="small"
-                  sx={{
-                    color: 'text.secondary',
-                    '&:hover': {
-                      color: 'error.main',
-                      backgroundColor: 'error.light',
-                    },
-                  }}
-                >
-                  <ClearIcon />
-                </IconButton>
-              </Tooltip>
-            )}
-            {/** INTERNET TOGGLE BUTTON - only show if station is configured */}
-            {stationSsid && (
-              <Tooltip title={internetAccess ? 'Disable internet access' : 'Enable internet access'}>
-                <IconButton
-                  onClick={() => {
-                    const next = !internetAccess;
-                    setInternetAccess(next);
-                    sendInternetToggle(station, next);
-                  }}
-                  size="small"
-                  sx={{
-                    color: internetAccess ? 'success.main' : 'text.secondary',
-                    '&:hover': {
-                      color: internetAccess ? 'success.dark' : 'success.main',
-                      backgroundColor: 'action.hover',
-                    },
-                  }}
-                >
-                  {internetAccess ? <PublicIcon /> : <PublicOffIcon />}
-                </IconButton>
-              </Tooltip>
-            )}
-            {/** CHART TOGGLE BUTTON - only show if station is configured */}
-            {stationSsid && (
-              <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
-                <IconButton
-                  onClick={() => setChartMode(!chartMode)}
-                  size="small"
-                  sx={{
-                    color: chartMode ? 'primary.main' : 'text.secondary',
-                    backgroundColor: chartMode ? 'primary.light' : 'transparent',
-                    '&:hover': {
-                      backgroundColor: chartMode ? 'primary.main' : 'action.hover',
-                      color: chartMode ? 'primary.contrastText' : 'text.primary',
-                    },
-                  }}
-                >
-                  <ShowChartIcon />
-                </IconButton>
-              </Tooltip>
-            )}
-            {/** SETTINGS BUTTON */}
-            <IconButton onClick={handleOpen} size="small">
-              <SettingsIcon />
-            </IconButton>
-          </Box>
-        </Typography>
+                  <IconButton
+                    onClick={handleApplyAllStagedChanges}
+                    size="small"
+                    sx={{
+                      color: '#e65100',
+                      backgroundColor: '#fff3e0',
+                      '&:hover': {
+                        backgroundColor: '#ffb74d',
+                        color: '#bf360c',
+                      },
+                    }}
+                  >
+                    <PlayArrowIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {/** CLEAR BUTTON */}
+              {(stationSsid || (enableStaging && hasStagedChange(station))) && (
+                <Tooltip title="Clear station configuration">
+                  <IconButton
+                    onClick={handleClearStation}
+                    size="small"
+                    sx={{
+                      color: 'text.secondary',
+                      '&:hover': {
+                        color: 'error.main',
+                        backgroundColor: 'error.light',
+                      },
+                    }}
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {/** INTERNET TOGGLE BUTTON - only show if station is configured */}
+              {stationSsid && (
+                <Tooltip title={internetAccess ? 'Disable internet access' : 'Enable internet access'}>
+                  <IconButton
+                    onClick={() => {
+                      const next = !internetAccess;
+                      setInternetAccess(next);
+                      sendInternetToggle(station, next);
+                    }}
+                    size="small"
+                    sx={{
+                      color: internetAccess ? 'success.main' : 'text.secondary',
+                      '&:hover': {
+                        color: internetAccess ? 'success.dark' : 'success.main',
+                        backgroundColor: 'action.hover',
+                      },
+                    }}
+                  >
+                    {internetAccess ? <PublicIcon /> : <PublicOffIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
+              {/** CHART TOGGLE BUTTON - only show if station is configured */}
+              {stationSsid && (
+                <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
+                  <IconButton
+                    onClick={() => setChartMode(!chartMode)}
+                    size="small"
+                    sx={{
+                      color: chartMode ? 'primary.main' : 'text.secondary',
+                      backgroundColor: chartMode ? 'primary.light' : 'transparent',
+                      '&:hover': {
+                        backgroundColor: chartMode ? 'primary.main' : 'action.hover',
+                        color: chartMode ? 'primary.contrastText' : 'text.primary',
+                      },
+                    }}
+                  >
+                    <ShowChartIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {/** SETTINGS BUTTON */}
+              <IconButton onClick={handleOpen} size="small">
+                <SettingsIcon />
+              </IconButton>
+            </Box>
+          </Typography>
 
-        {stationSsid || (enableStaging && hasStagedChange(station)) ? (
-          <>
-            {stationSsid &&
-              (isLinked ? (
-                <CopyToClipboard text={macAddress || ''} tooltipText="Click to copy MAC address">
+          {stationSsid || (enableStaging && hasStagedChange(station)) ? (
+            <>
+              {stationSsid &&
+                (isLinked ? (
+                  <CopyToClipboard text={macAddress || ''} tooltipText="Click to copy MAC address">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                        color: 'text.secondary',
+                        marginBottom: 0.5,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        paddingX: 0.5,
+                        paddingY: 0.25,
+                        borderRadius: 0.5,
+                        '&:hover': {
+                          color: 'text.primary',
+                          backgroundColor: 'action.hover',
+                        },
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {macAddress}
+                    </Typography>
+                  </CopyToClipboard>
+                ) : (
                   <Typography
                     variant="body2"
                     sx={{
                       fontFamily: 'monospace',
                       fontSize: '0.75rem',
-                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                      color: 'warning.main',
                       marginBottom: 0.5,
-                      cursor: 'pointer',
                       textAlign: 'center',
                       paddingX: 0.5,
                       paddingY: 0.25,
-                      borderRadius: 0.5,
-                      '&:hover': {
-                        color: 'text.primary',
-                        backgroundColor: 'action.hover',
-                      },
-                      transition: 'all 0.2s',
                     }}
                   >
-                    {macAddress}
+                    not linked
                   </Typography>
-                </CopyToClipboard>
-              ) : (
-                <Typography
-                  variant="body2"
+                ))}
+              {chartMode && stationSsid ? (
+                <Box
                   sx={{
-                    fontFamily: 'monospace',
-                    fontSize: '0.75rem',
-                    fontStyle: 'italic',
-                    color: 'warning.main',
-                    marginBottom: 0.5,
-                    textAlign: 'center',
-                    paddingX: 0.5,
-                    paddingY: 0.25,
+                    overflowY: 'auto',
+                    ...(full ? { flex: 1, minHeight: 0 } : { height: 'calc(22em - 95px + 5px)' }),
                   }}
                 >
-                  not linked
-                </Typography>
-              ))}
-            {chartMode && stationSsid ? (
-              <Box
-                sx={{
-                  overflowY: 'auto',
-                  ...(full ? { flex: 1, minHeight: 0 } : { height: 'calc(22em - 95px + 5px)' }),
-                }}
-              >
-                {full ? (
-                  <>
-                    {/* Full view: show all charts separately */}
-                    <StationChart station={station} metric="signalLevels" height="60px" />
-                    <StationChart station={station} metric="snr" height="60px" />
-                    <StationChart station={station} metric="rates" height="60px" />
-                    <StationChart station={station} metric="packets" height="60px" />
-                    <StationChart station={station} metric="bytes" height="60px" />
-                    <StationChart station={station} metric="bandwidth" height="60px" />
-                    <StationChart station={station} metric="dataAge" height="60px" />
-                    <StationChart station={station} metric="quality" height="60px" />
-                    <StationChart station={station} metric="batteryVoltage" height="60px" />
-                    <StationChart station={station} metric="dsCpuPercent" height="60px" />
-                    <StationChart station={station} metric="robotStatus" height="60px" />
-                  </>
-                ) : (
-                  <>
-                    {/* Non-full view: use grouped charts */}
-                    <GroupedChart
-                      station={station}
-                      metrics={['snr', 'signalLevels']}
-                      height="60px"
-                      defaultMetricIndex={0}
-                      marginBottom={0.5}
-                    />
-                    <GroupedChart
-                      station={station}
-                      metrics={['rates', 'packets', 'bytes']}
-                      height="60px"
-                      defaultMetricIndex={0}
-                      marginBottom={0.5}
-                    />
-                    <GroupedChart
-                      station={station}
-                      metrics={['quality', 'bandwidth', 'dataAge']}
-                      height="60px"
-                      defaultMetricIndex={0}
-                      marginBottom={0.5}
-                    />
-                    <GroupedChart
-                      station={station}
-                      metrics={['batteryVoltage', 'dsCpuPercent', 'robotStatus']}
-                      height="60px"
-                      defaultMetricIndex={0}
-                      marginBottom={0.5}
-                    />
-                  </>
-                )}
-              </Box>
-            ) : (
-              <>
-                {stationSsid && isLinked && (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
-                    {/* Signal Levels Group */}
-                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ textAlign: 'right' }}>Signal</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>Noise</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>SNR</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 200, 100)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(signalDbm)} dBm
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 150, 150)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(noiseDbm)} dBm
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(signalNoiseRatio)} dB
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
+                  {full ? (
+                    <>
+                      {/* Full view: show all charts separately */}
+                      <StationChart station={station} metric="signalLevels" height="60px" />
+                      <StationChart station={station} metric="snr" height="60px" />
+                      <StationChart station={station} metric="rates" height="60px" />
+                      <StationChart station={station} metric="packets" height="60px" />
+                      <StationChart station={station} metric="bytes" height="60px" />
+                      <StationChart station={station} metric="bandwidth" height="60px" />
+                      <StationChart station={station} metric="dataAge" height="60px" />
+                      <StationChart station={station} metric="quality" height="60px" />
+                      <StationChart station={station} metric="batteryVoltage" height="60px" />
+                      <StationChart station={station} metric="dsCpuPercent" height="60px" />
+                      <StationChart station={station} metric="robotStatus" height="60px" />
+                    </>
+                  ) : (
+                    <>
+                      {/* Non-full view: use grouped charts */}
+                      <GroupedChart
+                        station={station}
+                        metrics={['snr', 'signalLevels']}
+                        height="60px"
+                        defaultMetricIndex={0}
+                        marginBottom={0.5}
+                      />
+                      <GroupedChart
+                        station={station}
+                        metrics={['rates', 'packets', 'bytes']}
+                        height="60px"
+                        defaultMetricIndex={0}
+                        marginBottom={0.5}
+                      />
+                      <GroupedChart
+                        station={station}
+                        metrics={['quality', 'bandwidth', 'dataAge']}
+                        height="60px"
+                        defaultMetricIndex={0}
+                        marginBottom={0.5}
+                      />
+                      <GroupedChart
+                        station={station}
+                        metrics={['batteryVoltage', 'dsCpuPercent', 'robotStatus']}
+                        height="60px"
+                        defaultMetricIndex={0}
+                        marginBottom={0.5}
+                      />
+                    </>
+                  )}
+                </Box>
+              ) : (
+                <>
+                  {stationSsid && isLinked && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
+                      {/* Signal Levels Group */}
+                      <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ textAlign: 'right' }}>Signal</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>Noise</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>SNR</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 200, 100)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(signalDbm)} dBm
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 150, 150)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(noiseDbm)} dBm
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(signalNoiseRatio)} dB
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
 
-                    {/* Connection Quality, Bandwidth, and Data Age Group */}
-                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Quality</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>Used</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>of Available</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>Data Age</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell
-                            sx={{
-                              color:
-                                connectionQuality === 'excellent'
-                                  ? 'rgb(76, 175, 80)'
-                                  : connectionQuality === 'good'
-                                    ? 'rgb(139, 195, 74)'
-                                    : connectionQuality === 'caution'
-                                      ? 'rgb(255, 193, 7)'
-                                      : connectionQuality === 'warning'
-                                        ? 'rgb(244, 67, 54)'
-                                        : 'rgb(128, 128, 128)',
-                            }}
+                      {/* Connection Quality, Bandwidth, and Data Age Group */}
+                      <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Quality</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>Used</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>of Available</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>Data Age</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell
+                              sx={{
+                                color:
+                                  connectionQuality === 'excellent'
+                                    ? 'rgb(76, 175, 80)'
+                                    : connectionQuality === 'good'
+                                      ? 'rgb(139, 195, 74)'
+                                      : connectionQuality === 'caution'
+                                        ? 'rgb(255, 193, 7)'
+                                        : connectionQuality === 'warning'
+                                          ? 'rgb(244, 67, 54)'
+                                          : 'rgb(128, 128, 128)',
+                              }}
+                            >
+                              {connectionQuality}
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(bandwidthUsedMbps)} Mbps
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(
+                                (bandwidthUsedMbps! / Math.min(rxRateMbps!, txRateMbps!)) * 100,
+                              )}
+                              %
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(200, 150, 100)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(dataAgeMs)} ms
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+
+                      {/* TX/RX Group */}
+                      <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell></TableCell>
+                            <Tooltip title="To robot">
+                              <TableCell sx={{ textAlign: 'right' }}>TX</TableCell>
+                            </Tooltip>
+                            <Tooltip title="From robot">
+                              <TableCell sx={{ textAlign: 'right' }}>RX</TableCell>
+                            </Tooltip>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>Rate</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(txRateMbps)} Mbps
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(rxRateMbps)} Mbps
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>Packets</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(txPackets)}
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(rxPackets)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>Bytes</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(txBytes)}
+                            </TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                              {formatNumberWithThinSpace(rxBytes)}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+
+                      {/* IP Forwarding Counters (iptables FORWARD rules) */}
+                      {networkStats?.stations[station] &&
+                        (() => {
+                          const fwd = networkStats.stations[station]!;
+                          return (
+                            <Table
+                              size="small"
+                              sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                            >
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>IP Forwarding</TableCell>
+                                  <Tooltip title="Packet count">
+                                    <TableCell sx={{ textAlign: 'right' }}>Packets</TableCell>
+                                  </Tooltip>
+                                  <Tooltip title="Byte count">
+                                    <TableCell sx={{ textAlign: 'right' }}>Bytes</TableCell>
+                                  </Tooltip>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                <TableRow>
+                                  <TableCell>From robot</TableCell>
+                                  <TableCell
+                                    sx={{
+                                      whiteSpace: 'nowrap',
+                                      color: 'rgb(255, 80, 80)',
+                                      textAlign: 'right',
+                                      fontFamily: 'monospace',
+                                    }}
+                                  >
+                                    {fwd.rxPackets.toLocaleString()}
+                                  </TableCell>
+                                  <TableCell
+                                    sx={{
+                                      whiteSpace: 'nowrap',
+                                      color: 'rgb(255, 80, 80)',
+                                      textAlign: 'right',
+                                      fontFamily: 'monospace',
+                                    }}
+                                  >
+                                    {formatBytes(fwd.rxBytes)}
+                                  </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                  <TableCell>To robot</TableCell>
+                                  <TableCell
+                                    sx={{
+                                      whiteSpace: 'nowrap',
+                                      color: 'rgb(80, 255, 80)',
+                                      textAlign: 'right',
+                                      fontFamily: 'monospace',
+                                    }}
+                                  >
+                                    {fwd.txPackets.toLocaleString()}
+                                  </TableCell>
+                                  <TableCell
+                                    sx={{
+                                      whiteSpace: 'nowrap',
+                                      color: 'rgb(80, 255, 80)',
+                                      textAlign: 'right',
+                                      fontFamily: 'monospace',
+                                    }}
+                                  >
+                                    {formatBytes(fwd.txBytes)}
+                                  </TableCell>
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          );
+                        })()}
+
+                      {/* Robot Telemetry Group (only shown when telemetry data exists) */}
+                      {telemetry && (
+                        <>
+                          <Table
+                            size="small"
+                            sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
                           >
-                            {connectionQuality}
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(bandwidthUsedMbps)} Mbps
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace((bandwidthUsedMbps! / Math.min(rxRateMbps!, txRateMbps!)) * 100)}
-                            %
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(200, 150, 100)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(dataAgeMs)} ms
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-
-                    {/* TX/RX Group */}
-                    <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell></TableCell>
-                          <Tooltip title="To robot">
-                            <TableCell sx={{ textAlign: 'right' }}>TX</TableCell>
-                          </Tooltip>
-                          <Tooltip title="From robot">
-                            <TableCell sx={{ textAlign: 'right' }}>RX</TableCell>
-                          </Tooltip>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell>Rate</TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(txRateMbps)} Mbps
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(rxRateMbps)} Mbps
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Packets</TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(txPackets)}
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(rxPackets)}
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>Bytes</TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(txBytes)}
-                          </TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
-                            {formatNumberWithThinSpace(rxBytes)}
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-
-                    {/* IP Forwarding Counters (iptables FORWARD rules) */}
-                    {networkStats?.stations[station] && (() => {
-                      const fwd = networkStats.stations[station]!;
-                      return (
-                        <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>IP Forwarding</TableCell>
-                              <Tooltip title="Packet count">
-                                <TableCell sx={{ textAlign: 'right' }}>Packets</TableCell>
-                              </Tooltip>
-                              <Tooltip title="Byte count">
-                                <TableCell sx={{ textAlign: 'right' }}>Bytes</TableCell>
-                              </Tooltip>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell>From robot</TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
-                                {fwd.rxPackets.toLocaleString()}
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
-                                {formatBytes(fwd.rxBytes)}
-                              </TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>To robot</TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
-                                {fwd.txPackets.toLocaleString()}
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right', fontFamily: 'monospace' }}>
-                                {formatBytes(fwd.txBytes)}
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      );
-                    })()}
-
-                    {/* Robot Telemetry Group (only shown when telemetry data exists) */}
-                    {telemetry && (
-                      <>
-                        <Table
-                          size="small"
-                          sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
-                        >
-                          <TableHead>
-                            <TableRow>
-                              <TableCell sx={{ textAlign: 'right' }}>Battery</TableCell>
-                              <TableCell sx={{ textAlign: 'right' }}>RTT</TableCell>
-                              <TableCell sx={{ textAlign: 'right' }}>Lost Pkts</TableCell>
-                              <TableCell sx={{ textAlign: 'right' }}>CAN</TableCell>
-                              <TableCell sx={{ textAlign: 'right' }}>DS CPU</TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(76, 175, 80)', textAlign: 'right' }}>
-                                {telemetry.batteryVoltage?.toFixed(1)} V
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                                {telemetry.rttMs !== undefined ? `${telemetry.rttMs} ms` : '—'}
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                                {telemetry.lostPackets !== undefined ? telemetry.lostPackets : '—'}
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                                {telemetry.canUtil !== undefined ? `${telemetry.canUtil}%` : '—'}
-                              </TableCell>
-                              <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
-                                {telemetry.dsCpuPercent !== undefined ? `${telemetry.dsCpuPercent}%` : '—'}
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-
-                        {/* Status Chips */}
-                        {telemetry.dsStatus && (
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                            <Chip
-                              label={
-                                telemetry.dsStatus.mode === 'teleOp'
-                                  ? 'TeleOp'
-                                  : telemetry.dsStatus.mode === 'auto'
-                                    ? 'Auto'
-                                    : 'Test'
-                              }
-                              size="small"
-                              sx={{
-                                backgroundColor:
-                                  telemetry.dsStatus.mode === 'teleOp'
-                                    ? 'rgb(33, 150, 243)'
-                                    : telemetry.dsStatus.mode === 'auto'
-                                      ? 'rgb(76, 175, 80)'
-                                      : 'rgb(255, 152, 0)',
-                                color: '#fff',
-                                fontSize: '0.7rem',
-                                height: 20,
-                              }}
-                            />
-                            <Chip
-                              label={telemetry.dsStatus.robotComms ? 'Comms' : 'No Comms'}
-                              size="small"
-                              sx={{
-                                backgroundColor: telemetry.dsStatus.robotComms
-                                  ? 'rgb(76, 175, 80)'
-                                  : 'rgb(244, 67, 54)',
-                                color: '#fff',
-                                fontSize: '0.7rem',
-                                height: 20,
-                              }}
-                            />
-                            <Chip
-                              label={telemetry.dsStatus.radioPing ? 'Radio' : 'No Radio'}
-                              size="small"
-                              sx={{
-                                backgroundColor: telemetry.dsStatus.radioPing
-                                  ? 'rgb(33, 150, 243)'
-                                  : 'rgb(244, 67, 54)',
-                                color: '#fff',
-                                fontSize: '0.7rem',
-                                height: 20,
-                              }}
-                            />
-                            <Chip
-                              label={telemetry.dsStatus.rioPing ? 'RIO' : 'No RIO'}
-                              size="small"
-                              sx={{
-                                backgroundColor: telemetry.dsStatus.rioPing ? 'rgb(0, 188, 212)' : 'rgb(244, 67, 54)',
-                                color: '#fff',
-                                fontSize: '0.7rem',
-                                height: 20,
-                              }}
-                            />
-                            {telemetry.dsStatus.eStop && (
-                              <Chip
-                                label="E-STOP"
-                                size="small"
-                                sx={{
-                                  backgroundColor: 'rgb(244, 67, 54)',
-                                  color: '#fff',
-                                  fontSize: '0.7rem',
-                                  height: 20,
-                                  fontWeight: 'bold',
-                                }}
-                              />
-                            )}
-                            {telemetry.brownout && (
-                              <Chip
-                                label="BROWNOUT"
-                                size="small"
-                                sx={{
-                                  backgroundColor: 'rgb(255, 152, 0)',
-                                  color: '#fff',
-                                  fontSize: '0.7rem',
-                                  height: 20,
-                                  fontWeight: 'bold',
-                                }}
-                              />
-                            )}
-                          </Box>
-                        )}
-                      </>
-                    )}
-                    {/* Subnet Scan — discovered devices on the team VLAN */}
-                    {(() => {
-                      const scan = subnetScan?.stations[station];
-                      if (!scan || scan.hosts.length === 0) return null;
-                      const aliveCount = scan.hosts.filter(h => h.alive).length;
-                      return (
-                        <Box sx={{ mt: 0.5 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, mb: 0.25 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Subnet {scan.subnet}
-                            </Typography>
-                            <Chip
-                              label={`${aliveCount} / ${scan.hosts.length}`}
-                              size="small"
-                              color={aliveCount > 0 ? 'success' : 'default'}
-                              sx={{ height: 18, fontSize: '0.7rem' }}
-                            />
-                          </Box>
-                          <Table size="small" sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}>
                             <TableHead>
                               <TableRow>
-                                <TableCell>IP</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Device</TableCell>
-                                <TableCell>Last Seen</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>Battery</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>RTT</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>Lost Pkts</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>CAN</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>DS CPU</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {scan.hosts.map(host => (
-                                <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
-                                  <TableCell sx={{ fontFamily: 'monospace' }}>{host.ip}</TableCell>
-                                  <TableCell>
-                                    <Chip
-                                      label={host.alive ? 'UP' : 'DOWN'}
-                                      size="small"
-                                      color={host.alive ? 'success' : 'error'}
-                                      variant={host.alive ? 'filled' : 'outlined'}
-                                      sx={{ height: 18, fontSize: '0.7rem' }}
-                                    />
-                                  </TableCell>
-                                  <TableCell>{describeIp(host) ?? ''}</TableCell>
-                                  <TableCell>{formatAge(host.lastSeen)}</TableCell>
-                                </TableRow>
-                              ))}
+                              <TableRow>
+                                <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(76, 175, 80)', textAlign: 'right' }}>
+                                  {telemetry.batteryVoltage?.toFixed(1)} V
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                  {telemetry.rttMs !== undefined ? `${telemetry.rttMs} ms` : '—'}
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                  {telemetry.lostPackets !== undefined ? telemetry.lostPackets : '—'}
+                                </TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                                  {telemetry.canUtil !== undefined ? `${telemetry.canUtil}%` : '—'}
+                                </TableCell>
+                                <TableCell
+                                  sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}
+                                >
+                                  {telemetry.dsCpuPercent !== undefined ? `${telemetry.dsCpuPercent}%` : '—'}
+                                </TableCell>
+                              </TableRow>
                             </TableBody>
                           </Table>
-                        </Box>
-                      );
-                    })()}
-                  </Box>
-                )}
-              </>
-            )}
-          </>
-        ) : (
-          <Typography noWrap style={{ fontStyle: 'italic' }}>
-            not configured
-          </Typography>
-        )}
-      </CardContent>
 
-      <Dialog
-        open={open}
-        onClose={handleClose}
-        slotProps={{
-          transition: {
-            onEntered: () => {
-              ssidInputRef.current?.focus();
-              ssidInputRef.current?.select();
+                          {/* Status Chips */}
+                          {telemetry.dsStatus && (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              <Chip
+                                label={
+                                  telemetry.dsStatus.mode === 'teleOp'
+                                    ? 'TeleOp'
+                                    : telemetry.dsStatus.mode === 'auto'
+                                      ? 'Auto'
+                                      : 'Test'
+                                }
+                                size="small"
+                                sx={{
+                                  backgroundColor:
+                                    telemetry.dsStatus.mode === 'teleOp'
+                                      ? 'rgb(33, 150, 243)'
+                                      : telemetry.dsStatus.mode === 'auto'
+                                        ? 'rgb(76, 175, 80)'
+                                        : 'rgb(255, 152, 0)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                }}
+                              />
+                              <Chip
+                                label={telemetry.dsStatus.robotComms ? 'Comms' : 'No Comms'}
+                                size="small"
+                                sx={{
+                                  backgroundColor: telemetry.dsStatus.robotComms
+                                    ? 'rgb(76, 175, 80)'
+                                    : 'rgb(244, 67, 54)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                }}
+                              />
+                              <Chip
+                                label={telemetry.dsStatus.radioPing ? 'Radio' : 'No Radio'}
+                                size="small"
+                                sx={{
+                                  backgroundColor: telemetry.dsStatus.radioPing
+                                    ? 'rgb(33, 150, 243)'
+                                    : 'rgb(244, 67, 54)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                }}
+                              />
+                              <Chip
+                                label={telemetry.dsStatus.rioPing ? 'RIO' : 'No RIO'}
+                                size="small"
+                                sx={{
+                                  backgroundColor: telemetry.dsStatus.rioPing ? 'rgb(0, 188, 212)' : 'rgb(244, 67, 54)',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  height: 20,
+                                }}
+                              />
+                              {telemetry.dsStatus.eStop && (
+                                <Chip
+                                  label="E-STOP"
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: 'rgb(244, 67, 54)',
+                                    color: '#fff',
+                                    fontSize: '0.7rem',
+                                    height: 20,
+                                    fontWeight: 'bold',
+                                  }}
+                                />
+                              )}
+                              {telemetry.brownout && (
+                                <Chip
+                                  label="BROWNOUT"
+                                  size="small"
+                                  sx={{
+                                    backgroundColor: 'rgb(255, 152, 0)',
+                                    color: '#fff',
+                                    fontSize: '0.7rem',
+                                    height: 20,
+                                    fontWeight: 'bold',
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          )}
+                        </>
+                      )}
+                      {/* Subnet Scan — discovered devices on the team VLAN */}
+                      {(() => {
+                        const scan = subnetScan?.stations[station];
+                        if (!scan || scan.hosts.length === 0) return null;
+                        const aliveCount = scan.hosts.filter(h => h.alive).length;
+                        return (
+                          <Box sx={{ mt: 0.5 }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                px: 1,
+                                mb: 0.25,
+                              }}
+                            >
+                              <Typography variant="caption" color="text.secondary">
+                                Subnet {scan.subnet}
+                              </Typography>
+                              <Chip
+                                label={`${aliveCount} / ${scan.hosts.length}`}
+                                size="small"
+                                color={aliveCount > 0 ? 'success' : 'default'}
+                                sx={{ height: 18, fontSize: '0.7rem' }}
+                              />
+                            </Box>
+                            <Table
+                              size="small"
+                              sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                            >
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell>IP</TableCell>
+                                  <TableCell>Status</TableCell>
+                                  <TableCell>Device</TableCell>
+                                  <TableCell>Last Seen</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {scan.hosts.map(host => (
+                                  <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
+                                    <TableCell sx={{ fontFamily: 'monospace' }}>{host.ip}</TableCell>
+                                    <TableCell>
+                                      <Chip
+                                        label={host.alive ? 'UP' : 'DOWN'}
+                                        size="small"
+                                        color={host.alive ? 'success' : 'error'}
+                                        variant={host.alive ? 'filled' : 'outlined'}
+                                        sx={{ height: 18, fontSize: '0.7rem' }}
+                                      />
+                                    </TableCell>
+                                    <TableCell>{describeIp(host) ?? ''}</TableCell>
+                                    <TableCell>{formatAge(host.lastSeen)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </Box>
+                        );
+                      })()}
+                    </Box>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <Typography noWrap style={{ fontStyle: 'italic' }}>
+              not configured
+            </Typography>
+          )}
+        </CardContent>
+
+        <Dialog
+          open={open}
+          onClose={handleClose}
+          slotProps={{
+            transition: {
+              onEntered: () => {
+                ssidInputRef.current?.focus();
+                ssidInputRef.current?.select();
+              },
             },
-          },
-        }}
-      >
-        <form
-          style={borderStyle}
-          onSubmit={e => {
-            e.preventDefault();
-            if (isSaveEnabled) handleSave(false); // Save or Clear on submit
-          }}
-          onKeyDown={e => {
-            if (enableStaging && e.key === 'Enter' && e.shiftKey) {
-              // Shift+Enter: Stage
-              if (isSaveEnabled) handleSave(true);
-              e.preventDefault(); // Prevent form submit
-            }
           }}
         >
-          <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
-          <DialogContent>
-            <TextField
-              label="SSID"
-              value={ssid}
-              onChange={e => setSsid(e.target.value)}
-              fullWidth
-              style={modalStyle}
-              margin="normal"
-              inputRef={ssidInputRef} // Attach the ref here
-              helperText={
-                isSSIDEmpty
-                  ? 'Empty SSID will clear the configuration.'
-                  : !ssidRegex.test(ssid)
-                    ? 'SSID must be alphanumeric and up to 14 characters.'
-                    : !ssidFormatRegex.test(ssid)
-                      ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
-                      : ''
+          <form
+            style={borderStyle}
+            onSubmit={e => {
+              e.preventDefault();
+              if (isSaveEnabled) handleSave(false); // Save or Clear on submit
+            }}
+            onKeyDown={e => {
+              if (enableStaging && e.key === 'Enter' && e.shiftKey) {
+                // Shift+Enter: Stage
+                if (isSaveEnabled) handleSave(true);
+                e.preventDefault(); // Prevent form submit
               }
-              error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
-            />
-            <TextField
-              label="Passphrase"
-              value={passphrase}
-              onChange={e => setPassphrase(e.target.value)}
-              fullWidth
-              style={modalStyle}
-              disabled={isSSIDEmpty}
-              margin="normal"
-              helperText={
-                !isSSIDEmpty && !passphraseRegex.test(passphrase)
-                  ? 'Passphrase must be alphanumeric and between 8-16 characters.'
-                  : ''
-              }
-              error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
-            />
+            }}
+          >
+            <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
+            <DialogContent>
+              <TextField
+                label="SSID"
+                value={ssid}
+                onChange={e => setSsid(e.target.value)}
+                fullWidth
+                style={modalStyle}
+                margin="normal"
+                inputRef={ssidInputRef} // Attach the ref here
+                helperText={
+                  isSSIDEmpty
+                    ? 'Empty SSID will clear the configuration.'
+                    : !ssidRegex.test(ssid)
+                      ? 'SSID must be alphanumeric and up to 14 characters.'
+                      : !ssidFormatRegex.test(ssid)
+                        ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
+                        : ''
+                }
+                error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
+              />
+              <TextField
+                label="Passphrase"
+                value={passphrase}
+                onChange={e => setPassphrase(e.target.value)}
+                fullWidth
+                style={modalStyle}
+                disabled={isSSIDEmpty}
+                margin="normal"
+                helperText={
+                  !isSSIDEmpty && !passphraseRegex.test(passphrase)
+                    ? 'Passphrase must be alphanumeric and between 8-16 characters.'
+                    : ''
+                }
+                error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
+              />
 
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={internetAccess}
-                  onChange={e => setInternetAccess(e.target.checked)}
-                  disabled={isSSIDEmpty}
-                />
-              }
-              label="Internet access"
-              sx={{ mt: 1 }}
-            />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={internetAccess}
+                    onChange={e => setInternetAccess(e.target.checked)}
+                    disabled={isSSIDEmpty}
+                  />
+                }
+                label="Internet access"
+                sx={{ mt: 1 }}
+              />
 
-            {recentSettings.length > 0 && (
-              <Box
-                sx={{
-                  marginTop: 2,
-                  padding: 2,
-                  backgroundColor: 'background.paper',
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                }}
-              >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
-                  <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-                    Recent Configurations
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title={showPassphrases ? 'Hide passphrases' : 'Show passphrases'}>
-                      <IconButton
-                        size="small"
-                        onClick={() => setShowPassphrases(!showPassphrases)}
-                        sx={{
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: 'text.primary',
-                          },
-                        }}
-                      >
-                        {showPassphrases ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Clear all recent configurations">
-                      <IconButton
-                        size="small"
-                        onClick={clearSettings}
-                        sx={{
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: 'error.main',
-                          },
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-                <Table size="small" sx={{ tableLayout: 'fixed' }}>
-                  <TableBody>
-                    {recentSettings.map(setting => (
-                      <TableRow
-                        key={`${setting.ssid}-${setting.createdAt}`}
-                        hover
-                        onClick={() => handleApplySetting(setting)}
-                        sx={{
-                          cursor: 'pointer',
-                          position: 'relative',
-                          '&:hover': {
-                            backgroundColor: 'action.hover',
-                            '& .delete-button': {
-                              opacity: 1,
-                            },
-                          },
-                        }}
-                      >
-                        <TableCell
-                          sx={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            padding: '4px 8px',
-                            width: '25%',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {setting.ssid}
-                        </TableCell>
-                        <TableCell
-                          sx={{
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            padding: '4px 8px',
-                            width: '25%',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {showPassphrases ? setting.wpaKey : '••••••••'}
-                        </TableCell>
-                        <TableCell
-                          sx={{
-                            fontSize: '0.75rem',
-                            padding: '4px 8px',
-                            width: '25%',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          <TimeDisplay timestamp={setting.lastUsedAt} />
-                        </TableCell>
-                        <TableCell
-                          sx={{
-                            fontSize: '0.75rem',
-                            padding: '4px 8px',
-                            width: '25%',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          <TimeDisplay timestamp={setting.createdAt} />
-                        </TableCell>
-                        {/* Floating delete button */}
+              {recentSettings.length > 0 && (
+                <Box
+                  sx={{
+                    marginTop: 2,
+                    padding: 2,
+                    backgroundColor: 'background.paper',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+                      Recent Configurations
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title={showPassphrases ? 'Hide passphrases' : 'Show passphrases'}>
                         <IconButton
-                          className="delete-button"
                           size="small"
-                          onClick={e => handleRemoveSetting(e, setting)}
+                          onClick={() => setShowPassphrases(!showPassphrases)}
                           sx={{
-                            position: 'absolute',
-                            right: 4,
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            opacity: 0,
-                            transition: 'opacity 0.2s',
-                            backgroundColor: 'background.paper',
-                            boxShadow: 1,
-                            zIndex: 1,
+                            color: 'text.secondary',
                             '&:hover': {
-                              backgroundColor: 'error.light',
-                              color: 'error.contrastText',
+                              color: 'text.primary',
                             },
                           }}
                         >
-                          <DeleteOutlineIcon fontSize="small" />
+                          {showPassphrases ? (
+                            <VisibilityOffIcon fontSize="small" />
+                          ) : (
+                            <VisibilityIcon fontSize="small" />
+                          )}
                         </IconButton>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleClose} color="secondary">
-              Cancel
-            </Button>
-            {enableStaging && (
-              <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
-                Stage
+                      </Tooltip>
+                      <Tooltip title="Clear all recent configurations">
+                        <IconButton
+                          size="small"
+                          onClick={clearSettings}
+                          sx={{
+                            color: 'text.secondary',
+                            '&:hover': {
+                              color: 'error.main',
+                            },
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                  <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                    <TableBody>
+                      {recentSettings.map(setting => (
+                        <TableRow
+                          key={`${setting.ssid}-${setting.createdAt}`}
+                          hover
+                          onClick={() => handleApplySetting(setting)}
+                          sx={{
+                            cursor: 'pointer',
+                            position: 'relative',
+                            '&:hover': {
+                              backgroundColor: 'action.hover',
+                              '& .delete-button': {
+                                opacity: 1,
+                              },
+                            },
+                          }}
+                        >
+                          <TableCell
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              width: '25%',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {setting.ssid}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              width: '25%',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {showPassphrases ? setting.wpaKey : '••••••••'}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              width: '25%',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <TimeDisplay timestamp={setting.lastUsedAt} />
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              width: '25%',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <TimeDisplay timestamp={setting.createdAt} />
+                          </TableCell>
+                          {/* Floating delete button */}
+                          <IconButton
+                            className="delete-button"
+                            size="small"
+                            onClick={e => handleRemoveSetting(e, setting)}
+                            sx={{
+                              position: 'absolute',
+                              right: 4,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              opacity: 0,
+                              transition: 'opacity 0.2s',
+                              backgroundColor: 'background.paper',
+                              boxShadow: 1,
+                              zIndex: 1,
+                              '&:hover': {
+                                backgroundColor: 'error.light',
+                                color: 'error.contrastText',
+                              },
+                            }}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleClose} color="secondary">
+                Cancel
               </Button>
-            )}
-            <Button type="submit" color="primary" disabled={!isSaveEnabled}>
-              {isSSIDEmpty ? 'Clear' : 'Save'}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-    </Card>
+              {enableStaging && (
+                <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
+                  Stage
+                </Button>
+              )}
+              <Button type="submit" color="primary" disabled={!isSaveEnabled}>
+                {isSSIDEmpty ? 'Clear' : 'Save'}
+              </Button>
+            </DialogActions>
+          </form>
+        </Dialog>
+      </Card>
+    </>
   );
 }
 

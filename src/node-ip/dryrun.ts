@@ -1,5 +1,14 @@
 import type { NetworkBackend } from './backend.js';
-import type { VlanOptions, AddAddressOptions, ArpingOptions, SysctlOptions, IptablesOptions, IpRuleOptions, RouteOptions, IpRuleInfo } from './types.js';
+import type {
+  VlanOptions,
+  AddAddressOptions,
+  ArpingOptions,
+  SysctlOptions,
+  IptablesOptions,
+  IpRuleOptions,
+  RouteOptions,
+  IpRuleInfo,
+} from './types.js';
 
 /**
  * Creates a dry-run backend that logs operations instead of executing them.
@@ -87,11 +96,15 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     },
 
     async addIpRule(opts: IpRuleOptions) {
-      console.log(`[dry-run] Would add ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`);
+      console.log(
+        `[dry-run] Would add ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`,
+      );
     },
 
     async removeIpRule(opts: IpRuleOptions) {
-      console.log(`[dry-run] Would remove ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`);
+      console.log(
+        `[dry-run] Would remove ip rule: from ${opts.from}${opts.to ? ` to ${opts.to}` : ''} table ${opts.table}`,
+      );
     },
 
     async addRoute(opts: RouteOptions) {

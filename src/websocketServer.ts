@@ -4,12 +4,19 @@ import RadioManager from './radioManager.js';
 import {
   isStationUpdate,
   isInternetToggle,
-  isAdminStartMatch,
   isAdminStopMatch,
   isAdminGlobalEStop,
   isAdminStationEStop,
   isAdminStationDisable,
   isAdminClearEStop,
+  isStationJoin,
+  isStationLeave,
+  isStationReady,
+  isStationStartMatch,
+  isStationPauseMatch,
+  isStationResumeMatch,
+  isStationAbandonMatch,
+  isUpdateMatchConfig,
   isRoutePreferenceMsg,
   RoutePreferenceState,
 } from './types.js';
@@ -153,21 +160,39 @@ export function setupWebSocket(
         if (clientIp === 'unknown') {
           ws.send(JSON.stringify({ error: 'Cannot set route preference: client IP could not be determined' }));
         } else if (data.station === null) {
-          clearRoutePreference(clientIp).then(() => sendRouteState(ws, clientIp)).catch(err => {
-            appError('Error clearing route preference: ' + err.message);
-          });
+          clearRoutePreference(clientIp)
+            .then(() => sendRouteState(ws, clientIp))
+            .catch(err => {
+              appError('Error clearing route preference: ' + err.message);
+            });
         } else {
           const team = radioManager.getTeamForStation(data.station);
           if (team === null) {
             ws.send(JSON.stringify({ error: 'Station has no team assigned' }));
           } else {
-            setRoutePreference(clientIp, data.station, team).then(() => sendRouteState(ws, clientIp)).catch(err => {
-              appError('Error setting route preference: ' + err.message);
-            });
+            setRoutePreference(clientIp, data.station, team)
+              .then(() => sendRouteState(ws, clientIp))
+              .catch(err => {
+                appError('Error setting route preference: ' + err.message);
+              });
           }
         }
-      } else if (isAdminStartMatch(data)) {
-        matchEngine.startMatch(data.config);
+      } else if (isStationJoin(data)) {
+        matchEngine.joinStation(data.station);
+      } else if (isStationLeave(data)) {
+        matchEngine.leaveStation(data.station);
+      } else if (isStationReady(data)) {
+        matchEngine.setReady(data.station, data.ready);
+      } else if (isStationStartMatch(data)) {
+        matchEngine.startMatch();
+      } else if (isStationPauseMatch(data)) {
+        matchEngine.pauseMatch();
+      } else if (isStationResumeMatch(data)) {
+        matchEngine.resumeMatch();
+      } else if (isStationAbandonMatch(data)) {
+        matchEngine.abandonMatch();
+      } else if (isUpdateMatchConfig(data)) {
+        matchEngine.updateMatchConfig(data.config);
       } else if (isAdminStopMatch(data)) {
         matchEngine.stopMatch();
       } else if (isAdminGlobalEStop(data)) {

@@ -77,9 +77,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
           <CssBaseline />
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
             <StatusBar />
-            <Box sx={{ flex: 1, overflowY: 'auto' }}>
-              {children}
-            </Box>
+            <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
           </Box>
           <Backdrop open={isConfiguring || !isConnected} sx={{ zIndex: 9999 }}>
             <Grid

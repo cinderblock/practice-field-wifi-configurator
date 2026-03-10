@@ -280,7 +280,6 @@ function handleRoutePreferenceState(state: RoutePreferenceState) {
 }
 
 function receiveMessage(detail: Message) {
-
   if (isRoutePreferenceState(detail)) {
     handleRoutePreferenceState(detail);
     return;
@@ -440,11 +439,41 @@ export function useSubnetScan(): SubnetScanResults | null {
   return state;
 }
 
-// ── Admin Commands ──────────────────────────────────────────────────
+// ── Station match commands ───────────────────────────────────────────
 
-export function sendAdminStartMatch(config: MatchConfig) {
-  ws?.send(JSON.stringify({ type: 'adminStartMatch', config }));
+export function sendStationJoin(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationJoin', station }));
 }
+
+export function sendStationLeave(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationLeave', station }));
+}
+
+export function sendStationReady(station: StationName, ready: boolean) {
+  ws?.send(JSON.stringify({ type: 'stationReady', station, ready }));
+}
+
+export function sendStationStartMatch() {
+  ws?.send(JSON.stringify({ type: 'stationStartMatch' }));
+}
+
+export function sendStationPauseMatch() {
+  ws?.send(JSON.stringify({ type: 'stationPauseMatch' }));
+}
+
+export function sendStationResumeMatch() {
+  ws?.send(JSON.stringify({ type: 'stationResumeMatch' }));
+}
+
+export function sendStationAbandonMatch() {
+  ws?.send(JSON.stringify({ type: 'stationAbandonMatch' }));
+}
+
+export function sendUpdateMatchConfig(config: MatchConfig) {
+  ws?.send(JSON.stringify({ type: 'updateMatchConfig', config }));
+}
+
+// ── Admin Commands ──────────────────────────────────────────────────
 
 export function sendAdminStopMatch() {
   ws?.send(JSON.stringify({ type: 'adminStopMatch' }));

@@ -71,7 +71,11 @@ class RadioManager {
           typeof (config as any).ssid === 'string' &&
           typeof (config as any).wpaKey === 'string'
         ) {
-          this.activeConfig[station as StationName] = config as { ssid: string; wpaKey: string; internetAccess?: boolean };
+          this.activeConfig[station as StationName] = config as {
+            ssid: string;
+            wpaKey: string;
+            internetAccess?: boolean;
+          };
         }
       }
       const stations = Object.keys(this.activeConfig);

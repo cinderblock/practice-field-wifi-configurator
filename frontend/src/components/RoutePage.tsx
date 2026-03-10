@@ -96,9 +96,7 @@ export function RoutePage() {
         </Box>
       )}
 
-      {!state && (
-        <Typography color="text.secondary">Connecting...</Typography>
-      )}
+      {!state && <Typography color="text.secondary">Connecting...</Typography>}
 
       {state && !hasConflicts && (
         <Card>
@@ -112,12 +110,7 @@ export function RoutePage() {
 
       {hasConflicts &&
         Object.entries(conflictingTeams).map(([team, stations]) => (
-          <ConflictingTeamCard
-            key={team}
-            team={team}
-            stations={stations}
-            currentPreference={state!.preference}
-          />
+          <ConflictingTeamCard key={team} team={team} stations={stations} currentPreference={state!.preference} />
         ))}
     </Container>
   );

@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
 
-type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort';
+type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause';
 
 const PLAYERS = ['aplay', 'paplay', 'ffplay', 'mpv', 'play', 'afplay'];
 
@@ -37,7 +37,7 @@ export class MatchAudio {
     }
 
     // Cache which sound files exist
-    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort'];
+    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'pause'];
     for (const sound of allSounds) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
         this.availableSounds.add(sound);
@@ -75,31 +75,47 @@ export class MatchAudio {
 
     engine.addStateListener(state => {
       if (state.phase === lastPhase) return;
+      const prevPhase = lastPhase;
       lastPhase = state.phase;
 
       switch (state.phase) {
         case 'auto':
-          // countdown → auto: charge horn
-          this.play('start');
+          if (prevPhase === 'paused') {
+            // user resumed during auto
+            this.play('resume');
+          } else {
+            // countdown → auto: charge horn
+            this.play('start');
+          }
           break;
 
-        case 'pause':
-          // auto → pause: end-of-auto buzzer
+        case 'autoPause':
+          // auto → autoPause: end-of-auto buzzer
           this.play('end');
           break;
 
         case 'teleop':
-          // pause → teleop: resume horn
+          // autoPause → teleop, or user resumed during teleop: resume horn
           this.play('resume');
           break;
 
         case 'endgame':
-          // teleop → endgame: warning
-          this.play('warning');
+          if (prevPhase === 'paused') {
+            // user resumed during endgame
+            this.play('resume');
+          } else {
+            // teleop → endgame: warning
+            this.play('warning');
+          }
+          break;
+
+        case 'paused':
+          // user paused the match
+          this.play('pause');
           break;
 
         case 'postMatch':
-          if (state.endReason === 'stopped' || state.endReason === 'estop') {
+          if (state.endReason === 'stopped' || state.endReason === 'estop' || state.endReason === 'abandoned') {
             this.play('abort');
           } else {
             this.play('end');

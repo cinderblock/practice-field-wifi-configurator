@@ -369,14 +369,13 @@ export function isInternetToggle(msg: unknown): msg is InternetToggle {
 
 export type Mode = 'teleOp' | 'test' | 'auto';
 
-export type MatchPhase = 'idle' | 'countdown' | 'auto' | 'pause' | 'teleop' | 'endgame' | 'postMatch';
+export type MatchPhase = 'idle' | 'countdown' | 'auto' | 'autoPause' | 'paused' | 'teleop' | 'endgame' | 'postMatch';
 
 export type MatchConfig = {
   autoDuration: number;
   teleopDuration: number;
   endgameDuration: number;
   pauseDuration: number;
-  stations: StationName[];
 };
 
 export type StationControlState = {
@@ -384,16 +383,18 @@ export type StationControlState = {
   enabled: boolean;
   eStop: boolean;
   mode: Mode;
+  joined: boolean;
+  ready: boolean;
 };
 
-export type MatchEndReason = 'normal' | 'stopped' | 'estop';
+export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';
 
 export type MatchState = {
   type: 'matchState';
   phase: MatchPhase;
   remainingTime: number;
   totalMatchTime: number;
-  config: MatchConfig | null;
+  config: MatchConfig;
   stationStates: Partial<Record<StationName, StationControlState>>;
   connectedStations: StationName[];
   endReason?: MatchEndReason;
@@ -405,24 +406,67 @@ export function isMatchState(msg: unknown): msg is MatchState {
   return (msg as MatchState).type === 'matchState';
 }
 
-export type AdminStartMatch = {
-  type: 'adminStartMatch';
-  config: MatchConfig;
-};
+// ── Station-driven match messages ────────────────────────────────────
 
-export function isAdminStartMatch(msg: unknown): msg is AdminStartMatch {
-  if (typeof msg !== 'object') return false;
-  if (!msg) return false;
-  const m = msg as AdminStartMatch;
-  if (m.type !== 'adminStartMatch') return false;
+export type StationJoin = { type: 'stationJoin'; station: StationName };
+export function isStationJoin(msg: unknown): msg is StationJoin {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationJoin;
+  return m.type === 'stationJoin' && StationNameRegex.test(m.station);
+}
+
+export type StationLeave = { type: 'stationLeave'; station: StationName };
+export function isStationLeave(msg: unknown): msg is StationLeave {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationLeave;
+  return m.type === 'stationLeave' && StationNameRegex.test(m.station);
+}
+
+export type StationReady = { type: 'stationReady'; station: StationName; ready: boolean };
+export function isStationReady(msg: unknown): msg is StationReady {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationReady;
+  return m.type === 'stationReady' && StationNameRegex.test(m.station) && typeof m.ready === 'boolean';
+}
+
+export type StationStartMatch = { type: 'stationStartMatch' };
+export function isStationStartMatch(msg: unknown): msg is StationStartMatch {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StationStartMatch).type === 'stationStartMatch';
+}
+
+export type StationPauseMatch = { type: 'stationPauseMatch' };
+export function isStationPauseMatch(msg: unknown): msg is StationPauseMatch {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StationPauseMatch).type === 'stationPauseMatch';
+}
+
+export type StationResumeMatch = { type: 'stationResumeMatch' };
+export function isStationResumeMatch(msg: unknown): msg is StationResumeMatch {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StationResumeMatch).type === 'stationResumeMatch';
+}
+
+export type StationAbandonMatch = { type: 'stationAbandonMatch' };
+export function isStationAbandonMatch(msg: unknown): msg is StationAbandonMatch {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StationAbandonMatch).type === 'stationAbandonMatch';
+}
+
+export type UpdateMatchConfig = { type: 'updateMatchConfig'; config: MatchConfig };
+export function isUpdateMatchConfig(msg: unknown): msg is UpdateMatchConfig {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as UpdateMatchConfig;
+  if (m.type !== 'updateMatchConfig') return false;
   if (!m.config || typeof m.config !== 'object') return false;
   if (typeof m.config.autoDuration !== 'number') return false;
   if (typeof m.config.teleopDuration !== 'number') return false;
   if (typeof m.config.endgameDuration !== 'number') return false;
   if (typeof m.config.pauseDuration !== 'number') return false;
-  if (!Array.isArray(m.config.stations)) return false;
   return true;
 }
+
+// ── Admin match messages ─────────────────────────────────────────────
 
 export type AdminStopMatch = { type: 'adminStopMatch' };
 
