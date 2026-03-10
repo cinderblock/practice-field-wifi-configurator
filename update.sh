@@ -54,5 +54,5 @@ if [ "$UI_ONLY" == "true" ]; then
   echo "UI updated — backend not restarted."
 else
   echo "Reloading $SERVICE"
-  sudo systemctl reload "$SERVICE"
+  sudo systemctl reload-or-restart "$SERVICE"
 fi
