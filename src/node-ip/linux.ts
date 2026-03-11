@@ -186,7 +186,10 @@ export function createLinuxBackend(): NetworkBackend {
         if (opts.notDestination) args.push('!', '-d', opts.notDestination);
         if (opts.inInterface) args.push('-i', opts.inInterface);
         if (opts.outInterface) args.push('-o', opts.outInterface);
+        if (opts.protocol) args.push('-p', opts.protocol);
+        if (opts.destinationPort != null) args.push('--dport', String(opts.destinationPort));
         args.push('-j', opts.jump);
+        if (opts.toDestination) args.push('--to-destination', opts.toDestination);
         if (opts.comment) args.push('-m', 'comment', '--comment', opts.comment);
         return args;
       }

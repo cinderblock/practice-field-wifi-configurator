@@ -145,7 +145,8 @@ graph TD
 4. **Per-client route preferences** — `ip rule` entries steer individual laptop IPs to specific station VLANs (for duplicate team disambiguation)
 5. **Radio configuration** — HTTP REST to `10.0.100.2`
 6. **FMS protocol** — TCP/1750 + UDP/1160 for DS status; UDP/1121 for robot control packets
-7. **Syslog** — optional syslog server for radio log collection
+7. **DS↔RIO DNAT** — dynamic PREROUTING rules to route asymmetric RIO→DS UDP replies (port 1150) back to the DS laptop
+8. **Syslog** — optional syslog server for radio log collection
 
 > **OFFSEASON firmware:** the pFMS host also runs `dnsmasq` per VLAN to serve DHCP (gateway = `10.TE.AM.254`), since the AP does not.
 
@@ -156,6 +157,25 @@ For laptops on the site's guest/laptop network to reach robots on team subnets (
 1. **Site router** needs a static route: `10.0.0.0/8` → the pFMS host's main IP (one-time config, team-agnostic)
 2. **pFMS host** has direct access to team VLANs via trunk and routes between them and its main interface
 3. **Teams** use hardcoded IPs (e.g. `10.12.34.2` for roboRIO) — no DNS needed
+
+### DS ↔ RIO UDP and Dynamic DNAT
+
+The FRC Driver Station ↔ roboRIO UDP protocol uses **asymmetric ports**: DS sends to the RIO on port 1110 (1115 when FMS-connected), but the RIO replies to the DS on port **1150** with an unrelated source port. This breaks conntrack-based NAT (MASQUERADE), which expects replies on the same port pair.
+
+**TCP traffic (NetworkTables, AdvantageScope)** works fine through MASQUERADE because TCP's handshake creates a proper conntrack entry.
+
+To fix DS ↔ RIO UDP, the pFMS dynamically adds PREROUTING DNAT rules when a DS connects:
+
+```
+iptables -t nat -A PREROUTING -i eth0.red1 -p udp --dport 1150 \
+  -j DNAT --to-destination <ds-laptop-ip>:1150
+```
+
+This catches RIO→DS reply packets (dest port 1150) arriving on the station's VLAN interface and rewrites the destination to the DS laptop's guest WiFi IP. The rule is:
+- **Added** when the DS announces itself via TCP 1750 and its station is resolved
+- **Removed** when the DS TCP connection closes
+- **Cleaned up** on hard restart via the `pfms-` comment prefix (same as all other rules)
+- **Preserved** across graceful restarts (SIGHUP / `systemctl reload`); re-added idempotently when the DS reconnects
 
 ### Device Discovery
 

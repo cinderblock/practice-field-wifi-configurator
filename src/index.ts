@@ -20,7 +20,7 @@ import { setBroadcast } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
-import { StationNameList } from './types.js';
+import { StationName, StationNameList } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
@@ -175,6 +175,59 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       update => broadcast(update),
     );
 
+    // Track active DNAT rules so we can clean them up on DS disconnect.
+    // Map: station → { dsIp, vlanInterface }
+    const activeDnatRules = new Map<StationName, { dsIp: string; vlanInterface: string }>();
+
+    /** Well-known UDP port the roboRIO sends to the Driver Station (asymmetric from DS→RIO port 1110). */
+    const RIO_TO_DS_PORT = 1150;
+
+    /**
+     * Add a PREROUTING DNAT rule so RIO→DS UDP replies (port 1150) arriving on the
+     * station's VLAN interface get forwarded to the DS laptop on the guest network.
+     * Without this, MASQUERADE's conntrack drops the reply because the RIO uses a
+     * different well-known port (1150) than the DS→RIO port (1110).
+     */
+    async function addDnatRule(station: StationName, dsIp: string) {
+      if (!net || !VlanInterface) return;
+      const vlanInterface = `${VlanInterface}.${station}`;
+      const existing = activeDnatRules.get(station);
+      if (existing?.dsIp === dsIp) return; // Already set, idempotent
+      if (existing) await removeDnatRule(station); // Different DS, remove old rule first
+      await net.iptables({
+        action: '-A',
+        table: 'nat',
+        chain: 'PREROUTING',
+        inInterface: vlanInterface,
+        protocol: 'udp',
+        destinationPort: RIO_TO_DS_PORT,
+        jump: 'DNAT',
+        toDestination: `${dsIp}:${RIO_TO_DS_PORT}`,
+        comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
+      });
+      activeDnatRules.set(station, { dsIp, vlanInterface });
+      console.log(`DNAT rule added: ${station} RIO :${RIO_TO_DS_PORT} → ${dsIp}`);
+    }
+
+    async function removeDnatRule(station: StationName) {
+      if (!net) return;
+      const existing = activeDnatRules.get(station);
+      if (!existing) return;
+      await net.iptables({
+        action: '-D',
+        table: 'nat',
+        chain: 'PREROUTING',
+        inInterface: existing.vlanInterface,
+        protocol: 'udp',
+        destinationPort: RIO_TO_DS_PORT,
+        jump: 'DNAT',
+        toDestination: `${existing.dsIp}:${RIO_TO_DS_PORT}`,
+        comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
+      });
+      activeDnatRules.delete(station);
+      console.log(`DNAT rule removed: ${station}`);
+    }
+
     runFMS().then(fms => {
       if (!fms) return;
 
@@ -194,14 +247,31 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
             // to determine which VLAN interface (and thus station) the packet came from.
             resolveStationByNeighbor(address, VlanInterface).then(station => {
               station ??= radioManager.getStationForTeam(teamNumber);
-              if (station) matchEngine.setDSAddress(station, address);
+              if (station) {
+                matchEngine.setDSAddress(station, address);
+                addDnatRule(station, address);
+              }
             }).catch(err => {
               console.error('DS address discovery failed:', err);
             });
           } else {
             // Common case: unique team numbers — direct lookup, no subprocess needed
             const station = radioManager.getStationForTeam(teamNumber);
-            if (station) matchEngine.setDSAddress(station, address);
+            if (station) {
+              matchEngine.setDSAddress(station, address);
+              addDnatRule(station, address);
+            }
+          }
+        }
+      });
+
+      // Clean up DNAT rules when the DS laptop disconnects from the FMS TCP port
+      fms.on('dsDisconnected', ({ address }) => {
+        for (const [station, rule] of [...activeDnatRules]) {
+          if (rule.dsIp === address) {
+            removeDnatRule(station).catch(err => {
+              console.error(`Failed to remove DNAT rule for ${station}:`, err);
+            });
           }
         }
       });

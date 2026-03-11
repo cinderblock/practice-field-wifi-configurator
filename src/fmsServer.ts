@@ -331,6 +331,8 @@ function parseIncomingUdpMessage(buff: Buffer): UdpMessage {
 
 type Events = {
   message: [{ address: string; port: number; data: DSMessage | UdpMessage }];
+  dsConnected: [{ address: string }];
+  dsDisconnected: [{ address: string }];
 };
 
 export async function startFMSServer({
@@ -341,17 +343,34 @@ export async function startFMSServer({
   return new Promise<EventEmitter<Events>>((resolve, reject) => {
     let udpServer: Socket;
 
+    // Track active TCP connections per IP so we only emit dsDisconnected when the
+    // last connection from an IP closes (avoids removing DNAT rules prematurely
+    // when a DS reconnects before the old TCP connection times out).
+    const tcpConnections = new Map<string, number>();
+
     const tcpServer = net.createServer(socket => {
-      console.log(`DS connected: ${socket.remoteAddress}`);
+      const rawAddr = socket.remoteAddress || '';
+      const addr = rawAddr.replace(/^::ffff:/, '');
+      tcpConnections.set(addr, (tcpConnections.get(addr) ?? 0) + 1);
+      console.log(`DS connected: ${addr}`);
+      emitter.emit('dsConnected', { address: addr });
 
       const transformer = new ByteToObjectTransform();
       socket.pipe(transformer).on('data', obj => {
         console.log('Received object from TCP stream:', obj);
-        emitter.emit('message', { address: socket.remoteAddress || '', port: tcp, data: obj });
+        emitter.emit('message', { address: rawAddr, port: tcp, data: obj });
       });
 
       socket.on('close', () => {
-        console.log(`DS disconnected: ${socket.remoteAddress}`);
+        const remaining = (tcpConnections.get(addr) ?? 1) - 1;
+        if (remaining <= 0) {
+          tcpConnections.delete(addr);
+          console.log(`DS disconnected: ${addr}`);
+          emitter.emit('dsDisconnected', { address: addr });
+        } else {
+          tcpConnections.set(addr, remaining);
+          console.log(`DS connection closed: ${addr} (${remaining} remaining)`);
+        }
       });
 
       socket.on('error', err => {

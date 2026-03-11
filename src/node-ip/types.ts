@@ -95,6 +95,10 @@ export interface IptablesOptions {
   notDestination?: string;
   inInterface?: string;
   outInterface?: string;
+  protocol?: 'tcp' | 'udp';
+  destinationPort?: number;
   jump: string;
+  /** DNAT target address (e.g. "192.168.1.5:1150") — used with jump: 'DNAT' */
+  toDestination?: string;
   comment?: string;
 }
