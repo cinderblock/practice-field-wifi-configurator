@@ -73,6 +73,7 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
       console.log(
         `[dry-run] Would run iptables ${opts.action} ${opts.chain} in ${opts.table ?? 'filter'} table` +
           (opts.source ? ` -s ${opts.source}` : '') +
+          (opts.destination ? ` -d ${opts.destination}` : '') +
           (opts.notDestination ? ` ! -d ${opts.notDestination}` : '') +
           (opts.inInterface ? ` -i ${opts.inInterface}` : '') +
           (opts.outInterface ? ` -o ${opts.outInterface}` : '') +

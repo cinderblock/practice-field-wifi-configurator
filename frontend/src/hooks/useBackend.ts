@@ -4,11 +4,13 @@ import {
   InternetToggle,
   MatchConfig,
   MatchState,
+  MdnsActivity,
   NetworkStats,
   SubnetScanResults,
   TelemetryUpdate,
   isAppLogMessage,
   isMatchState,
+  isMdnsActivity,
   isNetworkStats,
   isSubnetScanResults,
   isTelemetryUpdate,
@@ -195,6 +197,7 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 let currentSubnetScan: SubnetScanResults | null = null;
+let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
 
@@ -274,6 +277,11 @@ function handleSubnetScan(scan: SubnetScanResults) {
   events.dispatchEvent(new CustomEvent('subnetScan', { detail: scan }));
 }
 
+function handleMdnsActivity(activity: MdnsActivity) {
+  currentMdnsActivity = activity;
+  events.dispatchEvent(new CustomEvent('mdnsActivity', { detail: activity }));
+}
+
 function handleTelemetry(update: TelemetryUpdate) {
   events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
 }
@@ -316,6 +324,11 @@ function receiveMessage(detail: Message) {
 
   if (isSubnetScanResults(detail)) {
     handleSubnetScan(detail);
+    return;
+  }
+
+  if (isMdnsActivity(detail)) {
+    handleMdnsActivity(detail);
     return;
   }
 
@@ -448,6 +461,20 @@ export function useSubnetScan(): SubnetScanResults | null {
     const handler = (e: Event) => setState((e as CustomEvent).detail);
     events.addEventListener('subnetScan', handler);
     return () => events.removeEventListener('subnetScan', handler);
+  }, []);
+
+  return state;
+}
+
+// ── mDNS Activity ───────────────────────────────────────────────────
+
+export function useMdnsActivity(): MdnsActivity | null {
+  const [state, setState] = useState<MdnsActivity | null>(currentMdnsActivity);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('mdnsActivity', handler);
+    return () => events.removeEventListener('mdnsActivity', handler);
   }, []);
 
   return state;

@@ -92,6 +92,7 @@ export interface IptablesOptions {
   table?: string;
   chain: string;
   source?: string;
+  destination?: string;
   notDestination?: string;
   inInterface?: string;
   outInterface?: string;

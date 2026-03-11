@@ -40,6 +40,7 @@ const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or un
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
+const VlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
 const WebSocketPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
 // Trusted proxy configuration
@@ -150,14 +151,15 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   });
 
   // mDNS reflector — bridges .local queries between main network and team VLANs
+  let mdnsReflector: MdnsReflector | undefined;
   if (StartMdnsReflector && VlanInterface) {
-    const mdnsReflector = new MdnsReflector(
+    mdnsReflector = new MdnsReflector(
       s => radioManager.getTeamForStation(s),
-      Number(process.env.VLAN_HOST_OCTET) || 254,
+      VlanHostOctet,
     );
     mdnsReflector.start();
     // Refresh after commit — VLAN interfaces only exist after configureNetwork completes
-    radioManager.addCommitCompleteListener(() => mdnsReflector.refreshMemberships());
+    radioManager.addCommitCompleteListener(() => mdnsReflector!.refreshMemberships());
   } else if (StartMdnsReflector) {
     console.log('MDNS_REFLECTOR=true but VLAN_INTERFACE is not set, skipping mDNS reflector');
   }
@@ -204,22 +206,33 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       radioManager.retryDeferredCommit();
     });
 
-    // Track active DNAT rules so we can clean them up on DS disconnect.
-    // Map: station → { dsIp, vlanInterface }
-    const activeDnatRules = new Map<StationName, { dsIp: string; vlanInterface: string }>();
-
-    /** Well-known UDP port the roboRIO sends to the Driver Station (asymmetric from DS→RIO port 1110). */
-    const RIO_TO_DS_PORT = 1150;
+    // Track active DNAT rules so we can clean them up when stations are reconfigured.
+    // Map: station → { dsIp, gatewayIp, vlanInterface }
+    const activeDnatRules = new Map<StationName, { dsIp: string; gatewayIp: string; vlanInterface: string }>();
 
     /**
-     * Add a PREROUTING DNAT rule so RIO→DS UDP replies (port 1150) arriving on the
-     * station's VLAN interface get forwarded to the DS laptop on the guest network.
-     * Without this, MASQUERADE's conntrack drops the reply because the RIO uses a
-     * different well-known port (1150) than the DS→RIO port (1110).
+     * Compute the gateway (MASQUERADE source) IP on a team's VLAN.
+     * Robot sees this as the source of forwarded DS packets, and sends
+     * return traffic here — which the DNAT rule rewrites to the real DS IP.
+     */
+    function teamGatewayIp(team: number): string {
+      const high = Math.floor(team / 100);
+      const low = team % 100;
+      return `10.${high}.${low}.${VlanHostOctet}`;
+    }
+
+    /**
+     * Add a PREROUTING DNAT rule so all UDP from the robot destined for
+     * the gateway (MASQUERADE source) gets forwarded to the real DS laptop
+     * on the guest network. Scoped to the gateway IP to avoid catching
+     * multicast (mDNS) or broadcast (DHCP) traffic.
      */
     async function addDnatRule(station: StationName, dsIp: string) {
       if (!net || !VlanInterface) return;
+      const team = radioManager.getTeamForStation(station);
+      if (!team) return;
       const vlanInterface = `${VlanInterface}.${station}`;
+      const gatewayIp = teamGatewayIp(team);
       const existing = activeDnatRules.get(station);
       if (existing?.dsIp === dsIp) return; // Already set, idempotent
       if (existing) await removeDnatRule(station); // Different DS, remove old rule first
@@ -229,13 +242,13 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         chain: 'PREROUTING',
         inInterface: vlanInterface,
         protocol: 'udp',
-        destinationPort: RIO_TO_DS_PORT,
+        destination: gatewayIp,
         jump: 'DNAT',
-        toDestination: `${dsIp}:${RIO_TO_DS_PORT}`,
+        toDestination: dsIp,
         comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
       });
-      activeDnatRules.set(station, { dsIp, vlanInterface });
-      console.log(`DNAT rule added: ${station} RIO :${RIO_TO_DS_PORT} → ${dsIp}`);
+      activeDnatRules.set(station, { dsIp, gatewayIp, vlanInterface });
+      console.log(`DNAT rule added: ${station} UDP → ${gatewayIp} rewritten to ${dsIp}`);
     }
 
     async function removeDnatRule(station: StationName) {
@@ -248,14 +261,27 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         chain: 'PREROUTING',
         inInterface: existing.vlanInterface,
         protocol: 'udp',
-        destinationPort: RIO_TO_DS_PORT,
+        destination: existing.gatewayIp,
         jump: 'DNAT',
-        toDestination: `${existing.dsIp}:${RIO_TO_DS_PORT}`,
+        toDestination: existing.dsIp,
         comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
       });
       activeDnatRules.delete(station);
       console.log(`DNAT rule removed: ${station}`);
     }
+
+    // Clean up DNAT rules when stations are deconfigured or team changes
+    radioManager.addConfigChangeListener(() => {
+      for (const [station, existing] of [...activeDnatRules]) {
+        const team = radioManager.getTeamForStation(station);
+        if (team === null || teamGatewayIp(team) !== existing.gatewayIp) {
+          removeDnatRule(station).catch(err => {
+            console.error(`Failed to remove DNAT rule for ${station}:`, err);
+          });
+          matchEngine.clearDSAddress(station);
+        }
+      }
+    });
 
     runFMS().then(fms => {
       if (!fms) return;
@@ -294,22 +320,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         }
       });
 
-      // Clean up DNAT rules when the DS laptop disconnects from the FMS TCP port
-      fms.on('dsDisconnected', ({ address }) => {
-        for (const [station, rule] of [...activeDnatRules]) {
-          if (rule.dsIp === address) {
-            removeDnatRule(station).catch(err => {
-              console.error(`Failed to remove DNAT rule for ${station}:`, err);
-            });
-          }
-        }
-      });
+      // DNAT rules persist across DS TCP reconnects (the DS flaps every ~6s
+      // when no match is running). Rules are cleaned up by the config change
+      // listener above when a station loses its team assignment.
     });
   }
 
-  // Broadcast iptables forwarding counters to all clients every 5 seconds
+  // Broadcast iptables forwarding counters and mDNS activity to all clients every 5 seconds
   if (net) {
     let latestNetworkStats: Awaited<ReturnType<typeof buildNetworkStats>> | null = null;
+    let latestMdnsActivity: ReturnType<MdnsReflector['getActivity']> | null = null;
 
     async function refreshNetworkStats() {
       try {
@@ -318,11 +338,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       } catch (err) {
         console.error('Error polling network stats:', err);
       }
+      if (mdnsReflector) {
+        latestMdnsActivity = mdnsReflector.getActivity();
+        broadcast(latestMdnsActivity);
+      }
     }
 
     // Send cached stats immediately when a new client connects
     wss.on('connection', ws => {
       if (latestNetworkStats) ws.send(JSON.stringify(latestNetworkStats));
+      if (latestMdnsActivity) ws.send(JSON.stringify(latestMdnsActivity));
     });
 
     // Fetch immediately so first clients don't wait 5s

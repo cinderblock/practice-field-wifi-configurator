@@ -183,6 +183,7 @@ export function createLinuxBackend(): NetworkBackend {
       function buildArgs(action: string): string[] {
         const args = ['-t', opts.table ?? 'filter', action, opts.chain];
         if (opts.source) args.push('-s', opts.source);
+        if (opts.destination) args.push('-d', opts.destination);
         if (opts.notDestination) args.push('!', '-d', opts.notDestination);
         if (opts.inInterface) args.push('-i', opts.inInterface);
         if (opts.outInterface) args.push('-o', opts.outInterface);

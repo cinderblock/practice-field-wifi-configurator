@@ -71,6 +71,12 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  clearDSAddress(station: StationName) {
+    if (!this.dsAddresses.has(station)) return;
+    this.dsAddresses.delete(station);
+    this.broadcast();
+  }
+
   // ── Station self-service ──────────────────────────────────────────
 
   joinStation(station: StationName) {
@@ -309,7 +315,7 @@ export class MatchEngine {
       // Always expose config so clients can show/edit pending timing
       config: this.config ?? this.pendingConfig,
       stationStates,
-      connectedStations: [...this.dsAddresses.keys()],
+      connectedStations: Object.fromEntries(this.dsAddresses),
       endReason: this.phase === 'postMatch' ? this.endReason : undefined,
     };
   }

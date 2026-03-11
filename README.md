@@ -145,7 +145,7 @@ graph TD
 4. **Per-client route preferences** — `ip rule` entries steer individual laptop IPs to specific station VLANs (for duplicate team disambiguation)
 5. **Radio configuration** — HTTP REST to `10.0.100.2`
 6. **FMS protocol** — TCP/1750 + UDP/1160 for DS status; UDP/1121 for robot control packets
-7. **DS↔RIO DNAT** — dynamic PREROUTING rules to route asymmetric RIO→DS UDP replies (port 1150) back to the DS laptop
+7. **DS↔RIO DNAT** — dynamic PREROUTING rules to route asymmetric RIO→DS UDP replies back to the DS laptop
 8. **Syslog** — optional syslog server for radio log collection
 
 > **OFFSEASON firmware:** the pFMS host also runs `dnsmasq` per VLAN to serve DHCP (gateway = `10.TE.AM.254`), since the AP does not.
@@ -167,13 +167,14 @@ The FRC Driver Station ↔ roboRIO UDP protocol uses **asymmetric ports**: DS se
 To fix DS ↔ RIO UDP, the pFMS dynamically adds PREROUTING DNAT rules when a DS connects:
 
 ```
-iptables -t nat -A PREROUTING -i eth0.red1 -p udp --dport 1150 \
-  -j DNAT --to-destination <ds-laptop-ip>:1150
+iptables -t nat -A PREROUTING -i eth0.red1 -p udp -d 10.TE.AM.254 \
+  -j DNAT --to-destination <ds-laptop-ip>
 ```
 
-This catches RIO→DS reply packets (dest port 1150) arriving on the station's VLAN interface and rewrites the destination to the DS laptop's guest WiFi IP. The rule is:
+This catches all UDP packets from the robot destined for the gateway IP on the station's VLAN interface and rewrites the destination to the DS laptop's guest WiFi IP. The rule is scoped to the gateway IP to avoid catching multicast/broadcast traffic. The rule is:
 - **Added** when the DS announces itself via TCP 1750 and its station is resolved
-- **Removed** when the DS TCP connection closes
+- **Persistent** across DS TCP reconnects (the DS flaps every ~6s when no match is running)
+- **Removed** when the station's team assignment is cleared or changed
 - **Cleaned up** on hard restart via the `pfms-` comment prefix (same as all other rules)
 - **Preserved** across graceful restarts (SIGHUP / `systemctl reload`); re-added idempotently when the DS reconnects
 

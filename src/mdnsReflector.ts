@@ -13,7 +13,7 @@
  * receives its own forwarded packets — plus the directional filter above.
  */
 import dgram from 'node:dgram';
-import { StationName, StationNameList } from './types.js';
+import { MdnsActivity, StationName, StationNameList } from './types.js';
 
 const MDNS_ADDR = '224.0.0.251';
 const MDNS_PORT = 5353;
@@ -149,11 +149,22 @@ export class MdnsReflector {
   private socket: dgram.Socket | null = null;
   /** Teams whose VLAN we've joined multicast on → their VLAN IP */
   private joinedTeams = new Map<number, string>();
+  /** Per-team counters for reflected packets */
+  private counters = new Map<number, { queriesForwarded: number; responsesForwarded: number }>();
 
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
     private readonly vlanHostOctet: number = 254,
   ) {}
+
+  /** Get the current activity state for broadcasting to clients. */
+  getActivity(): MdnsActivity {
+    const teams: MdnsActivity['teams'] = {};
+    for (const [team, counts] of this.counters) {
+      teams[team] = { ...counts };
+    }
+    return { type: 'mdnsActivity', teams };
+  }
 
   start(): void {
     if (this.socket) return;
@@ -215,6 +226,7 @@ export class MdnsReflector {
           // Interface may already be gone
         }
         this.joinedTeams.delete(team);
+        this.counters.delete(team);
       }
     }
 
@@ -243,9 +255,10 @@ export class MdnsReflector {
       if (!isResponse) return;
 
       const answerNames = parseAnswerNames(msg);
-      const hasFrcName = answerNames.some(n => extractTeamFromName(n) !== null);
-      if (!hasFrcName) return;
+      const team = answerNames.map(extractTeamFromName).find(t => t !== null);
+      if (team == null) return;
 
+      this.incrementCounter(sourceTeam, 'responsesForwarded');
       this.forwardToMain(msg);
     } else {
       // Packet from the main network — only forward queries (laptop lookups) to VLANs
@@ -260,6 +273,7 @@ export class MdnsReflector {
 
       for (const team of teams) {
         if (this.joinedTeams.has(team)) {
+          this.incrementCounter(team, 'queriesForwarded');
           this.forwardToVlan(msg, team);
         }
       }
@@ -280,6 +294,15 @@ export class MdnsReflector {
     this.socket.send(packet, 0, packet.length, MDNS_PORT, MDNS_ADDR, err => {
       if (err) console.error(`mDNS: failed to forward query to team ${team}:`, err);
     });
+  }
+
+  private incrementCounter(team: number, field: 'queriesForwarded' | 'responsesForwarded') {
+    let entry = this.counters.get(team);
+    if (!entry) {
+      entry = { queriesForwarded: 0, responsesForwarded: 0 };
+      this.counters.set(team, entry);
+    }
+    entry[field]++;
   }
 
   /** Forward a response packet to the main network (default route interface). */

@@ -11,17 +11,36 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 
-import { StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
+import { MatchState, MdnsActivity, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
 import { allianceColor, describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
-import { useNetworkStats, useSubnetScan } from '../hooks/useBackend';
+import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
-function StationStatsCard({ station, stats }: { station: StationName; stats?: StationNetworkStats }) {
+function StationStatsCard({
+  station,
+  stats,
+  dsIp,
+}: {
+  station: StationName;
+  stats?: StationNetworkStats;
+  dsIp?: string;
+}) {
   return (
     <Card sx={{ mb: 1, borderLeft: `4px solid ${allianceColor(station)}` }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-          {prettyStationName(station)}
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: stats ? 1 : 0 }}>
+          <Typography variant="subtitle1" fontWeight="bold">
+            {prettyStationName(station)}
+          </Typography>
+          {dsIp && (
+            <Chip
+              label={`DS: ${dsIp}`}
+              size="small"
+              color="info"
+              variant="outlined"
+              sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}
+            />
+          )}
+        </Box>
         {stats ? (
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
             <Box />
@@ -117,9 +136,102 @@ function StationDevicesCard({ station, scan }: { station: StationName; scan?: St
   );
 }
 
+const RED_STATIONS: StationName[] = ['red1', 'red2', 'red3'];
+const BLUE_STATIONS: StationName[] = ['blue1', 'blue2', 'blue3'];
+
+function StationColumns({
+  networkStats,
+  subnetScan,
+  matchState,
+  section,
+}: {
+  networkStats: ReturnType<typeof useNetworkStats>;
+  subnetScan: ReturnType<typeof useSubnetScan>;
+  matchState: MatchState | null;
+  section: 'stats' | 'devices';
+}) {
+  return (
+    <Grid container spacing={2}>
+      <Grid size={{ xs: 12, md: 6 }}>
+        {RED_STATIONS.map(s =>
+          section === 'stats' ? (
+            <StationStatsCard
+              key={s}
+              station={s}
+              stats={networkStats?.stations[s]}
+              dsIp={matchState?.connectedStations[s]}
+            />
+          ) : (
+            <StationDevicesCard key={s} station={s} scan={subnetScan?.stations[s]} />
+          ),
+        )}
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        {BLUE_STATIONS.map(s =>
+          section === 'stats' ? (
+            <StationStatsCard
+              key={s}
+              station={s}
+              stats={networkStats?.stations[s]}
+              dsIp={matchState?.connectedStations[s]}
+            />
+          ) : (
+            <StationDevicesCard key={s} station={s} scan={subnetScan?.stations[s]} />
+          ),
+        )}
+      </Grid>
+    </Grid>
+  );
+}
+
+function MdnsCard({ activity }: { activity: MdnsActivity | null }) {
+  const teams = activity?.teams ?? {};
+  const entries = Object.entries(teams).map(([team, counts]) => ({ team: Number(team), ...counts }));
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Typography variant="h5" gutterBottom>
+          mDNS Reflector
+        </Typography>
+        {entries.length > 0 ? (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Team</TableCell>
+                <TableCell sx={{ textAlign: 'right' }}>Queries Forwarded</TableCell>
+                <TableCell sx={{ textAlign: 'right' }}>Responses Forwarded</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {entries.map(e => (
+                <TableRow key={e.team}>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>{e.team}</TableCell>
+                  <TableCell sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                    {e.queriesForwarded.toLocaleString()}
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                    {e.responsesForwarded.toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {activity ? 'No mDNS activity' : 'mDNS reflector not enabled'}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function NetworkPage() {
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
+  const matchState = useMatchState();
+  const mdnsActivity = useMdnsActivity();
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
@@ -132,18 +244,7 @@ export function NetworkPage() {
           <Typography variant="h5" gutterBottom>
             Forwarding Counters
           </Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
-                <StationStatsCard key={s} station={s} stats={networkStats?.stations[s]} />
-              ))}
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
-                <StationStatsCard key={s} station={s} stats={networkStats?.stations[s]} />
-              ))}
-            </Grid>
-          </Grid>
+          <StationColumns networkStats={networkStats} subnetScan={subnetScan} matchState={matchState} section="stats" />
         </CardContent>
       </Card>
 
@@ -152,20 +253,16 @@ export function NetworkPage() {
           <Typography variant="h5" gutterBottom>
             Discovered Devices
           </Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
-                <StationDevicesCard key={s} station={s} scan={subnetScan?.stations[s]} />
-              ))}
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
-                <StationDevicesCard key={s} station={s} scan={subnetScan?.stations[s]} />
-              ))}
-            </Grid>
-          </Grid>
+          <StationColumns
+            networkStats={networkStats}
+            subnetScan={subnetScan}
+            matchState={matchState}
+            section="devices"
+          />
         </CardContent>
       </Card>
+
+      <MdnsCard activity={mdnsActivity} />
     </Container>
   );
 }

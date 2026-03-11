@@ -396,7 +396,8 @@ export type MatchState = {
   totalMatchTime: number;
   config: MatchConfig;
   stationStates: Partial<Record<StationName, StationControlState>>;
-  connectedStations: StationName[];
+  /** Map of station → DS IP address for stations with a connected Driver Station */
+  connectedStations: Partial<Record<StationName, string>>;
   endReason?: MatchEndReason;
 };
 
@@ -691,4 +692,17 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
   if (typeof lastUsedAt !== 'number') return false;
 
   return true;
+}
+
+// ── mDNS Reflector Activity ─────────────────────────────────────────
+
+export interface MdnsActivity {
+  type: 'mdnsActivity';
+  /** Per-team counters for reflected mDNS packets */
+  teams: Record<number, { queriesForwarded: number; responsesForwarded: number }>;
+}
+
+export function isMdnsActivity(msg: unknown): msg is MdnsActivity {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MdnsActivity).type === 'mdnsActivity';
 }
