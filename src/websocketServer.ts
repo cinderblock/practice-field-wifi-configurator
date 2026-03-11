@@ -71,7 +71,11 @@ export function setupWebSocket(
     const data = JSON.stringify(msg);
     wss.clients.forEach(client => {
       if (client.readyState !== WebSocket.OPEN) return;
-      client.send(data);
+      try {
+        client.send(data);
+      } catch {
+        // Client socket in bad state — ignore, error handler will clean up
+      }
     });
   }
 
@@ -86,7 +90,11 @@ export function setupWebSocket(
 
   function sendRouteState(ws: WebSocket, clientIp: string) {
     if (ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify(buildRouteState(clientIp)));
+    try {
+      ws.send(JSON.stringify(buildRouteState(clientIp)));
+    } catch {
+      // Client socket in bad state — ignore
+    }
   }
 
   function broadcastRouteState() {
@@ -120,6 +128,11 @@ export function setupWebSocket(
 
     ws.on('close', () => {
       wsToIp.delete(ws);
+    });
+
+    ws.on('error', err => {
+      console.error(`WebSocket error from ${clientIp}:`, err.message);
+      ws.terminate();
     });
 
     ws.on('message', (message: string) => {
