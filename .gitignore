@@ -2,3 +2,4 @@ node_modules
 /dist/
 active-config.json
 debug.log
+bugs.md
