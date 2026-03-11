@@ -89,7 +89,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     if (status) {
       radioManager.setFirmwareMode(detectFirmwareMode(status.version));
     }
-  })();
+  })().catch(err => {
+    console.error('Background radio connection failed:', err);
+  });
 
   // After a full restart (iptables were flushed), re-apply the restored activeConfig
   // to rebuild network rules. Skip for graceful reload — rules are still in the kernel.

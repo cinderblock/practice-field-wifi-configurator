@@ -292,6 +292,11 @@ class RadioManager {
   }
 
   private async configureRadio(config: any) {
+    if (!this.connected) {
+      console.log('Radio not connected, skipping configuration');
+      return;
+    }
+
     // Patch over a "bug" in the radio that refuses to accept an empty configuration, but will accept a configuration with only the syslog IP address that does what we want
     const PatchBug = true;
     if (
@@ -310,12 +315,13 @@ class RadioManager {
       return;
     }
 
+    let isConfiguring: Promise<void> | undefined;
     try {
       this.configuring = true;
 
       const body = JSON.stringify(config);
 
-      const isConfiguring = this.untilStatusIs('CONFIGURING', 2);
+      isConfiguring = this.untilStatusIs('CONFIGURING', 2);
 
       const response = await fetch(`${this.apiBaseUrl}/configuration`, {
         method: 'POST',
@@ -327,7 +333,6 @@ class RadioManager {
       });
 
       if (!response.ok) {
-        isConfiguring.catch(() => {});
         throw new Error(`HTTP error! status: ${response.status}. ${await response.text()}`);
       }
 
@@ -338,6 +343,10 @@ class RadioManager {
       if (!this.isStatus('ACTIVE')) {
         throw new Error(`Radio status is not ACTIVE after configuration. Status: ${this.getStatus()}`);
       }
+    } catch (err) {
+      // Suppress the isConfiguring rejection if we're bailing out before awaiting it
+      isConfiguring?.catch(() => {});
+      throw err;
     } finally {
       this.configuring = false;
     }
@@ -414,13 +423,17 @@ class RadioManager {
 
   untilStatusIs(status: Status, timeout = 1): Promise<void> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         reject(new Error(`Timeout waiting for status to be ${status}. Is ${this.getStatus()}`));
       }, timeout * 1000);
 
-      // TODO: don't poll our own memory, setup a notifier instead
       const poll = async () => {
-        while (!this.isStatus(status)) await delay(100);
+        while (!settled && !this.isStatus(status)) await delay(100);
+        if (settled) return;
+        settled = true;
         clearTimeout(timeoutId);
         resolve();
       };
@@ -430,13 +443,17 @@ class RadioManager {
 
   untilStatusIsNot(status: Status, timeout = 1): Promise<void> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         reject(new Error(`Timeout waiting for status to not be ${status}. Is ${this.getStatus()}`));
       }, timeout * 1000);
 
-      // TODO: don't poll our own memory, setup a notifier instead
       const poll = async () => {
-        while (this.isStatus(status)) await delay(100);
+        while (!settled && this.isStatus(status)) await delay(100);
+        if (settled) return;
+        settled = true;
         clearTimeout(timeoutId);
         resolve();
       };
