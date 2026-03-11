@@ -26,6 +26,8 @@ import {
   useTelemetryCallback,
   useNetworkStats,
   useSubnetScan,
+  useRoutePreferenceState,
+  sendRoutePreference,
 } from '../hooks/useBackend';
 import { MatchPanel } from './MatchPanel';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
@@ -49,6 +51,55 @@ import Chip from '@mui/material/Chip';
 function formatNumberWithThinSpace(num: number | undefined): string {
   if (num === undefined) return '';
   return num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+}
+
+/** Banner shown when this station's team is also assigned to other stations. */
+function RoutePreferenceBanner({ station }: { station: StationName }) {
+  const routeState = useRoutePreferenceState();
+  if (!routeState) return null;
+
+  // Find conflicting teams that include this station
+  const myConflicts = Object.entries(routeState.conflictingTeams).filter(([, stations]) =>
+    stations.includes(station),
+  );
+  if (myConflicts.length === 0) return null;
+
+  const isSelected = routeState.preference === station;
+  const otherSelected = routeState.preference !== null && routeState.preference !== station;
+
+  return (
+    <Box sx={{ mb: 1 }}>
+      {myConflicts.map(([team, stations]) => (
+        <Box
+          key={team}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderRadius: 1,
+            backgroundColor: isSelected ? 'success.main' : otherSelected ? 'warning.main' : 'info.main',
+            color: 'white',
+          }}
+        >
+          <Typography variant="body2" sx={{ flex: 1 }}>
+            Team {team} is on {stations.length} stations
+            {otherSelected && ` (routed to ${prettyStationName(routeState.preference!)})`}
+          </Typography>
+          <Button
+            size="small"
+            variant="contained"
+            color={isSelected ? 'inherit' : 'primary'}
+            onClick={() => sendRoutePreference(isSelected ? null : station)}
+            sx={isSelected ? { color: 'success.main' } : {}}
+          >
+            {isSelected ? 'Clear preference' : 'Prefer this station'}
+          </Button>
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
 export function StationStatus({ station, full }: { station: StationName; full?: boolean }) {
@@ -191,6 +242,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   return (
     <>
       {full && <MatchPanel station={station} />}
+      <RoutePreferenceBanner station={station} />
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',
