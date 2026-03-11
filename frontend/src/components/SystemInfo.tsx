@@ -6,22 +6,30 @@ import { useLatest } from '../hooks/useBackend';
 export function SystemInfo() {
   const latest = useLatest();
 
-  const { status, version, channel, channelBandwidth } = latest?.radioUpdate || {};
+  const radioUpdate = latest?.radioUpdate;
 
   return (
     <>
       <Typography variant="h4" gutterBottom>
         System Information
       </Typography>
-      <Card style={{ marginBottom: '1rem', borderLeft: '0.5em solid green' }}>
-        <CardContent>
-          <Typography>Status: {status}</Typography>
-          <Typography>Version: {version}</Typography>
-          <Typography>
-            Channel: {channel} ({channelBandwidth})
-          </Typography>
-        </CardContent>
-      </Card>
+      {radioUpdate ? (
+        <Card style={{ marginBottom: '1rem', borderLeft: '0.5em solid green' }}>
+          <CardContent>
+            <Typography>Status: {radioUpdate.status}</Typography>
+            <Typography>Version: {radioUpdate.version}</Typography>
+            <Typography>
+              Channel: {radioUpdate.channel} ({radioUpdate.channelBandwidth})
+            </Typography>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card style={{ marginBottom: '1rem', borderLeft: '0.5em solid orange' }}>
+          <CardContent>
+            <Typography color="warning.main">Unable to read radio — waiting for connection</Typography>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }

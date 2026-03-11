@@ -3,14 +3,14 @@ import { appWarn } from './appLogger.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
 /**
- * Block startup until the radio responds to /status.
- * Retries every 10 seconds with a clear log message.
+ * Try to reach the radio, retrying up to maxAttempts times.
+ * Returns the radio status if reachable, or null if all attempts fail.
  */
-export async function waitForRadio(url: string): Promise<RadioUpdate> {
+export async function waitForRadio(url: string, maxAttempts = Infinity): Promise<RadioUpdate | null> {
   const statusUrl = `${url}/status`;
   let attempt = 0;
 
-  while (true) {
+  while (attempt < maxAttempts) {
     try {
       const response = await fetch(statusUrl, {
         signal: AbortSignal.timeout(3000),
@@ -35,6 +35,8 @@ export async function waitForRadio(url: string): Promise<RadioUpdate> {
       await delay(10_000);
     }
   }
+
+  return null;
 }
 
 /**

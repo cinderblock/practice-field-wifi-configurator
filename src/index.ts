@@ -54,16 +54,10 @@ const RadioClearSchedule = process.env.RADIO_CLEAR_SCHEDULE;
 const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
 (async () => {
-  // Startup checks — block until radio is reachable
-  const initialStatus = await waitForRadio(RadioUrl);
-  const firmwareMode = detectFirmwareMode(initialStatus.version);
-
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
-    const tools = ['iptables', 'arping', 'fping'];
-    if (firmwareMode !== 'PRACTICE') tools.push('dnsmasq');
-    await checkRequiredTools(tools);
+    await checkRequiredTools(['iptables', 'arping', 'fping', 'dnsmasq']);
     net = process.env.DRY_RUN ? createDryRunBackend() : createBackend();
     // pFMS serves multiple roles on this interface:
     const expectedIps = [
@@ -86,8 +80,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     await net.setSysctl({ key: 'net.ipv4.ip_forward', value: '1' });
   }
 
-  // Initialize radio manager
-  const radioManager = new RadioManager(RadioUrl, VlanInterface, firmwareMode);
+  // Initialize radio manager — firmware mode will be set when the radio connects
+  const radioManager = new RadioManager(RadioUrl, VlanInterface);
+
+  // Connect to the radio in the background — don't block startup
+  (async () => {
+    const status = await waitForRadio(RadioUrl);
+    if (status) {
+      radioManager.setFirmwareMode(detectFirmwareMode(status.version));
+    }
+  })();
 
   // After a full restart (iptables were flushed), re-apply the restored activeConfig
   // to rebuild network rules. Skip for graceful reload — rules are still in the kernel.

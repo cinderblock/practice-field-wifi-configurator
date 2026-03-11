@@ -41,13 +41,18 @@ class RadioManager {
   constructor(
     private readonly apiBaseUrl: string,
     private readonly radioManagementInterface?: string,
-    private readonly firmwareMode?: string,
+    private firmwareMode?: string,
   ) {
     this.loadActiveConfig();
     this.startPolling();
     if (this.radioManagementInterface) {
       console.log('Radio management interface:', this.radioManagementInterface);
     }
+  }
+
+  setFirmwareMode(mode: string): void {
+    this.firmwareMode = mode;
+    console.log(`Firmware mode updated: ${mode}`);
   }
 
   private saveActiveConfig(): void {
