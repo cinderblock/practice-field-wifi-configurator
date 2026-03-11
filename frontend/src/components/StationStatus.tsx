@@ -200,7 +200,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   return (
     <>
-      <MatchPanel station={station} />
+      {full && <MatchPanel station={station} />}
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',

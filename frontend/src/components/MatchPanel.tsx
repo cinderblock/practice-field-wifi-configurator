@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -8,7 +8,8 @@ import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { MatchPhase, MatchConfig, StationName } from '../../../src/types';
+import { MatchPhase, MatchConfig, StationName, StationControlState } from '../../../src/types';
+import { prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   sendStationJoin,
@@ -76,6 +77,14 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
   const [endgame, setEndgame] = useState(config.endgameDuration);
   const [pause, setPause] = useState(config.pauseDuration);
 
+  // Sync local state when config changes externally (e.g., another station edits it)
+  useEffect(() => {
+    setAuto(prev => (prev !== config.autoDuration ? config.autoDuration : prev));
+    setTeleop(prev => (prev !== config.teleopDuration ? config.teleopDuration : prev));
+    setEndgame(prev => (prev !== config.endgameDuration ? config.endgameDuration : prev));
+    setPause(prev => (prev !== config.pauseDuration ? config.pauseDuration : prev));
+  }, [config.autoDuration, config.teleopDuration, config.endgameDuration, config.pauseDuration]);
+
   const handleChange = (field: keyof MatchConfig, value: number) => {
     const updated: MatchConfig = {
       autoDuration: auto,
@@ -141,27 +150,64 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
   );
 }
 
-export function MatchPanel({ station }: { station: StationName }) {
+/** Build a display label for a joined station chip, including team number and duplicate suffix. */
+function stationChipLabel(
+  station: StationName,
+  state: StationControlState | undefined,
+  allStates: Partial<Record<StationName, StationControlState>>,
+) {
+  const pretty = prettyStationName(station);
+  const team = state?.teamNumber;
+  if (!team) return pretty;
+
+  // Check if another joined station shares the same team number
+  const sameTeamStations = (Object.entries(allStates) as [StationName, StationControlState | undefined][])
+    .filter(([s, st]) => st?.joined && st?.teamNumber === team && s !== station)
+    .length;
+
+  const suffix = state?.ready ? ' \u2713' : '';
+  if (sameTeamStations > 0) {
+    const tag = station[0].toUpperCase() + station.replace(/[a-z]+/g, '');
+    return `${pretty} (${team}-${tag})${suffix}`;
+  }
+  return `${pretty} (${team})${suffix}`;
+}
+
+/**
+ * Match control panel.
+ * - With `station` prop: per-station view with join/leave/ready buttons (for station pages)
+ * - Without `station` prop: master overview with global controls (for main page)
+ */
+export function MatchPanel({ station }: { station?: StationName }) {
   const matchState = useMatchState();
   if (!matchState) return null;
 
   const { phase, remainingTime, totalMatchTime, config, stationStates } = matchState;
-  const myState = stationStates[station];
-  const joined = myState?.joined ?? false;
-  const ready = myState?.ready ?? false;
 
   const isActive = phase !== 'idle' && phase !== 'postMatch';
   const isPaused = phase === 'paused';
   const isPostMatch = phase === 'postMatch';
 
-  const joinedStations = (Object.entries(stationStates) as [StationName, typeof myState][])
+  const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
     .filter(([, s]) => s?.joined)
     .map(([name]) => name);
   const allReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
 
+  // Per-station state (only when station prop is provided)
+  const myState = station ? stationStates[station] : undefined;
+  const joined = myState?.joined ?? false;
+  const ready = myState?.ready ?? false;
+
+  // Master view: any station joined means we show controls
+  const anyJoined = joinedStations.length > 0;
+  const showConfigEditor = station ? joined && !isActive && !isPostMatch : anyJoined && !isActive && !isPostMatch;
+
   const countdownDuration = 3;
   const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
   const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
+
+  // Don't render the master panel at all if nothing is happening
+  if (!station && !anyJoined && !isActive && !isPostMatch) return null;
 
   return (
     <Card sx={{ mb: 2 }}>
@@ -199,7 +245,7 @@ export function MatchPanel({ station }: { station: StationName }) {
             {joinedStations.map(s => (
               <Chip
                 key={s}
-                label={`${s}${stationStates[s]?.ready ? ' ✓' : ''}`}
+                label={stationChipLabel(s, stationStates[s], stationStates)}
                 size="small"
                 color={stationStates[s]?.ready ? 'success' : 'default'}
                 variant="outlined"
@@ -210,45 +256,57 @@ export function MatchPanel({ station }: { station: StationName }) {
 
         {/* Action buttons */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {/* Not joined, not active: join button */}
-          {!joined && !isActive && (
-            <Button variant="contained" color="primary" onClick={() => sendStationJoin(station)}>
-              Join Match
-            </Button>
-          )}
-
-          {/* Joined, not active: ready / leave */}
-          {joined && !isActive && !isPostMatch && (
+          {station && (
             <>
-              <Button
-                variant={ready ? 'outlined' : 'contained'}
-                color={ready ? 'warning' : 'success'}
-                onClick={() => sendStationReady(station, !ready)}
-              >
-                {ready ? 'Not Ready' : 'Ready'}
-              </Button>
-              <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
-                Leave
-              </Button>
+              {/* Not joined, not active: join button */}
+              {!joined && !isActive && (
+                <Button variant="contained" color="primary" onClick={() => sendStationJoin(station)}>
+                  Join Match
+                </Button>
+              )}
+
+              {/* Joined, not active: ready / leave */}
+              {joined && !isActive && !isPostMatch && (
+                <>
+                  <Button
+                    variant={ready ? 'outlined' : 'contained'}
+                    color={ready ? 'warning' : 'success'}
+                    onClick={() => sendStationReady(station, !ready)}
+                  >
+                    {ready ? 'Not Ready' : 'Ready'}
+                  </Button>
+                  <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
+                    Leave
+                  </Button>
+                </>
+              )}
+
+              {/* Post-match: leave to get control back */}
+              {joined && isPostMatch && (
+                <Button variant="outlined" color="primary" onClick={() => sendStationLeave(station)}>
+                  Leave Match
+                </Button>
+              )}
             </>
           )}
 
-          {/* All joined+ready and I'm joined: start button */}
-          {joined && !isActive && !isPostMatch && allReady && (
+          {/* Global controls: available in both master and station views */}
+          {/* Start button: shown when all ready (station view: only if joined) */}
+          {(!station || joined) && !isActive && !isPostMatch && allReady && (
             <Button variant="contained" color="success" sx={{ fontWeight: 'bold' }} onClick={sendStationStartMatch}>
               Start Match
             </Button>
           )}
 
           {/* Active match: pause */}
-          {joined && isActive && !isPaused && phase !== 'countdown' && phase !== 'autoPause' && (
+          {(!station || joined) && isActive && !isPaused && phase !== 'countdown' && phase !== 'autoPause' && (
             <Button variant="outlined" color="warning" onClick={sendStationPauseMatch}>
               Pause
             </Button>
           )}
 
           {/* Paused: resume / abandon */}
-          {joined && isPaused && (
+          {(!station || joined) && isPaused && (
             <>
               <Button variant="contained" color="success" onClick={sendStationResumeMatch}>
                 Resume
@@ -258,22 +316,10 @@ export function MatchPanel({ station }: { station: StationName }) {
               </Button>
             </>
           )}
-
-          {/* Post-match: leave to get control back */}
-          {joined && isPostMatch && (
-            <Button variant="outlined" color="primary" onClick={() => sendStationLeave(station)}>
-              Leave Match
-            </Button>
-          )}
         </Box>
 
-        {/* Timing config editor: visible when joined and not active */}
-        {joined && !isActive && !isPostMatch && (
-          <TimingConfigEditor
-            key={`${config.autoDuration}-${config.teleopDuration}-${config.endgameDuration}-${config.pauseDuration}`}
-            config={config}
-          />
-        )}
+        {/* Timing config editor */}
+        {showConfigEditor && <TimingConfigEditor config={config} />}
       </CardContent>
     </Card>
   );

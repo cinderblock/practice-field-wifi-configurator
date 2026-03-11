@@ -1,11 +1,13 @@
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import { AllianceStatus } from './AllianceStatus';
+import { MatchPanel } from './MatchPanel';
 import { SystemInfo } from './SystemInfo';
 
 export function MainPage() {
   return (
     <Container>
+      <MatchPanel />
       <Grid container spacing={2}>
         <AllianceStatus alliance="red" />
         <AllianceStatus alliance="blue" reverse />
