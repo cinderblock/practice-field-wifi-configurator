@@ -412,26 +412,36 @@ class RadioManager {
     return this.getStatus() === status;
   }
 
-  async untilStatusIs(status: Status, timeout = 1): Promise<void> {
-    const timeoutId = setTimeout(() => {
-      throw new Error(`Timeout waiting for status to be ${status}. Is ${this.getStatus()}`);
-    }, timeout * 1000);
+  untilStatusIs(status: Status, timeout = 1): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Timeout waiting for status to be ${status}. Is ${this.getStatus()}`));
+      }, timeout * 1000);
 
-    // TODO: don't poll our own memory, setup a notifier instead
-    while (!this.isStatus(status)) await delay(100);
-
-    clearTimeout(timeoutId);
+      // TODO: don't poll our own memory, setup a notifier instead
+      const poll = async () => {
+        while (!this.isStatus(status)) await delay(100);
+        clearTimeout(timeoutId);
+        resolve();
+      };
+      poll();
+    });
   }
 
-  async untilStatusIsNot(status: Status, timeout = 1): Promise<void> {
-    const timeoutId = setTimeout(() => {
-      throw new Error(`Timeout waiting for status to not be ${status}. Is ${this.getStatus()}`);
-    }, timeout * 1000);
+  untilStatusIsNot(status: Status, timeout = 1): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Timeout waiting for status to not be ${status}. Is ${this.getStatus()}`));
+      }, timeout * 1000);
 
-    // TODO: don't poll our own memory, setup a notifier instead
-    while (this.isStatus(status)) await delay(100);
-
-    clearTimeout(timeoutId);
+      // TODO: don't poll our own memory, setup a notifier instead
+      const poll = async () => {
+        while (this.isStatus(status)) await delay(100);
+        clearTimeout(timeoutId);
+        resolve();
+      };
+      poll();
+    });
   }
 
   isConnected(): boolean {
