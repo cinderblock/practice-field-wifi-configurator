@@ -28,11 +28,9 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
   const firstConfiguring = hist.find(h => h.radioUpdate?.status === 'CONFIGURING')?.timestamp || null;
   const reconfigStart = lastActive ?? firstConfiguring;
 
-  const isLoading = latest === undefined || latest.radioUpdate === undefined;
   const { status } = latest?.radioUpdate || {};
   const isConfiguring = status === 'CONFIGURING';
-  const isConnected = latest?.radioUpdate !== undefined;
-  const isNetworkFault = latest !== undefined && !isConnected; // Backend is up, radio not responding
+  const isRadioConnected = latest?.radioUpdate !== undefined;
 
   // Track elapsed seconds since configuration started, using a stable browser-local
   // anchor so the countdown doesn't jitter as the server time offset shifts.
@@ -44,7 +42,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
 
   // Only clear the anchor when the radio is definitively done configuring
   // (connected with a non-CONFIGURING status), not on transient flickers.
-  const isDefinitelyDone = isConnected && !isConfiguring;
+  const isDefinitelyDone = isRadioConnected && !isConfiguring;
   useEffect(() => {
     if (isDefinitelyDone) {
       startTimeRef.current = null;
@@ -79,7 +77,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
             <StatusBar />
             <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
           </Box>
-          <Backdrop open={isConfiguring || !isConnected} sx={{ zIndex: 9999 }}>
+          <Backdrop open={isConfiguring} sx={{ zIndex: 9999 }}>
             <Grid
               container
               direction="column"
@@ -88,44 +86,28 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               sx={{ height: '100%', userSelect: 'none' }}
             >
               <Typography variant="h4" sx={{ mb: 2 }}>
-                {isLoading
-                  ? 'Loading...'
-                  : isNetworkFault
-                    ? 'Network Fault. Field Radio Unreachable...'
-                    : isConnected
-                      ? 'Reconfiguration in progress...'
-                      : 'Radio connecting...'}
+                Reconfiguration in progress...
               </Typography>
 
-              {/* Hero countdown or status message */}
-              {!latest ? (
-                <Typography variant="h5">Connecting to backend...</Typography>
-              ) : isNetworkFault ? (
-                <Typography variant="h6" sx={{ maxWidth: 500, textAlign: 'center' }}>
-                  The field radio is not responding. Check power, cabling, and IP configuration.
-                </Typography>
-              ) : (
-                isConnected &&
-                reconfigStart && (
-                  <>
-                    <Typography
-                      variant="h1"
-                      sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
-                    >
-                      {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
-                    </Typography>
-                    <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
-                      {elapsedSec < EstimatedReconfigurationTime
-                        ? 'seconds remaining'
-                        : 'Reconfiguration taking longer than expected...'}
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(100, (elapsedSec / EstimatedReconfigurationTime) * 100)}
-                      sx={{ width: '100%', maxWidth: 500, height: 10, borderRadius: 5 }}
-                    />
-                  </>
-                )
+              {reconfigStart && (
+                <>
+                  <Typography
+                    variant="h1"
+                    sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
+                  >
+                    {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
+                  </Typography>
+                  <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
+                    {elapsedSec < EstimatedReconfigurationTime
+                      ? 'seconds remaining'
+                      : 'Reconfiguration taking longer than expected...'}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(100, (elapsedSec / EstimatedReconfigurationTime) * 100)}
+                    sx={{ width: '100%', maxWidth: 500, height: 10, borderRadius: 5 }}
+                  />
+                </>
               )}
             </Grid>
           </Backdrop>

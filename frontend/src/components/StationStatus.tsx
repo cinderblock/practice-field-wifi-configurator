@@ -76,10 +76,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
 
-  if (!latest) {
-    return <Typography>Loading...</Typography>;
-  }
-
   const {
     ssid: stationSsid,
     hashedWpaKey,
@@ -97,7 +93,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     txBytes,
     bandwidthUsedMbps,
     connectionQuality,
-  } = latest.radioUpdate?.stationStatuses[station] || {};
+  } = latest?.radioUpdate?.stationStatuses[station] || {};
 
   const handleOpen = () => {
     setSsid(stationSsid || '');
