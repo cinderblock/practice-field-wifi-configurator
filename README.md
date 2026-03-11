@@ -225,22 +225,18 @@ Description=Practice Field Management System Backend
 After=network.target
 
 [Service]
+EnvironmentFile=/etc/pfms/environment
 WorkingDirectory=/path/to/practice-field-configurator
 ExecStart=/usr/bin/node dist
 # Graceful reload: preserve network rules across restarts
 ExecReload=/bin/sh -c 'touch /run/pfms-keep-network && kill -HUP $MAINPID'
 Restart=always
-Environment=WEBSOCKET_PORT=9001
-Environment=VLAN_INTERFACE=eth0
-Environment=FMS_ENDPOINT=true
-Environment=SYSLOG_ENDPOINT=true
-Environment="RADIO_CLEAR_SCHEDULE=0 6 * * *"
-Environment=RADIO_CLEAR_TIMEZONE=America/Los_Angeles
-Environment=TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.0/8
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+Environment variables are stored in `/etc/pfms/environment` (one `KEY=value` per line). Changes take effect on service restart without requiring `systemctl daemon-reload`.
 
 `systemctl reload` preserves iptables rules and route preferences across restarts — robots stay connected and laptops keep their routing preferences. `systemctl restart` performs a full cleanup.
 
