@@ -18,7 +18,9 @@ import {
   isStationAbandonMatch,
   isUpdateMatchConfig,
   isRoutePreferenceMsg,
+  isApplyConfig,
   RoutePreferenceState,
+  PendingCommitState,
 } from './types.js';
 import { getRealClientIp, normalizeIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
@@ -111,6 +113,11 @@ export function setupWebSocket(
   // Broadcast match state to all clients
   matchEngine.addStateListener(broadcast);
 
+  // Broadcast pending commit state changes to all clients
+  radioManager.addPendingCommitListener(pending => {
+    broadcast({ type: 'pendingCommitState', pending } satisfies PendingCommitState);
+  });
+
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const rawIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
@@ -125,6 +132,9 @@ export function setupWebSocket(
 
     // Send initial route preference state
     sendRouteState(ws, clientIp);
+
+    // Send initial pending commit state
+    ws.send(JSON.stringify({ type: 'pendingCommitState', pending: radioManager.pendingCommit } satisfies PendingCommitState));
 
     ws.on('close', () => {
       wsToIp.delete(ws);
@@ -216,6 +226,11 @@ export function setupWebSocket(
         matchEngine.stationDisable(data.station);
       } else if (isAdminClearEStop(data)) {
         matchEngine.clearEStop(data.station);
+      } else if (isApplyConfig(data)) {
+        radioManager.commitConfiguration().catch(err => {
+          appError('Error applying config: ' + err.message);
+          ws.send(JSON.stringify({ error: 'Failed to apply configuration', details: err.message }));
+        });
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

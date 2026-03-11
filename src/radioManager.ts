@@ -37,6 +37,9 @@ class RadioManager {
   private lastBroadcastEntry: StatusEntry | null = null;
   private lastBroadcastTime: number = 0;
   private readonly maxBroadcastInterval = 15000;
+  private shouldDefer?: () => boolean;
+  private _pendingCommit = false;
+  private pendingCommitListeners: ((pending: boolean) => void)[] = [];
 
   constructor(
     private readonly apiBaseUrl: string,
@@ -240,11 +243,63 @@ class RadioManager {
     this.saveActiveConfig();
     this.notifyConfigChange();
 
-    // Bail if just staging the change
-    if (!stage) await this.commitConfiguration();
+    if (stage) {
+      this.setPendingCommit(true);
+    } else {
+      await this.commitConfiguration();
+    }
+  }
+
+  /** Whether there are config changes that haven't been committed to the radio yet. */
+  get pendingCommit(): boolean {
+    return this._pendingCommit;
+  }
+
+  private setPendingCommit(value: boolean) {
+    if (this._pendingCommit === value) return;
+    this._pendingCommit = value;
+    for (const listener of this.pendingCommitListeners) {
+      try {
+        listener(value);
+      } catch (err) {
+        console.error('Error in pendingCommit listener:', err);
+      }
+    }
+  }
+
+  addPendingCommitListener(listener: (pending: boolean) => void): () => void {
+    this.pendingCommitListeners.push(listener);
+    return () => this.pendingCommitListeners.splice(this.pendingCommitListeners.indexOf(listener), 1);
+  }
+
+  /**
+   * Set a callback that determines whether radio configuration should be deferred.
+   * When the callback returns true, commitConfiguration() queues the commit instead
+   * of executing it immediately. Call retryDeferredCommit() when conditions clear.
+   */
+  setShouldDefer(fn: () => boolean) {
+    this.shouldDefer = fn;
+  }
+
+  /**
+   * If a commit was deferred, retry it now (if no longer deferred).
+   * Call this when the defer condition clears (e.g., match ends, robots disabled).
+   */
+  retryDeferredCommit() {
+    if (!this._pendingCommit) return;
+    if (this.shouldDefer?.()) return; // Still deferred
+    console.log('Defer condition cleared, committing queued radio configuration');
+    this.commitConfiguration();
   }
 
   commitConfiguration(): Promise<void> {
+    if (this.shouldDefer?.()) {
+      if (!this._pendingCommit) {
+        console.log('Radio configuration deferred: robots enabled or match active');
+      }
+      this.setPendingCommit(true);
+      return Promise.resolve();
+    }
     // Serialize concurrent calls — each queues after the previous one so
     // previousStations in networkManager is never read mid-update.
     this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
@@ -289,6 +344,7 @@ class RadioManager {
     jobs.push(this.configureRadio(config));
 
     await Promise.all(jobs);
+    this.setPendingCommit(false);
   }
 
   private async configureRadio(config: any) {
@@ -389,8 +445,8 @@ class RadioManager {
     return mappings;
   }
 
-  async clearAllConfigurations(): Promise<void> {
-    console.log(`Starting to clear all active radio configurations`);
+  async clearAllConfigurations(stage = false): Promise<void> {
+    console.log(`Starting to clear all active radio configurations${stage ? ' (staged)' : ''}`);
 
     if (this.configuring) {
       console.log('Already configuring, skipping clear operation');
@@ -399,16 +455,17 @@ class RadioManager {
 
     try {
       for (const stationId in this.activeConfig) delete this.activeConfig[stationId as StationName];
+      this.saveActiveConfig();
       this.notifyConfigChange();
 
-      await this.commitConfiguration();
-
-      this.saveActiveConfig();
-      console.log(`Successfully cleared all radio configurations`);
+      if (stage) {
+        this.setPendingCommit(true);
+      } else {
+        await this.commitConfiguration();
+      }
+      console.log(`Successfully cleared all radio configurations${stage ? ' (staged)' : ''}`);
     } catch (error) {
       console.error(`Error clearing configurations:`, error);
-      // Restore the activeConfig state since the clear failed
-      // Note: This is a best-effort restoration, but we can't know the exact previous state
       console.warn('Configuration clear failed, radio state may be inconsistent');
     }
   }

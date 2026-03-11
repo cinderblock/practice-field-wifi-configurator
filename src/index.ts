@@ -172,8 +172,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   if (StartFMS) {
     const telemetryManager = new TelemetryManager(
       () => radioManager.getTeamMappings(),
-      update => broadcast(update),
+      update => {
+        broadcast(update);
+        // When a robot transitions to disabled, check if we can flush a deferred commit
+        if (update.dsStatus && !update.dsStatus.enabled) {
+          radioManager.retryDeferredCommit();
+        }
+      },
     );
+
+    // Defer radio configuration while robots are enabled or a match is running
+    radioManager.setShouldDefer(() => matchEngine.isMatchActive() || telemetryManager.anyRobotEnabled());
+
+    // Also retry deferred commits when match state changes (e.g., match ends)
+    matchEngine.addStateListener(() => {
+      radioManager.retryDeferredCommit();
+    });
 
     // Track active DNAT rules so we can clean them up on DS disconnect.
     // Map: station → { dsIp, vlanInterface }

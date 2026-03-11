@@ -18,11 +18,21 @@ export class TelemetryManager {
   /** Cached team→station mappings, refreshed at most once per second */
   private cachedMappings: Record<number, StationName> = {};
   private cachedMappingsAt = 0;
+  /** Track per-station enabled state from DS UDP telemetry */
+  private enabledStations = new Map<StationName, boolean>();
 
   constructor(
     private readonly getTeamMappings: () => Record<number, StationName>,
     private readonly onUpdate: (update: TelemetryUpdate) => void,
   ) {}
+
+  /** Returns true if any station's DS is reporting enabled. */
+  anyRobotEnabled(): boolean {
+    for (const enabled of this.enabledStations.values()) {
+      if (enabled) return true;
+    }
+    return false;
+  }
 
   processFmsEvent(event: FmsEvent): void {
     const { address, data } = event;
@@ -59,6 +69,7 @@ export class TelemetryManager {
     if (!station) return;
 
     this.logFirst(msg.teamNumber, station);
+    this.enabledStations.set(station, msg.status.enabled);
 
     let dsCpuPercent: number | undefined;
     for (const tag of msg.tags) {

@@ -60,9 +60,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const [chartMode, setChartMode] = useState(full ?? false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Feature flag for staging functionality
-  const enableStaging = process.env.REACT_APP_ENABLE_STAGING === 'true';
-
   const latest = useLatest();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const { stagedChanges, hasStagedChange, stageChange, applyStagedChange } = useStagedChanges();
@@ -107,27 +104,21 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   const handleSave = (stage: boolean) => {
-    if (enableStaging && stage) {
-      // Staging mode: stage the change
-      sendNewConfig(station, ssid, passphrase, true, internetAccess);
+    sendNewConfig(station, ssid, passphrase, stage, internetAccess);
 
-      // Track staged change
+    if (stage) {
+      // Track staged change locally
       if (ssid.trim() && passphrase.trim()) {
         stageChange(station, ssid, passphrase);
       }
     } else {
-      // Direct apply mode: apply immediately
-      sendNewConfig(station, ssid, passphrase, false, internetAccess);
+      // Clear any staged change when applying directly
+      applyStagedChange(station);
+    }
 
-      if (enableStaging) {
-        // Clear any staged change when applying
-        applyStagedChange(station);
-      }
-
-      // Auto-save the setting if it's valid and not empty
-      if (ssid.trim() && passphrase.trim()) {
-        saveSetting(ssid, passphrase, internetAccess);
-      }
+    // Auto-save the setting if it's valid and not empty
+    if (ssid.trim() && passphrase.trim()) {
+      saveSetting(ssid, passphrase, internetAccess);
     }
 
     setOpen(false);
@@ -166,14 +157,13 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     console.log('Clearing station:', station, 'Current SSID:', stationSsid);
 
     // Only clear if the station is actually configured
-    if (stationSsid || (enableStaging && hasStagedChange(station))) {
-      // Send empty strings like the dialog does
-      sendNewConfig(station, '', '', false);
+    if (stationSsid || hasStagedChange(station)) {
+      // Stage the clear — don't force a radio reconfig. The next "Save" or
+      // explicit "Apply" from the header will commit all pending changes.
+      sendNewConfig(station, '', '', true);
 
       // Clear any staged changes for this station
-      if (enableStaging) {
-        applyStagedChange(station);
-      }
+      applyStagedChange(station);
     } else {
       console.log('Station is already cleared, no action needed');
     }
@@ -213,7 +203,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               {pretty}
               <SSIDDisplay ssid={stationSsid} hashedWpaKey={hashedWpaKey} />
-              {enableStaging && hasStagedChange(station) && (
+              {hasStagedChange(station) && (
                 <>
                   <span style={{ userSelect: 'none' }}> → </span>
                   <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
@@ -222,7 +212,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {/** APPLY ALL STAGED CHANGES BUTTON */}
-              {enableStaging && Object.values(stagedChanges).some(change => change !== null) && (
+              {Object.values(stagedChanges).some(change => change !== null) && (
                 <Tooltip
                   title={`Apply all staged changes (${
                     Object.values(stagedChanges).filter(change => change !== null).length
@@ -245,7 +235,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </Tooltip>
               )}
               {/** CLEAR BUTTON */}
-              {(stationSsid || (enableStaging && hasStagedChange(station))) && (
+              {(stationSsid || (hasStagedChange(station))) && (
                 <Tooltip title="Clear station configuration">
                   <IconButton
                     onClick={handleClearStation}
@@ -310,7 +300,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </Box>
           </Typography>
 
-          {stationSsid || (enableStaging && hasStagedChange(station)) ? (
+          {stationSsid || (hasStagedChange(station)) ? (
             <>
               {stationSsid &&
                 (isLinked ? (
@@ -813,10 +803,12 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             style={borderStyle}
             onSubmit={e => {
               e.preventDefault();
-              if (isSaveEnabled) handleSave(false); // Save or Clear on submit
+              // Empty SSID = clear: stage it (consistent with the X button).
+              // Non-empty SSID = save: commit immediately.
+              if (isSaveEnabled) handleSave(isSSIDEmpty);
             }}
             onKeyDown={e => {
-              if (enableStaging && e.key === 'Enter' && e.shiftKey) {
+              if (e.key === 'Enter' && e.shiftKey) {
                 // Shift+Enter: Stage
                 if (isSaveEnabled) handleSave(true);
                 e.preventDefault(); // Prevent form submit
@@ -1020,7 +1012,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               <Button onClick={handleClose} color="secondary">
                 Cancel
               </Button>
-              {enableStaging && (
+              {!isSSIDEmpty && (
                 <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
                   Stage
                 </Button>

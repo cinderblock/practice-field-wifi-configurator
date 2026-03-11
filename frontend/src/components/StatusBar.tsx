@@ -1,7 +1,9 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
+import Button from '@mui/material/Button';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
+import { usePendingCommit, sendApplyConfig } from '../hooks/useBackend';
 
 type DotColor = 'success.main' | 'error.main' | 'warning.main' | 'text.disabled';
 
@@ -41,6 +43,7 @@ export function StatusBar() {
   const connectivity = useConnectivity();
   const internet = getInternetIndicator(connectivity);
   const pfms = getPfmsIndicator(connectivity);
+  const pendingCommit = usePendingCommit();
 
   return (
     <Box
@@ -50,13 +53,35 @@ export function StatusBar() {
         justifyContent: 'center',
         height: 24,
         px: 1,
-        backgroundColor: 'background.paper',
+        backgroundColor: pendingCommit ? 'warning.dark' : 'background.paper',
         borderBottom: 1,
         borderColor: 'divider',
+        transition: 'background-color 0.3s',
       }}
     >
       <StatusDot color={internet.color} label="Internet" tooltip={internet.tooltip} />
       <StatusDot color={pfms.color} label="PFMS" tooltip={pfms.tooltip} />
+      {pendingCommit && (
+        <Tooltip title="Configuration changes are saved but not yet applied to the radio. Click to apply now, or they will be applied with the next Save." arrow>
+          <Button
+            size="small"
+            variant="contained"
+            color="warning"
+            onClick={sendApplyConfig}
+            sx={{
+              ml: 1,
+              py: 0,
+              px: 1,
+              minHeight: 18,
+              fontSize: '0.65rem',
+              lineHeight: 1.2,
+              textTransform: 'none',
+            }}
+          >
+            Apply pending changes
+          </Button>
+        </Tooltip>
+      )}
     </Box>
   );
 }

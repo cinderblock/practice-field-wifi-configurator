@@ -13,7 +13,9 @@ import {
   isSubnetScanResults,
   isTelemetryUpdate,
   isRoutePreferenceState,
+  isPendingCommitState,
   RoutePreferenceState,
+  PendingCommitState,
   RoutePreferenceMsg,
   StationName,
   StationUpdate,
@@ -194,6 +196,7 @@ let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 let currentSubnetScan: SubnetScanResults | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
+let currentPendingCommit = false;
 
 type Message =
   | StatusEntry
@@ -204,7 +207,8 @@ type Message =
   | AppLogMessage
   | TelemetryUpdate
   | SubnetScanResults
-  | RoutePreferenceState;
+  | RoutePreferenceState
+  | PendingCommitState;
 type ErrorMessage = { error: string; details: string };
 
 function isRadioMessage(entry: unknown): entry is RadioMessage {
@@ -279,7 +283,17 @@ function handleRoutePreferenceState(state: RoutePreferenceState) {
   events.dispatchEvent(new CustomEvent('routePreferenceState', { detail: state }));
 }
 
+function handlePendingCommitState(state: PendingCommitState) {
+  currentPendingCommit = state.pending;
+  events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state.pending }));
+}
+
 function receiveMessage(detail: Message) {
+  if (isPendingCommitState(detail)) {
+    handlePendingCommitState(detail);
+    return;
+  }
+
   if (isRoutePreferenceState(detail)) {
     handleRoutePreferenceState(detail);
     return;
@@ -511,4 +525,22 @@ export function useRoutePreferenceState(): RoutePreferenceState | null {
 
 export function sendRoutePreference(station: RoutePreferenceMsg['station']) {
   ws?.send(JSON.stringify({ type: 'routePreference', station } satisfies RoutePreferenceMsg));
+}
+
+// ── Pending Commit ──────────────────────────────────────────────────
+
+export function usePendingCommit(): boolean {
+  const [pending, setPending] = useState(currentPendingCommit);
+
+  useEffect(() => {
+    const handler = (e: Event) => setPending((e as CustomEvent).detail);
+    events.addEventListener('pendingCommitState', handler);
+    return () => events.removeEventListener('pendingCommitState', handler);
+  }, []);
+
+  return pending;
+}
+
+export function sendApplyConfig() {
+  ws?.send(JSON.stringify({ type: 'applyConfig' }));
 }

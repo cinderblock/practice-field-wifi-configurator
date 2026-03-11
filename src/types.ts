@@ -646,6 +646,29 @@ export function isRoutePreferenceState(msg: unknown): msg is RoutePreferenceStat
   return (msg as RoutePreferenceState).type === 'routePreferenceState';
 }
 
+// ── Pending Commit Types ────────────────────────────────────────────
+
+/** Sent from server to client when pending commit state changes */
+export type PendingCommitState = {
+  type: 'pendingCommitState';
+  pending: boolean;
+};
+
+export function isPendingCommitState(msg: unknown): msg is PendingCommitState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as PendingCommitState).type === 'pendingCommitState';
+}
+
+/** Sent from client to server to trigger a commit of pending changes */
+export type ApplyConfigMsg = {
+  type: 'applyConfig';
+};
+
+export function isApplyConfig(msg: unknown): msg is ApplyConfigMsg {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ApplyConfigMsg).type === 'applyConfig';
+}
+
 // ── Saved WiFi Types ────────────────────────────────────────────────
 
 export interface SavedWiFiSetting {
