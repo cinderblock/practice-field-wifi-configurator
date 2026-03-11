@@ -20,6 +20,7 @@ import { setBroadcast } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
+import { MdnsReflector } from './mdnsReflector.js';
 import { StationName, StationNameList } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 
@@ -38,6 +39,7 @@ const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2'; // Probably don't
 const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or undefined
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
+const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
 const WebSocketPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
 // Trusted proxy configuration
@@ -145,7 +147,21 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     broadcast(subnetScanner.getResults());
     // Clear stale routing preferences then push updated state to all clients
     onRouteConfigChange(s => radioManager.getTeamForStation(s)).then(() => broadcastRouteState());
+    // Update mDNS reflector multicast memberships
+    mdnsReflector?.refreshMemberships();
   });
+
+  // mDNS reflector — bridges .local queries between main network and team VLANs
+  let mdnsReflector: MdnsReflector | undefined;
+  if (StartMdnsReflector && VlanInterface) {
+    mdnsReflector = new MdnsReflector(
+      s => radioManager.getTeamForStation(s),
+      Number(process.env.VLAN_HOST_OCTET) || 254,
+    );
+    mdnsReflector.start();
+  } else if (StartMdnsReflector) {
+    console.log('MDNS_REFLECTOR=true but VLAN_INTERFACE is not set, skipping mDNS reflector');
+  }
 
   // Initialize scheduled configuration clearing
   if (RadioClearSchedule) {
