@@ -32,6 +32,7 @@ class RadioManager {
   private entries: StatusEntry[] = [];
   private updateListeners: StatusListener[] = [];
   private configChangeListeners: (() => void)[] = [];
+  private commitCompleteListeners: (() => void)[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
   private readonly activeConfigPath = process.env.ACTIVE_CONFIG_FILE ?? 'active-config.json';
   private lastBroadcastEntry: StatusEntry | null = null;
@@ -345,6 +346,7 @@ class RadioManager {
 
     await Promise.all(jobs);
     this.setPendingCommit(false);
+    this.notifyCommitComplete();
   }
 
   private async configureRadio(config: any) {
@@ -536,12 +538,28 @@ class RadioManager {
     return () => this.configChangeListeners.splice(this.configChangeListeners.indexOf(listener), 1);
   }
 
+  /** Register a listener called after doCommitConfiguration completes (network interfaces are up). */
+  addCommitCompleteListener(listener: () => void): () => void {
+    this.commitCompleteListeners.push(listener);
+    return () => this.commitCompleteListeners.splice(this.commitCompleteListeners.indexOf(listener), 1);
+  }
+
   private notifyConfigChange() {
     for (const listener of this.configChangeListeners) {
       try {
         listener();
       } catch (err) {
         console.error('Error in config change listener:', err);
+      }
+    }
+  }
+
+  private notifyCommitComplete() {
+    for (const listener of this.commitCompleteListeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('Error in commit complete listener:', err);
       }
     }
   }

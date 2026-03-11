@@ -147,18 +147,17 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     broadcast(subnetScanner.getResults());
     // Clear stale routing preferences then push updated state to all clients
     onRouteConfigChange(s => radioManager.getTeamForStation(s)).then(() => broadcastRouteState());
-    // Update mDNS reflector multicast memberships
-    mdnsReflector?.refreshMemberships();
   });
 
   // mDNS reflector — bridges .local queries between main network and team VLANs
-  let mdnsReflector: MdnsReflector | undefined;
   if (StartMdnsReflector && VlanInterface) {
-    mdnsReflector = new MdnsReflector(
+    const mdnsReflector = new MdnsReflector(
       s => radioManager.getTeamForStation(s),
       Number(process.env.VLAN_HOST_OCTET) || 254,
     );
     mdnsReflector.start();
+    // Refresh after commit — VLAN interfaces only exist after configureNetwork completes
+    radioManager.addCommitCompleteListener(() => mdnsReflector.refreshMemberships());
   } else if (StartMdnsReflector) {
     console.log('MDNS_REFLECTOR=true but VLAN_INTERFACE is not set, skipping mDNS reflector');
   }
