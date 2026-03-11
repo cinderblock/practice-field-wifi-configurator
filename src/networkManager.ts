@@ -292,3 +292,30 @@ export async function configureNetwork(stations: Stations, interfaceName: string
     await startDHCPServer(station, stations[station], interfaceName);
   }
 }
+
+/**
+ * Resolve a source IP to a station by checking the kernel neighbor (ARP) table.
+ * Returns the station name if the IP is reachable via a known VLAN interface,
+ * or undefined if not found. Useful for disambiguating duplicate team numbers.
+ */
+export async function resolveStationByNeighbor(ip: string, physicalInterface: string): Promise<StationName | undefined> {
+  const ifSuffix = new Map<string, StationName>();
+  for (const station of StationNameList) {
+    ifSuffix.set(`${physicalInterface}.${station}`, station);
+  }
+
+  try {
+    const { stdout } = await execFileAsync('ip', ['neigh', 'show', ip]);
+    // Output format: "10.7.66.2 dev eno1.red1 lladdr aa:bb:cc:dd:ee:ff REACHABLE"
+    for (const line of stdout.split('\n')) {
+      const devMatch = line.match(/dev\s+(\S+)/);
+      if (devMatch) {
+        const station = ifSuffix.get(devMatch[1]);
+        if (station) return station;
+      }
+    }
+  } catch {
+    // ip neigh failed — fall through
+  }
+  return undefined;
+}

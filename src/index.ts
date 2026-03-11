@@ -9,7 +9,7 @@ import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
-import { stopAllDHCP } from './networkManager.js';
+import { stopAllDHCP, resolveStationByNeighbor } from './networkManager.js';
 import {
   onConfigChange as onRouteConfigChange,
   cleanupAllPreferences,
@@ -185,8 +185,24 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // Auto-discover DS addresses for the match engine.
         // Match on any message carrying teamNumber — TCP 0x18 and UDP both do.
         if ('teamNumber' in msg.data) {
-          const station = radioManager.getStationForTeam(msg.data.teamNumber);
-          if (station) matchEngine.setDSAddress(station, msg.address);
+          const { teamNumber } = msg.data;
+          // TCP remoteAddress may be IPv6-mapped (::ffff:10.x.x.x) — normalize to plain IPv4
+          const address = msg.address.replace(/^::ffff:/, '');
+
+          if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
+            // Same team on multiple stations — use the kernel neighbor (ARP) table
+            // to determine which VLAN interface (and thus station) the packet came from.
+            resolveStationByNeighbor(address, VlanInterface).then(station => {
+              station ??= radioManager.getStationForTeam(teamNumber);
+              if (station) matchEngine.setDSAddress(station, address);
+            }).catch(err => {
+              console.error('DS address discovery failed:', err);
+            });
+          } else {
+            // Common case: unique team numbers — direct lookup, no subprocess needed
+            const station = radioManager.getStationForTeam(teamNumber);
+            if (station) matchEngine.setDSAddress(station, address);
+          }
         }
       });
     });

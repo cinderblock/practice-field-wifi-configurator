@@ -499,6 +499,18 @@ class RadioManager {
     return undefined;
   }
 
+  /** Returns true if the same team number is assigned to more than one station. */
+  isTeamDuplicated(teamNumber: number): boolean {
+    let count = 0;
+    for (const station in this.activeConfig) {
+      const { ssid } = this.activeConfig[station as StationName] ?? {};
+      if (ssid && parseInt(ssid.split('-', 2)[0]) === teamNumber) {
+        if (++count > 1) return true;
+      }
+    }
+    return false;
+  }
+
   getTeamForStation(station: StationName): number | null {
     const { ssid } = this.activeConfig[station] ?? {};
     if (!ssid) return null;
