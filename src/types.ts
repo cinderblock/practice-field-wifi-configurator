@@ -698,8 +698,13 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
 
 export interface MdnsActivity {
   type: 'mdnsActivity';
-  /** Per-team counters for reflected mDNS packets */
-  teams: Record<number, { queriesForwarded: number; responsesForwarded: number }>;
+  /** Per-team counters and recently reflected names */
+  teams: Record<number, {
+    queriesForwarded: number;
+    responsesForwarded: number;
+    /** Recently reflected DNS names (deduplicated, most recent first) */
+    recentNames: string[];
+  }>;
 }
 
 export function isMdnsActivity(msg: unknown): msg is MdnsActivity {

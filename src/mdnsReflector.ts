@@ -149,8 +149,8 @@ export class MdnsReflector {
   private socket: dgram.Socket | null = null;
   /** Teams whose VLAN we've joined multicast on → their VLAN IP */
   private joinedTeams = new Map<number, string>();
-  /** Per-team counters for reflected packets */
-  private counters = new Map<number, { queriesForwarded: number; responsesForwarded: number }>();
+  /** Per-team counters and recent names for reflected packets */
+  private counters = new Map<number, { queriesForwarded: number; responsesForwarded: number; recentNames: string[] }>();
 
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
@@ -161,7 +161,7 @@ export class MdnsReflector {
   getActivity(): MdnsActivity {
     const teams: MdnsActivity['teams'] = {};
     for (const [team, counts] of this.counters) {
-      teams[team] = { ...counts };
+      teams[team] = { ...counts, recentNames: [...counts.recentNames] };
     }
     return { type: 'mdnsActivity', teams };
   }
@@ -258,7 +258,7 @@ export class MdnsReflector {
       const team = answerNames.map(extractTeamFromName).find(t => t !== null);
       if (team == null) return;
 
-      this.incrementCounter(sourceTeam, 'responsesForwarded');
+      this.incrementCounter(sourceTeam, 'responsesForwarded', answerNames);
       this.forwardToMain(msg);
     } else {
       // Packet from the main network — only forward queries (laptop lookups) to VLANs
@@ -273,7 +273,8 @@ export class MdnsReflector {
 
       for (const team of teams) {
         if (this.joinedTeams.has(team)) {
-          this.incrementCounter(team, 'queriesForwarded');
+          const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
+          this.incrementCounter(team, 'queriesForwarded', teamNames);
           this.forwardToVlan(msg, team);
         }
       }
@@ -296,13 +297,28 @@ export class MdnsReflector {
     });
   }
 
-  private incrementCounter(team: number, field: 'queriesForwarded' | 'responsesForwarded') {
+  private static readonly MAX_RECENT_NAMES = 10;
+
+  private incrementCounter(team: number, field: 'queriesForwarded' | 'responsesForwarded', names?: string[]) {
     let entry = this.counters.get(team);
     if (!entry) {
-      entry = { queriesForwarded: 0, responsesForwarded: 0 };
+      entry = { queriesForwarded: 0, responsesForwarded: 0, recentNames: [] };
       this.counters.set(team, entry);
     }
     entry[field]++;
+    if (names) {
+      for (const raw of names) {
+        const name = raw.toLowerCase();
+        // Move to front if already present, otherwise prepend
+        const idx = entry.recentNames.indexOf(name);
+        if (idx !== -1) entry.recentNames.splice(idx, 1);
+        entry.recentNames.unshift(name);
+      }
+      // Cap the list
+      if (entry.recentNames.length > MdnsReflector.MAX_RECENT_NAMES) {
+        entry.recentNames.length = MdnsReflector.MAX_RECENT_NAMES;
+      }
+    }
   }
 
   /** Forward a response packet to the main network (default route interface). */

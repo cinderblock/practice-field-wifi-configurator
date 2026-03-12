@@ -199,14 +199,18 @@ function MdnsCard({ activity }: { activity: MdnsActivity | null }) {
             <TableHead>
               <TableRow>
                 <TableCell>Team</TableCell>
-                <TableCell sx={{ textAlign: 'right' }}>Queries Forwarded</TableCell>
-                <TableCell sx={{ textAlign: 'right' }}>Responses Forwarded</TableCell>
+                <TableCell>Recent Names</TableCell>
+                <TableCell sx={{ textAlign: 'right' }}>Queries</TableCell>
+                <TableCell sx={{ textAlign: 'right' }}>Responses</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {entries.map(e => (
                 <TableRow key={e.team}>
                   <TableCell sx={{ fontFamily: 'monospace' }}>{e.team}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    {e.recentNames?.join(', ') || '—'}
+                  </TableCell>
                   <TableCell sx={{ textAlign: 'right', fontFamily: 'monospace' }}>
                     {e.queriesForwarded.toLocaleString()}
                   </TableCell>
