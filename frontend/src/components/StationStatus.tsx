@@ -45,6 +45,7 @@ import ClearIcon from '@mui/icons-material/Clear';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
 import { StationChart, GroupedChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
+import { TeamChecksPanel } from './TeamChecksPanel';
 import Chip from '@mui/material/Chip';
 
 // Helper function to format numbers with thin space as thousands separator
@@ -827,6 +828,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                           </Box>
                         );
                       })()}
+                      {!full && <TeamChecksPanel station={station} />}
                     </Box>
                   )}
                 </>

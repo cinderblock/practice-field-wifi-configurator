@@ -19,8 +19,10 @@ import {
   isUpdateMatchConfig,
   isRoutePreferenceMsg,
   isApplyConfig,
+  isRunTeamChecks,
   RoutePreferenceState,
   PendingCommitState,
+  StationName,
 } from './types.js';
 import { getRealClientIp, normalizeIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
@@ -42,11 +44,14 @@ export interface WebSocketContext {
   broadcastRouteState: () => void;
 }
 
+export type RunTeamChecksCallback = (station: StationName) => void;
+
 export function setupWebSocket(
   radioManager: RadioManager,
   matchEngine: MatchEngine,
   port: number,
   trustedProxyMatcher?: CIDRMatcher,
+  onRunTeamChecks?: RunTeamChecksCallback,
 ): WebSocketContext {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // CORS headers
@@ -231,6 +236,8 @@ export function setupWebSocket(
           appError('Error applying config: ' + err.message);
           ws.send(JSON.stringify({ error: 'Failed to apply configuration', details: err.message }));
         });
+      } else if (isRunTeamChecks(data)) {
+        onRunTeamChecks?.(data.station);
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

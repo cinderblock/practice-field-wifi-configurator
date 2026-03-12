@@ -711,3 +711,38 @@ export function isMdnsActivity(msg: unknown): msg is MdnsActivity {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as MdnsActivity).type === 'mdnsActivity';
 }
+
+// ── Team Checks ─────────────────────────────────────────────────────
+
+export type CheckStatus = 'pending' | 'pass' | 'fail' | 'warn' | 'error';
+
+export type CheckResult = {
+  name: string;
+  status: CheckStatus;
+  expected?: string;
+  actual?: string;
+  message?: string;
+  /** URL to documentation for fixing the issue when the check fails */
+  helpUrl?: string;
+};
+
+export interface TeamCheckResults {
+  type: 'teamCheckResults';
+  station: StationName;
+  team: number;
+  timestamp: number;
+  checks: CheckResult[];
+}
+
+export function isTeamCheckResults(msg: unknown): msg is TeamCheckResults {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as TeamCheckResults).type === 'teamCheckResults';
+}
+
+export type RunTeamChecks = { type: 'runTeamChecks'; station: StationName };
+
+export function isRunTeamChecks(msg: unknown): msg is RunTeamChecks {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RunTeamChecks;
+  return m.type === 'runTeamChecks' && StationNameRegex.test(m.station);
+}

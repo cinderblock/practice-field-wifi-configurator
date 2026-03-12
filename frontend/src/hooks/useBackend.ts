@@ -7,18 +7,21 @@ import {
   MdnsActivity,
   NetworkStats,
   SubnetScanResults,
+  TeamCheckResults,
   TelemetryUpdate,
   isAppLogMessage,
   isMatchState,
   isMdnsActivity,
   isNetworkStats,
   isSubnetScanResults,
+  isTeamCheckResults,
   isTelemetryUpdate,
   isRoutePreferenceState,
   isPendingCommitState,
   RoutePreferenceState,
   PendingCommitState,
   RoutePreferenceMsg,
+  RunTeamChecks,
   StationName,
   StationUpdate,
   StatusEntry,
@@ -200,6 +203,7 @@ let currentSubnetScan: SubnetScanResults | null = null;
 let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
+const currentTeamCheckResults = new Map<StationName, TeamCheckResults>();
 
 type Message =
   | StatusEntry
@@ -210,6 +214,7 @@ type Message =
   | AppLogMessage
   | TelemetryUpdate
   | SubnetScanResults
+  | TeamCheckResults
   | RoutePreferenceState
   | PendingCommitState;
 type ErrorMessage = { error: string; details: string };
@@ -296,6 +301,11 @@ function handlePendingCommitState(state: PendingCommitState) {
   events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state.pending }));
 }
 
+function handleTeamCheckResults(results: TeamCheckResults) {
+  currentTeamCheckResults.set(results.station, results);
+  events.dispatchEvent(new CustomEvent('teamCheckResults', { detail: results }));
+}
+
 function receiveMessage(detail: Message) {
   if (isPendingCommitState(detail)) {
     handlePendingCommitState(detail);
@@ -324,6 +334,11 @@ function receiveMessage(detail: Message) {
 
   if (isSubnetScanResults(detail)) {
     handleSubnetScan(detail);
+    return;
+  }
+
+  if (isTeamCheckResults(detail)) {
+    handleTeamCheckResults(detail);
     return;
   }
 
@@ -570,4 +585,28 @@ export function usePendingCommit(): boolean {
 
 export function sendApplyConfig() {
   ws?.send(JSON.stringify({ type: 'applyConfig' }));
+}
+
+// ── Team Checks ─────────────────────────────────────────────────────
+
+export function useTeamCheckResults(station: StationName): TeamCheckResults | null {
+  const [results, setResults] = useState<TeamCheckResults | null>(
+    currentTeamCheckResults.get(station) ?? null,
+  );
+
+  useEffect(() => {
+    setResults(currentTeamCheckResults.get(station) ?? null);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<TeamCheckResults>).detail;
+      if (detail.station === station) setResults(detail);
+    };
+    events.addEventListener('teamCheckResults', handler);
+    return () => events.removeEventListener('teamCheckResults', handler);
+  }, [station]);
+
+  return results;
+}
+
+export function sendRunTeamChecks(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'runTeamChecks', station } satisfies RunTeamChecks));
 }

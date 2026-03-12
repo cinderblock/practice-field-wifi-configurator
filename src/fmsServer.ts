@@ -143,17 +143,15 @@ function parseIncomingTcpMessage(data: Buffer): DSMessage | null {
   const type = r.readNumber(1);
 
   switch (type) {
-    case 0x00:
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x04:
-    case 0x05:
-    case 0x06:
-    case 0x07:
-      console.log('Version:', type, data.toString('hex'));
-      // TODO: implement
-      return null;
+    case 0x00: // WPILib version
+    case 0x01: // roboRIO version
+    case 0x02: // DS version
+    case 0x03: // PDP version
+    case 0x04: // PCM version
+    case 0x05: // CANJag version
+    case 0x06: // CANTalon version
+    case 0x07: // Third-party device version
+      return { type, version: r.readString() } as DSMessage;
     case 0x15:
       return { type, teamNumber: r.readNumber(2), unknown: r.readNumber(1), entries: r.readSlice() };
     case 0x16:

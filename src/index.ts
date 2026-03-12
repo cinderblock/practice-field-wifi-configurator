@@ -21,7 +21,8 @@ import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
 import { MdnsReflector } from './mdnsReflector.js';
-import { StationName, StationNameList } from './types.js';
+import { TeamChecker } from './teamChecker.js';
+import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
@@ -112,12 +113,14 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   await matchAudio.init();
   matchAudio.attachToEngine(matchEngine);
 
-  // Initialize WebSocket server
+  // Initialize WebSocket server (onRunTeamChecks callback is set below after teamChecker is created)
+  let onRunTeamChecks: ((station: StationName) => void) | undefined;
   const { wss, broadcast, broadcastRouteState } = setupWebSocket(
     radioManager,
     matchEngine,
     WebSocketPort,
     trustedProxyMatcher,
+    station => onRunTeamChecks?.(station),
   );
   setBroadcast(broadcast);
 
@@ -127,21 +130,94 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     results => {
       latestSubnetScan = results;
       broadcast(results);
+
+      // Re-trigger team checks when new devices appear on stations that had error results.
+      // This handles the case where the radio is up but the RIO isn't yet — when the RIO
+      // comes online, the subnet scanner will detect it and we re-run checks automatically.
+      for (const station of StationNameList) {
+        const team = radioManager.getTeamForStation(station);
+        if (!team) continue;
+        const lastResults = latestCheckResults.get(station);
+        if (!lastResults) continue;
+        if (!lastResults.checks.some(c => c.status === 'error')) continue;
+
+        const currentAlive = new Set(
+          results.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? [],
+        );
+        const previousAlive = checksAliveSnapshot.get(station);
+        const retries = checksRetryCount.get(station) ?? 0;
+        if (previousAlive && retries < MAX_AUTO_RETRIGGERS && [...currentAlive].some(ip => !previousAlive.has(ip))) {
+          checksRetryCount.set(station, retries + 1);
+          triggerTeamChecks(station, team);
+        }
+      }
     },
   );
   let latestSubnetScan: ReturnType<SubnetScanner['getResults']> | null = null;
   subnetScanner.start(10_000);
 
+  // Team checker — runs automated checks when a DS connects
+  const teamChecker = new TeamChecker(
+    s => {
+      const scan = subnetScanner.getResults();
+      return scan.stations[s]?.hosts.filter(h => h.alive) ?? [];
+    },
+  );
+  const latestCheckResults = new Map<StationName, TeamCheckResults>();
+  // Snapshot of alive IPs when checks last ran, so we can re-trigger when new devices appear
+  const checksAliveSnapshot = new Map<StationName, Set<string>>();
+  // Guard against concurrent check runs per station
+  const checksInFlight = new Set<StationName>();
+  // Cap automatic re-triggers to avoid infinite retries against unreachable devices
+  const checksRetryCount = new Map<StationName, number>();
+  const MAX_AUTO_RETRIGGERS = 5;
+
+  /** Run team checks for a station, broadcast results, and cache them. */
+  function triggerTeamChecks(station: StationName, team: number) {
+    if (checksInFlight.has(station)) return;
+    checksInFlight.add(station);
+
+    teamChecker.runChecks(station, team).then(results => {
+      latestCheckResults.set(station, results);
+      // Snapshot AFTER checks complete so we compare against what was alive
+      // when results were determined, avoiding unnecessary re-triggers
+      const scan = subnetScanner.getResults();
+      checksAliveSnapshot.set(station, new Set(
+        scan.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? [],
+      ));
+      broadcast(results);
+    }).catch(err => {
+      console.error(`Team checks failed for ${station}:`, err);
+    }).finally(() => {
+      checksInFlight.delete(station);
+    });
+  }
+
+  // Wire up the manual re-run callback
+  onRunTeamChecks = (station: StationName) => {
+    const team = radioManager.getTeamForStation(station);
+    if (team !== null) {
+      checksRetryCount.delete(station);
+      triggerTeamChecks(station, team);
+    }
+  };
+
   wss.on('connection', ws => {
     if (latestSubnetScan) ws.send(JSON.stringify(latestSubnetScan));
+    for (const results of latestCheckResults.values()) {
+      ws.send(JSON.stringify(results));
+    }
   });
 
-  // Push updated match state (team numbers) when station configs change
-  // Also clear subnet scan data for stations that lost their team
+  // Clean up state and broadcast updates when station configs change
   radioManager.addConfigChangeListener(() => {
     broadcast(matchEngine.getState());
     for (const station of StationNameList) {
       if (radioManager.getTeamForStation(station) === null) {
+        latestCheckResults.delete(station);
+        checksAliveSnapshot.delete(station);
+        checksInFlight.delete(station);
+        checksRetryCount.delete(station);
         subnetScanner.clearStation(station);
       }
     }
@@ -286,6 +362,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     runFMS().then(fms => {
       if (!fms) return;
 
+      // Track which stations have already had checks triggered this session,
+      // so we don't re-run on every DS UDP heartbeat.
+      const checksTriggered = new Set<StationName>();
+
+      radioManager.addConfigChangeListener(() => {
+        for (const station of StationNameList) {
+          if (radioManager.getTeamForStation(station) === null) {
+            checksTriggered.delete(station);
+          }
+        }
+      });
+
       fms.on('message', msg => {
         // Route telemetry to stations via WebSocket
         telemetryManager.processFmsEvent(msg);
@@ -305,6 +393,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
               if (station) {
                 matchEngine.setDSAddress(station, address);
                 addDnatRule(station, address);
+                if (!checksTriggered.has(station)) {
+                  checksTriggered.add(station);
+                  checksRetryCount.delete(station);
+                  setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
+                }
               }
             }).catch(err => {
               console.error('DS address discovery failed:', err);
@@ -315,6 +408,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
             if (station) {
               matchEngine.setDSAddress(station, address);
               addDnatRule(station, address);
+              if (!checksTriggered.has(station)) {
+                checksTriggered.add(station);
+                checksRetryCount.delete(station);
+                setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
+              }
             }
           }
         }
