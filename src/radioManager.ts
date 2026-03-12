@@ -290,6 +290,9 @@ class RadioManager {
     if (!this._pendingCommit) return;
     if (this.shouldDefer?.()) return; // Still deferred
     console.log('Defer condition cleared, committing queued radio configuration');
+    // Clear pending flag immediately so subsequent calls don't queue duplicates
+    // while the commit is in progress (radio config takes ~30s).
+    this.setPendingCommit(false);
     this.commitConfiguration();
   }
 
@@ -345,7 +348,6 @@ class RadioManager {
     jobs.push(this.configureRadio(config));
 
     await Promise.all(jobs);
-    this.setPendingCommit(false);
     this.notifyCommitComplete();
   }
 
