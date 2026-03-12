@@ -311,6 +311,15 @@ function handleTeamCheckResults(results: TeamCheckResults) {
 }
 
 function handleServerInfo(info: ServerInfo) {
+  // Auto-refresh if the backend has been updated since this frontend was built.
+  // Both sides use the git short hash; 'unknown' means we can't compare (dev mode, no git).
+  const buildVersion = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'unknown';
+  if (buildVersion !== 'unknown' && info.version !== 'unknown' && info.version !== buildVersion) {
+    console.log(`Version mismatch: frontend=${buildVersion}, server=${info.version} — reloading`);
+    window.location.reload();
+    return;
+  }
+
   currentServerInfo = info;
   events.dispatchEvent(new CustomEvent('serverInfo', { detail: info }));
 }

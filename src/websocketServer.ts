@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
+import { execFileSync } from 'node:child_process';
 import RadioManager from './radioManager.js';
 import {
   isStationUpdate,
@@ -54,6 +55,13 @@ export function setupWebSocket(
   trustedProxyMatcher?: CIDRMatcher,
   onRunTeamChecks?: RunTeamChecksCallback,
 ): WebSocketContext {
+  let serverVersion = 'unknown';
+  try {
+    serverVersion = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf-8' }).trim();
+  } catch {
+    // Not a git repo or git not available — fall back to unknown
+  }
+
   const serverStartTime = Date.now();
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -145,7 +153,7 @@ export function setupWebSocket(
     ws.send(JSON.stringify({ type: 'pendingCommitState', pending: radioManager.pendingCommit } satisfies PendingCommitState));
 
     // Send server info (start time for uptime display)
-    ws.send(JSON.stringify({ type: 'serverInfo', startTime: serverStartTime } satisfies ServerInfo));
+    ws.send(JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo));
 
     ws.on('close', () => {
       wsToIp.delete(ws);

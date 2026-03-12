@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { Plugin } from 'vite';
+import { execFileSync } from 'node:child_process';
 
 function stationRoutes(): Plugin {
   return {
@@ -30,7 +31,18 @@ function stationRoutes(): Plugin {
 }
 
 // https://vite.dev/config/
+function gitVersion(): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf-8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 export default defineConfig({
+  define: {
+    __BUILD_VERSION__: JSON.stringify(gitVersion()),
+  },
   plugins: [react(), stationRoutes()],
   server: {
     proxy: {

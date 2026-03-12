@@ -744,6 +744,7 @@ export function isTeamCheckResults(msg: unknown): msg is TeamCheckResults {
 export interface ServerInfo {
   type: 'serverInfo';
   startTime: number;
+  version: string;
 }
 
 export function isServerInfo(msg: unknown): msg is ServerInfo {
