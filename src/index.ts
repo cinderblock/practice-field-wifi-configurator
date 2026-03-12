@@ -86,23 +86,23 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Initialize radio manager — firmware mode will be set when the radio connects
   const radioManager = new RadioManager(RadioUrl, VlanInterface);
 
-  // Connect to the radio in the background — don't block startup
+  // Connect to the radio in the background — don't block startup.
+  // After a full restart (iptables were flushed), re-apply the restored activeConfig
+  // once firmware mode is known, so configureNetwork knows whether to start dnsmasq.
   (async () => {
     const status = await waitForRadio(RadioUrl);
     if (status) {
       radioManager.setFirmwareMode(detectFirmwareMode(status.version));
     }
+
+    // Re-apply config after full restart to rebuild network rules.
+    // Skip for graceful reload — rules are still in the kernel.
+    if (!KeepNetwork && VlanInterface && Object.keys(radioManager.getTeamMappings()).length > 0) {
+      await radioManager.commitConfiguration();
+    }
   })().catch(err => {
     console.error('Background radio connection failed:', err);
   });
-
-  // After a full restart (iptables were flushed), re-apply the restored activeConfig
-  // to rebuild network rules. Skip for graceful reload — rules are still in the kernel.
-  if (!KeepNetwork && VlanInterface && Object.keys(radioManager.getTeamMappings()).length > 0) {
-    radioManager.commitConfiguration().catch(err => {
-      console.error('Failed to re-apply station config after restart:', err);
-    });
-  }
 
   // Initialize match engine (for admin page match simulation & e-stop)
   const matchEngine = new MatchEngine(s => radioManager.getTeamForStation(s));
