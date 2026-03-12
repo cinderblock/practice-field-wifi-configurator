@@ -24,6 +24,10 @@ import { MdnsReflector } from './mdnsReflector.js';
 import { TeamChecker } from './teamChecker.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFile = promisify(execFileCb);
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -61,7 +65,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
-    await checkRequiredTools(['iptables', 'arping', 'fping', 'dnsmasq']);
+    await checkRequiredTools(['iptables', 'arping', 'fping', 'dnsmasq', 'conntrack']);
     net = process.env.DRY_RUN ? createDryRunBackend() : createBackend();
     // pFMS serves multiple roles on this interface:
     const expectedIps = [
@@ -325,6 +329,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       });
       activeDnatRules.set(station, { dsIp, gatewayIp, vlanInterface });
       console.log(`DNAT rule added: ${station} UDP → ${gatewayIp} rewritten to ${dsIp}`);
+      // Flush any stale conntrack entries for UDP traffic to the gateway IP.
+      // Without this, packets that arrived before the DNAT rule was inserted get
+      // cached as local-delivery flows, and subsequent packets bypass the nat table entirely.
+      try {
+        const { stdout } = await execFile('conntrack', ['-D', '-p', 'udp', '-d', gatewayIp]);
+        console.log(`conntrack flush: ${stdout.trim()}`);
+      } catch (err: unknown) {
+        const { code } = err as { code?: number | string };
+        if (code === 1) {
+          // No entries matched — the race didn't happen this time. Nothing to flush.
+        } else if (code === 'ENOENT') {
+          console.error('conntrack binary not found — install with: sudo apt install conntrack');
+        } else {
+          console.error(`conntrack flush failed (code ${code}):`, (err as Error).message);
+        }
+      }
     }
 
     async function removeDnatRule(station: StationName) {
