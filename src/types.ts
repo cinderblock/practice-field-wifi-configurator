@@ -739,6 +739,18 @@ export function isTeamCheckResults(msg: unknown): msg is TeamCheckResults {
   return (msg as TeamCheckResults).type === 'teamCheckResults';
 }
 
+// ── Server Info ─────────────────────────────────────────────────────
+
+export interface ServerInfo {
+  type: 'serverInfo';
+  startTime: number;
+}
+
+export function isServerInfo(msg: unknown): msg is ServerInfo {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ServerInfo).type === 'serverInfo';
+}
+
 export type RunTeamChecks = { type: 'runTeamChecks'; station: StationName };
 
 export function isRunTeamChecks(msg: unknown): msg is RunTeamChecks {

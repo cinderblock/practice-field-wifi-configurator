@@ -18,8 +18,10 @@ import {
   isTelemetryUpdate,
   isRoutePreferenceState,
   isPendingCommitState,
+  isServerInfo,
   RoutePreferenceState,
   PendingCommitState,
+  ServerInfo,
   RoutePreferenceMsg,
   RunTeamChecks,
   StationName,
@@ -203,6 +205,7 @@ let currentSubnetScan: SubnetScanResults | null = null;
 let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
+let currentServerInfo: ServerInfo | null = null;
 const currentTeamCheckResults = new Map<StationName, TeamCheckResults>();
 
 type Message =
@@ -215,6 +218,7 @@ type Message =
   | TelemetryUpdate
   | SubnetScanResults
   | TeamCheckResults
+  | ServerInfo
   | RoutePreferenceState
   | PendingCommitState;
 type ErrorMessage = { error: string; details: string };
@@ -306,7 +310,17 @@ function handleTeamCheckResults(results: TeamCheckResults) {
   events.dispatchEvent(new CustomEvent('teamCheckResults', { detail: results }));
 }
 
+function handleServerInfo(info: ServerInfo) {
+  currentServerInfo = info;
+  events.dispatchEvent(new CustomEvent('serverInfo', { detail: info }));
+}
+
 function receiveMessage(detail: Message) {
+  if (isServerInfo(detail)) {
+    handleServerInfo(detail);
+    return;
+  }
+
   if (isPendingCommitState(detail)) {
     handlePendingCommitState(detail);
     return;
@@ -609,4 +623,21 @@ export function useTeamCheckResults(station: StationName): TeamCheckResults | nu
 
 export function sendRunTeamChecks(station: StationName) {
   ws?.send(JSON.stringify({ type: 'runTeamChecks', station } satisfies RunTeamChecks));
+}
+
+// ── Server Info ─────────────────────────────────────────────────────
+
+export function useServerStartTime(): number | null {
+  const [startTime, setStartTime] = useState<number | null>(currentServerInfo?.startTime ?? null);
+
+  useEffect(() => {
+    setStartTime(currentServerInfo?.startTime ?? null);
+    const handler = (e: Event) => {
+      setStartTime((e as CustomEvent<ServerInfo>).detail.startTime);
+    };
+    events.addEventListener('serverInfo', handler);
+    return () => events.removeEventListener('serverInfo', handler);
+  }, []);
+
+  return startTime;
 }
