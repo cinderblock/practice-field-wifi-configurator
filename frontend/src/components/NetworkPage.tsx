@@ -22,10 +22,10 @@ import {
   StationNetworkStats,
   StationSubnetScan,
 } from '../../../src/types';
-import { allianceColor, describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
+import { allianceColor, describeIp, formatAge, formatBytes, formatDuration, prettyStationName } from '../../../src/utils';
 import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
-const DS_PULSE_STYLES = {
+const PULSE_STYLES = {
   '@keyframes ds-pulse': {
     '0%': { transform: 'scale(1.8)', opacity: 1 },
     '100%': { transform: 'scale(1)', opacity: 0.4 },
@@ -139,7 +139,7 @@ function StationNetworkCard({
                   <TableCell>IP</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Description</TableCell>
-                  <TableCell>Last Seen</TableCell>
+                  <TableCell>Activity</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -155,7 +155,25 @@ function StationNetworkCard({
                       />
                     </TableCell>
                     <TableCell sx={{ py: 0.5 }}>{describeIp(host) ?? ''}</TableCell>
-                    <TableCell sx={{ py: 0.5 }}>{formatAge(host.lastSeen)}</TableCell>
+                    <TableCell sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
+                      {host.alive ? (
+                        <Box key={host.lastSeen} component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                          <Box
+                            component="span"
+                            sx={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: '50%',
+                              backgroundColor: 'success.main',
+                              animation: 'ds-pulse 8s ease-out forwards',
+                            }}
+                          />
+                          {formatDuration(host.onlineSince)}
+                        </Box>
+                      ) : (
+                        formatAge(host.lastSeen)
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -225,7 +243,7 @@ export function NetworkPage() {
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
-      <GlobalStyles styles={DS_PULSE_STYLES} />
+      <GlobalStyles styles={PULSE_STYLES} />
       <Typography variant="h3" gutterBottom>
         Network Status
       </Typography>

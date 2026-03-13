@@ -11,6 +11,8 @@ interface HostState {
   firstSeen: number;
   lastSeen: number;
   alive: boolean;
+  /** Start of the current consecutive-alive streak (reset when host goes down) */
+  onlineSince: number;
 }
 
 export class SubnetScanner {
@@ -68,6 +70,7 @@ export class SubnetScanner {
           alive: state.alive,
           firstSeen: state.firstSeen,
           lastSeen: state.lastSeen,
+          onlineSince: state.onlineSince,
         });
       }
 
@@ -138,10 +141,12 @@ export class SubnetScanner {
     for (const ip of aliveIps) {
       const existing = hostMap.get(ip);
       if (existing) {
+        // Reset onlineSince when transitioning from down → up
+        if (!existing.alive) existing.onlineSince = now;
         existing.alive = true;
         existing.lastSeen = now;
       } else {
-        hostMap.set(ip, { firstSeen: now, lastSeen: now, alive: true });
+        hostMap.set(ip, { firstSeen: now, lastSeen: now, alive: true, onlineSince: now });
       }
     }
 

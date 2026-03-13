@@ -15,6 +15,13 @@ export function formatAge(ts: number): string {
   return `${Math.round(seconds / 3600)}h ago`;
 }
 
+export function formatDuration(since: number): string {
+  const seconds = Math.round((Date.now() - since) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
+}
+
 export function describeIp(host: DiscoveredHost): string | null {
   const lastOctet = parseInt(host.ip.split('.')[3]);
   if (lastOctet === 1) return 'Radio';

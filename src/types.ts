@@ -579,6 +579,8 @@ export interface DiscoveredHost {
   alive: boolean;
   firstSeen: number;
   lastSeen: number;
+  /** Start of the current consecutive-alive streak (reset when host goes down) */
+  onlineSince: number;
 }
 
 export interface StationSubnetScan {
