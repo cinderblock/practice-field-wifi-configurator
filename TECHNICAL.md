@@ -4,7 +4,7 @@
 
 1. **Check system tools** — if `VLAN_INTERFACE` is set, verifies `iptables`, `arping`, `fping`, and `dnsmasq` are available. `arping` and `dnsmasq` checks are skipped in PRACTICE firmware mode.
 2. **Check interface IPs** — if `VLAN_INTERFACE` is set, verify the physical interface has the expected IPs (`10.0.100.5` for FMS and syslog). Log OK or MISSING for each.
-3. **Flush or preserve network rules** — on a fresh start, flush stale iptables rules from a previous run. On a graceful reload (`KeepNetwork`), skip the flush to preserve existing rules (see _Graceful Reload_ below).
+3. **Flush or preserve network rules** — on a fresh start, flush stale iptables rules and per-station route tables from a previous run. On a graceful reload (`KeepNetwork`), skip the flush to preserve existing rules (see _Graceful Reload_ below).
 4. **Enable IP forwarding** — `sysctl -w net.ipv4.ip_forward=1` so the kernel routes packets between interfaces (required for inter-VLAN routing).
 5. **Connect to radio (background)** — fetch `GET /status` from the radio at `10.0.100.2`, retrying every 10s. Runs in the background — does **not** block startup. When the radio responds, firmware mode is detected and set on the RadioManager.
 6. **Start RadioManager** — begins polling `GET /status` every 100ms to track radio state and station connections.
@@ -13,7 +13,7 @@
 9. **Start WebSocket server** — listens on `WEBSOCKET_PORT` (default 3000), broadcasts radio status to connected frontend clients.
 10. **Start subnet scanner** — periodically runs `fping` on each configured team's subnet (`.1–.253`) every 10 seconds to discover devices. Results are broadcast via WebSocket and displayed on the Network page.
 11. **Start optional services** — syslog server, FMS server, scheduled configuration clearing (cron).
-12. **Restore routing preferences** — on graceful reload, reads existing `ip rule` entries from the kernel and rebuilds the in-memory route preference map.
+12. **Restore in-memory state** — on graceful reload, restores DNAT rules from kernel iptables, previous station config from the radio manager, and route preferences from kernel `ip rule` entries.
 
 ## When a Team is Configured
 
@@ -116,13 +116,16 @@ When duplicate teams are configured, laptops need a way to choose which robot th
 `systemctl reload` preserves network state across restarts:
 
 1. **ExecReload** writes `/run/pfms-keep-network` then sends `SIGHUP`
-2. **SIGHUP handler** stops DHCP servers but exits **without** flushing iptables or ip rules
+2. **SIGHUP handler** stops DHCP servers but exits **without** flushing iptables, route tables, or ip rules
 3. **Systemd restarts** the process (Restart=always)
-4. **Startup detects** the flag file, skips the iptables flush, and restores route preferences from the kernel
+4. **Startup detects** the flag file, skips the iptables/route flush, and restores in-memory state from the kernel:
+   - **DNAT rules** — parsed from `iptables -t nat -S PREROUTING` so stale rules are cleaned up if a DS reconnects with a different IP
+   - **Previous station config** — initialized from the radio manager so future team changes properly tear down old routes/rules
+   - **Route preferences** — rebuilt from `ip rule list` so laptop routing choices persist
 
 This means robots stay connected and laptops keep their routing preferences during service updates.
 
-Hard shutdown (`SIGTERM`/`SIGINT`) performs full cleanup: stops DHCP, flushes all iptables rules and route preferences.
+Hard shutdown (`SIGTERM`/`SIGINT`) performs full cleanup: stops DHCP, flushes all iptables rules, per-station route tables, and ip rule preferences.
 
 ## Clearing All Configurations
 

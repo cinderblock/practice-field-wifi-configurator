@@ -176,7 +176,7 @@ This catches all UDP packets from the robot destined for the gateway IP on the s
 - **Persistent** across DS TCP reconnects (the DS flaps every ~6s when no match is running)
 - **Removed** when the station's team assignment is cleared or changed
 - **Cleaned up** on hard restart via the `pfms-` comment prefix (same as all other rules)
-- **Preserved** across graceful restarts (SIGHUP / `systemctl reload`); re-added idempotently when the DS reconnects
+- **Preserved** across graceful restarts (SIGHUP / `systemctl reload`); restored from kernel iptables on startup so stale rules are properly cleaned up if a DS reconnects with a different IP
 
 ### Device Discovery
 
@@ -238,7 +238,7 @@ WantedBy=multi-user.target
 
 Environment variables are stored in `/etc/pfms/environment` (one `KEY=value` per line). Changes take effect on service restart without requiring `systemctl daemon-reload`.
 
-`systemctl reload` preserves iptables rules and route preferences across restarts — robots stay connected and laptops keep their routing preferences. `systemctl restart` performs a full cleanup.
+`systemctl reload` preserves iptables rules, route tables, and route preferences across restarts — robots stay connected and laptops keep their routing preferences. In-memory state (DNAT rules, previous station config, routing preferences) is restored from the kernel on startup. `systemctl restart` performs a full cleanup (flushes iptables rules, per-station route tables, and ip rule preferences).
 
 ### Caddy Example Config
 

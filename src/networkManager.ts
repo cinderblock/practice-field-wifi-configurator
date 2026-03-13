@@ -146,6 +146,17 @@ export const vlanMap: Record<StationName, number> = {
 /** Track what's currently configured per station to avoid unnecessary teardown */
 let previousStations: Stations = {} as Stations;
 
+/**
+ * After a graceful restart, tell networkManager which teams are already configured
+ * in the kernel so that future config changes properly tear down old routes/rules.
+ */
+export function restorePreviousStations(getTeamForStation: (s: StationName) => number | null): void {
+  for (const station of StationNameList) {
+    const team = getTeamForStation(station);
+    previousStations[station] = team ?? undefined;
+  }
+}
+
 async function updateNetworkConfig(stations: Stations, physical_interface: string, practiceMode: boolean) {
   for (const station of StationNameList) {
     const team = stations[station];

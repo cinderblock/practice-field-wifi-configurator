@@ -9,7 +9,7 @@ import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
-import { stopAllDHCP, resolveStationByNeighbor } from './networkManager.js';
+import { stopAllDHCP, resolveStationByNeighbor, vlanMap, restorePreviousStations } from './networkManager.js';
 import {
   onConfigChange as onRouteConfigChange,
   cleanupAllPreferences,
@@ -82,6 +82,15 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     } else {
       // Clean up stale iptables rules from a previous run (e.g., after a crash)
       await net.flushRulesByComment(IPTABLES_COMMENT_PREFIX);
+      // Also flush per-station route tables — these aren't comment-tagged so
+      // flushRulesByComment doesn't catch them.
+      for (const vlanId of Object.values(vlanMap)) {
+        try {
+          await execFile('ip', ['route', 'flush', 'table', String(vlanId)]);
+        } catch {
+          // Table may not exist yet on first run — that's fine.
+        }
+      }
     }
 
     // Enable IP forwarding once at startup (required for inter-VLAN routing)
@@ -290,6 +299,32 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // Map: station → { dsIp, gatewayIp, vlanInterface }
     const activeDnatRules = new Map<StationName, { dsIp: string; gatewayIp: string; vlanInterface: string }>();
 
+    // After a graceful restart, restore DNAT rules from the kernel so we can
+    // properly clean them up if a DS reconnects with a different IP.
+    if (KeepNetwork) {
+      try {
+        const { stdout } = await execFile('iptables', ['-t', 'nat', '-S', 'PREROUTING']);
+        for (const line of stdout.split('\n')) {
+          if (!line.includes(`${IPTABLES_COMMENT_PREFIX}dnat-`)) continue;
+          const iMatch = line.match(/-i\s+(\S+)/);
+          const dMatch = line.match(/-d\s+(\S+)/);
+          const commentMatch = line.match(/--comment\s+(\S+)/);
+          const toMatch = line.match(/--to-destination\s+(\S+)/);
+          if (!iMatch || !dMatch || !commentMatch || !toMatch) {
+            console.warn(`Failed to parse DNAT rule for restoration: ${line.trim()}`);
+            continue;
+          }
+          const station = commentMatch[1].replace(`${IPTABLES_COMMENT_PREFIX}dnat-`, '') as StationName;
+          if (!StationNameList.includes(station)) continue;
+          const gatewayIp = dMatch[1].replace(/\/\d+$/, '');
+          activeDnatRules.set(station, { dsIp: toMatch[1], gatewayIp, vlanInterface: iMatch[1] });
+          console.log(`Restored DNAT rule: ${station} UDP → ${gatewayIp} rewritten to ${toMatch[1]}`);
+        }
+      } catch (err) {
+        console.warn('Failed to restore DNAT rules from kernel:', (err as Error).message);
+      }
+    }
+
     /**
      * Compute the gateway (MASQUERADE source) IP on a team's VLAN.
      * Robot sees this as the source of forwarded DS packets, and sends
@@ -478,7 +513,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     const fullCleanup = () => {
       stopAllDHCP();
       console.log('Cleaning up network rules...');
-      Promise.all([net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX), cleanupAllPreferences()]).then(
+      const flushRouteTables = Promise.all(
+        Object.values(vlanMap).map(id =>
+          execFile('ip', ['route', 'flush', 'table', String(id)]).catch(() => {}),
+        ),
+      );
+      Promise.all([net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX), cleanupAllPreferences(), flushRouteTables]).then(
         () => process.exit(0),
         err => {
           console.error('Error during cleanup:', err);
@@ -501,9 +541,13 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     process.on('SIGHUP', gracefulExit);
   }
 
-  // After a graceful restart, restore routing preferences from the kernel so the
-  // in-memory map stays in sync with existing ip rules.
+  // After a graceful restart, restore in-memory state from the kernel so it
+  // stays in sync with rules that were left in place.
   if (net && KeepNetwork) {
+    // Tell networkManager which teams are already configured so future config
+    // changes properly tear down old routes and iptables rules.
+    restorePreviousStations(s => radioManager.getTeamForStation(s));
+
     const restored = await restorePreferencesFromKernel();
     if (restored > 0) {
       console.log(`Restored ${restored} route preference(s) from kernel`);
