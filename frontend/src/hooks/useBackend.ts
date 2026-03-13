@@ -613,9 +613,7 @@ export function sendApplyConfig() {
 // ── Team Checks ─────────────────────────────────────────────────────
 
 export function useTeamCheckResults(station: StationName): TeamCheckResults | null {
-  const [results, setResults] = useState<TeamCheckResults | null>(
-    currentTeamCheckResults.get(station) ?? null,
-  );
+  const [results, setResults] = useState<TeamCheckResults | null>(currentTeamCheckResults.get(station) ?? null);
 
   useEffect(() => {
     setResults(currentTeamCheckResults.get(station) ?? null);

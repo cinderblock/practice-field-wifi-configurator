@@ -116,9 +116,7 @@ function parseAnswerRecords(buf: Buffer): { name: string; resolvedIp?: string }[
  *   roboRIO-TEAM-FRC         — standard roboRIO
  *   roboRIO-TEAM-FRC-2       — secondary roboRIO
  */
-const FRC_PATTERNS: RegExp[] = [
-  /^roboRIO-(\d{1,5})-FRC\b/i,
-];
+const FRC_PATTERNS: RegExp[] = [/^roboRIO-(\d{1,5})-FRC\b/i];
 
 function extractTeamFromName(dnsName: string): number | null {
   // mDNS names end with .local (sometimes with trailing dot) — strip for matching
@@ -183,7 +181,7 @@ function parseExcludeList(raw: string): IpMatcher[] {
       }
       const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
       const network = (ipToNumber(cidrMatch[1]) & mask) >>> 0;
-      matchers.push((ip: number) => ((ip & mask) >>> 0) === network);
+      matchers.push((ip: number) => (ip & mask) >>> 0 === network);
       continue;
     }
 
@@ -216,7 +214,9 @@ function parseExcludeList(raw: string): IpMatcher[] {
 
 function ipToNumber(ip: string): number {
   const parts = ip.split('.');
-  return ((parseInt(parts[0]) << 24) | (parseInt(parts[1]) << 16) | (parseInt(parts[2]) << 8) | parseInt(parts[3])) >>> 0;
+  return (
+    ((parseInt(parts[0]) << 24) | (parseInt(parts[1]) << 16) | (parseInt(parts[2]) << 8) | parseInt(parts[3])) >>> 0
+  );
 }
 
 function isExcluded(ip: string, matchers: IpMatcher[]): boolean {
@@ -433,7 +433,12 @@ export class MdnsReflector {
 
   private static readonly MAX_RECENT_NAMES = 10;
 
-  private incrementCounter(station: StationName, team: number, field: 'queriesForwarded' | 'responsesForwarded', names: MdnsResolvedName[]) {
+  private incrementCounter(
+    station: StationName,
+    team: number,
+    field: 'queriesForwarded' | 'responsesForwarded',
+    names: MdnsResolvedName[],
+  ) {
     let entry = this.counters.get(station);
     if (!entry) {
       entry = { team, queriesForwarded: 0, responsesForwarded: 0, recentNames: [] };

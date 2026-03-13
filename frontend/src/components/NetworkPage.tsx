@@ -15,7 +15,13 @@ import Typography from '@mui/material/Typography';
 
 import GlobalStyles from '@mui/material/GlobalStyles';
 
-import { DSConnectionInfo, StationMdnsActivity, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
+import {
+  DSConnectionInfo,
+  StationMdnsActivity,
+  StationName,
+  StationNetworkStats,
+  StationSubnetScan,
+} from '../../../src/types';
 import { allianceColor, describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
 import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
@@ -183,14 +189,8 @@ function StationNetworkCard({
                     <TableRow key={entry.name}>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem', py: 0.5 }}>
                         {entry.services && entry.services.length > 0 ? (
-                          <Tooltip
-                            title={entry.services.join(', ')}
-                            arrow
-                            placement="right"
-                          >
-                            <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                              {entry.name}
-                            </span>
+                          <Tooltip title={entry.services.join(', ')} arrow placement="right">
+                            <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>{entry.name}</span>
                           </Tooltip>
                         ) : (
                           entry.name

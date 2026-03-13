@@ -101,7 +101,10 @@ export function StatusBar() {
       <StatusDot color={pfms.color} label="PFMS" tooltip={pfms.tooltip} />
       {serverStartTime != null && <UptimeDisplay serverStartTime={serverStartTime} />}
       {pendingCommit && (
-        <Tooltip title="Configuration changes are saved but not yet applied to the radio. Click to apply now, or they will be applied with the next Save." arrow>
+        <Tooltip
+          title="Configuration changes are saved but not yet applied to the radio. Click to apply now, or they will be applied with the next Save."
+          arrow
+        >
           <Button
             size="small"
             variant="contained"

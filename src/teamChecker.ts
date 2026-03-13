@@ -5,16 +5,11 @@ const FETCH_TIMEOUT = 3000;
 // ── Help URLs ───────────────────────────────────────────────────────
 
 const HELP_URLS = {
-  radioSystemCore:
-    'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/radio-programming.html',
-  radioFirmware:
-    'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/radio-programming.html',
-  roboRIOHostname:
-    'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/roborio2-setup.html',
-  roboRIOIP:
-    'https://docs.wpilib.org/en/stable/docs/networking/networking-introduction/ip-configurations.html',
-  roboRIOImage:
-    'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/imaging-your-roborio.html',
+  radioSystemCore: 'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/radio-programming.html',
+  radioFirmware: 'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/radio-programming.html',
+  roboRIOHostname: 'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/roborio2-setup.html',
+  roboRIOIP: 'https://docs.wpilib.org/en/stable/docs/networking/networking-introduction/ip-configurations.html',
+  roboRIOImage: 'https://docs.wpilib.org/en/stable/docs/zero-to-robot/step-3/imaging-your-roborio.html',
 } as const;
 
 // ── NI SysAPI property tags ─────────────────────────────────────────
@@ -93,16 +88,11 @@ function parseNISysAPIResponse(xml: string): NISysAPIBag[] {
 type HostLookup = (station: StationName) => DiscoveredHost[];
 
 export class TeamChecker {
-  constructor(
-    private readonly getAliveHosts: HostLookup,
-  ) {}
+  constructor(private readonly getAliveHosts: HostLookup) {}
 
   async runChecks(station: StationName, team: number): Promise<TeamCheckResults> {
     const hosts = this.getAliveHosts(station);
-    const [radioChecks, rioChecks] = await Promise.all([
-      this.checkRadio(team),
-      this.checkRoboRIO(team, hosts),
-    ]);
+    const [radioChecks, rioChecks] = await Promise.all([this.checkRadio(team), this.checkRoboRIO(team, hosts)]);
     return {
       type: 'teamCheckResults',
       station,
@@ -126,11 +116,8 @@ export class TeamChecker {
           { name: 'Radio Firmware', status: 'error', message: msg, helpUrl: HELP_URLS.radioFirmware },
         ];
       }
-      const data = await res.json() as { systemcoreEnabled?: boolean; version?: string };
-      return [
-        this.evaluateSystemCore(data),
-        this.evaluateRadioFirmware(data),
-      ];
+      const data = (await res.json()) as { systemcoreEnabled?: boolean; version?: string };
+      return [this.evaluateSystemCore(data), this.evaluateRadioFirmware(data)];
     } catch (err) {
       const msg = err instanceof Error && err.name === 'AbortError' ? 'Radio unreachable (timeout)' : String(err);
       return [
@@ -185,7 +172,10 @@ export class TeamChecker {
    * Find the roboRIO on the team's subnet by probing the NI SysAPI endpoint.
    * Try the standard .2 address first, then any other alive hosts.
    */
-  private async findRoboRIO(team: number, hosts: DiscoveredHost[]): Promise<{ ip: string; bags: NISysAPIBag[] } | null> {
+  private async findRoboRIO(
+    team: number,
+    hosts: DiscoveredHost[],
+  ): Promise<{ ip: string; bags: NISysAPIBag[] } | null> {
     const standardIp = expectedIP(team);
     const ipsToTry = [standardIp];
     // Add other alive hosts, skipping .1 (radio) and .254 (gateway) and the standard IP

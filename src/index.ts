@@ -154,9 +154,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         if (!lastResults) continue;
         if (!lastResults.checks.some(c => c.status === 'error')) continue;
 
-        const currentAlive = new Set(
-          results.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? [],
-        );
+        const currentAlive = new Set(results.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? []);
         const previousAlive = checksAliveSnapshot.get(station);
         const retries = checksRetryCount.get(station) ?? 0;
         if (previousAlive && retries < MAX_AUTO_RETRIGGERS && [...currentAlive].some(ip => !previousAlive.has(ip))) {
@@ -170,12 +168,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   subnetScanner.start(10_000);
 
   // Team checker — runs automated checks when a DS connects
-  const teamChecker = new TeamChecker(
-    s => {
-      const scan = subnetScanner.getResults();
-      return scan.stations[s]?.hosts.filter(h => h.alive) ?? [];
-    },
-  );
+  const teamChecker = new TeamChecker(s => {
+    const scan = subnetScanner.getResults();
+    return scan.stations[s]?.hosts.filter(h => h.alive) ?? [];
+  });
   const latestCheckResults = new Map<StationName, TeamCheckResults>();
   // Snapshot of alive IPs when checks last ran, so we can re-trigger when new devices appear
   const checksAliveSnapshot = new Map<StationName, Set<string>>();
@@ -190,20 +186,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     if (checksInFlight.has(station)) return;
     checksInFlight.add(station);
 
-    teamChecker.runChecks(station, team).then(results => {
-      latestCheckResults.set(station, results);
-      // Snapshot AFTER checks complete so we compare against what was alive
-      // when results were determined, avoiding unnecessary re-triggers
-      const scan = subnetScanner.getResults();
-      checksAliveSnapshot.set(station, new Set(
-        scan.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? [],
-      ));
-      broadcast(results);
-    }).catch(err => {
-      console.error(`Team checks failed for ${station}:`, err);
-    }).finally(() => {
-      checksInFlight.delete(station);
-    });
+    teamChecker
+      .runChecks(station, team)
+      .then(results => {
+        latestCheckResults.set(station, results);
+        // Snapshot AFTER checks complete so we compare against what was alive
+        // when results were determined, avoiding unnecessary re-triggers
+        const scan = subnetScanner.getResults();
+        checksAliveSnapshot.set(
+          station,
+          new Set(scan.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? []),
+        );
+        broadcast(results);
+      })
+      .catch(err => {
+        console.error(`Team checks failed for ${station}:`, err);
+      })
+      .finally(() => {
+        checksInFlight.delete(station);
+      });
   }
 
   // Wire up the manual re-run callback
@@ -444,20 +445,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
             // Same team on multiple stations — use the kernel neighbor (ARP) table
             // to determine which VLAN interface (and thus station) the packet came from.
-            resolveStationByNeighbor(address, VlanInterface).then(station => {
-              station ??= radioManager.getStationForTeam(teamNumber);
-              if (station) {
-                matchEngine.setDSAddress(station, address);
-                addDnatRule(station, address);
-                if (!checksTriggered.has(station)) {
-                  checksTriggered.add(station);
-                  checksRetryCount.delete(station);
-                  setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
+            resolveStationByNeighbor(address, VlanInterface)
+              .then(station => {
+                station ??= radioManager.getStationForTeam(teamNumber);
+                if (station) {
+                  matchEngine.setDSAddress(station, address);
+                  addDnatRule(station, address);
+                  if (!checksTriggered.has(station)) {
+                    checksTriggered.add(station);
+                    checksRetryCount.delete(station);
+                    setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
+                  }
                 }
-              }
-            }).catch(err => {
-              console.error('DS address discovery failed:', err);
-            });
+              })
+              .catch(err => {
+                console.error('DS address discovery failed:', err);
+              });
           } else {
             // Common case: unique team numbers — direct lookup, no subprocess needed
             const station = radioManager.getStationForTeam(teamNumber);
@@ -515,9 +518,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       stopAllDHCP();
       console.log('Cleaning up network rules...');
       const flushRouteTables = Promise.all(
-        Object.values(vlanMap).map(id =>
-          execFile('ip', ['route', 'flush', 'table', String(id)]).catch(() => {}),
-        ),
+        Object.values(vlanMap).map(id => execFile('ip', ['route', 'flush', 'table', String(id)]).catch(() => {})),
       );
       Promise.all([net!.flushRulesByComment(IPTABLES_COMMENT_PREFIX), cleanupAllPreferences(), flushRouteTables]).then(
         () => process.exit(0),

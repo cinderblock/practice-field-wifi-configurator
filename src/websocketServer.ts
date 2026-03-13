@@ -150,10 +150,14 @@ export function setupWebSocket(
     sendRouteState(ws, clientIp);
 
     // Send initial pending commit state
-    ws.send(JSON.stringify({ type: 'pendingCommitState', pending: radioManager.pendingCommit } satisfies PendingCommitState));
+    ws.send(
+      JSON.stringify({ type: 'pendingCommitState', pending: radioManager.pendingCommit } satisfies PendingCommitState),
+    );
 
     // Send server info (start time for uptime display)
-    ws.send(JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo));
+    ws.send(
+      JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo),
+    );
 
     ws.on('close', () => {
       wsToIp.delete(ws);

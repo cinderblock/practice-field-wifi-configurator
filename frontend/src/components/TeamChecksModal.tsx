@@ -19,7 +19,17 @@ import { StatusIcon } from './TeamChecksPanel';
 function CheckRow({ check }: { check: CheckResult }) {
   const failed = check.status === 'fail' || check.status === 'error' || check.status === 'warn';
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, py: 1, px: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 1.5,
+        py: 1,
+        px: 1,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
       <StatusIcon status={check.status} size={24} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
@@ -34,10 +44,18 @@ function CheckRow({ check }: { check: CheckResult }) {
           <Box>
             {check.expected && check.actual && (
               <Typography variant="body2" sx={{ display: 'block' }}>
-                <Box component="span" sx={{ color: 'text.secondary' }}>expected </Box>
-                <Box component="span" sx={{ fontFamily: 'monospace' }}>{check.expected}</Box>
-                <Box component="span" sx={{ color: 'text.secondary' }}>, got </Box>
-                <Box component="span" sx={{ fontFamily: 'monospace', color: 'error.main' }}>{check.actual}</Box>
+                <Box component="span" sx={{ color: 'text.secondary' }}>
+                  expected{' '}
+                </Box>
+                <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                  {check.expected}
+                </Box>
+                <Box component="span" sx={{ color: 'text.secondary' }}>
+                  , got{' '}
+                </Box>
+                <Box component="span" sx={{ fontFamily: 'monospace', color: 'error.main' }}>
+                  {check.actual}
+                </Box>
               </Typography>
             )}
             {check.message && !check.expected && (
@@ -68,9 +86,8 @@ export function TeamChecksModal({ station }: { station: StationName }) {
   // Track which result set was dismissed so new results re-open the modal
   const [dismissedTimestamp, setDismissedTimestamp] = useState<number | null>(null);
 
-  const hasIssues = results != null && results.checks.some(
-    c => c.status === 'fail' || c.status === 'warn' || c.status === 'error',
-  );
+  const hasIssues =
+    results != null && results.checks.some(c => c.status === 'fail' || c.status === 'warn' || c.status === 'error');
   const allPassed = results != null && results.checks.every(c => c.status === 'pass');
 
   // Re-open when new results arrive (different timestamp)
@@ -128,12 +145,7 @@ export function TeamChecksModal({ station }: { station: StationName }) {
         </Box>
       )}
 
-      <Dialog
-        open={open}
-        onClose={handleDismiss}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={open} onClose={handleDismiss} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <WarningIcon sx={{ color: 'warning.main' }} />
@@ -147,8 +159,8 @@ export function TeamChecksModal({ station }: { station: StationName }) {
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-            Some of your equipment may not be configured correctly for competition use.
-            Please review the issues below. You can dismiss this and practice anyway.
+            Some of your equipment may not be configured correctly for competition use. Please review the issues below.
+            You can dismiss this and practice anyway.
           </Typography>
           {results.checks.map((check, i) => (
             <CheckRow key={i} check={check} />

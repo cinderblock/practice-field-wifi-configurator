@@ -56,16 +56,16 @@ The match system is self-service: stations join/leave/ready themselves, and the 
 
 ### Match Phases
 
-| Phase | Duration | Description |
-|---|---|---|
-| `idle` | — | No match. Stations can join/leave/ready. Joined stations receive a 200ms heartbeat (disabled). |
-| `countdown` | 3s fixed | Pre-match countdown. All joined stations disabled. |
-| `auto` | configurable (default 15s) | Autonomous period. Joined stations enabled in auto mode. |
-| `autoPause` | configurable (default 3s) | Pause between auto and teleop. Robots disabled. |
-| `teleop` | configurable (default 135s) | Teleoperated period. Transitions to `endgame` when remaining time ≤ endgame duration. |
-| `endgame` | configurable (default 30s) | Final portion of teleop. Triggers warning sound. |
-| `postMatch` | 3s fixed | Display delay after match ends. Auto-resets to `idle`. |
-| `paused` | — | Clock frozen, robots disabled. Can resume or abandon. |
+| Phase       | Duration                    | Description                                                                                    |
+| ----------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `idle`      | —                           | No match. Stations can join/leave/ready. Joined stations receive a 200ms heartbeat (disabled). |
+| `countdown` | 3s fixed                    | Pre-match countdown. All joined stations disabled.                                             |
+| `auto`      | configurable (default 15s)  | Autonomous period. Joined stations enabled in auto mode.                                       |
+| `autoPause` | configurable (default 3s)   | Pause between auto and teleop. Robots disabled.                                                |
+| `teleop`    | configurable (default 135s) | Teleoperated period. Transitions to `endgame` when remaining time ≤ endgame duration.          |
+| `endgame`   | configurable (default 30s)  | Final portion of teleop. Triggers warning sound.                                               |
+| `postMatch` | 3s fixed                    | Display delay after match ends. Auto-resets to `idle`.                                         |
+| `paused`    | —                           | Clock frozen, robots disabled. Can resume or abandon.                                          |
 
 ### Station Flow
 
@@ -78,6 +78,7 @@ The match system is self-service: stations join/leave/ready themselves, and the 
 ### Match Audio
 
 Sound effects play on phase transitions via a system audio player:
+
 - **Charge horn** — countdown → auto
 - **End buzzer** — auto → autoPause, and normal match end
 - **Resume tone** — paused → resumed, autoPause → teleop
@@ -88,6 +89,7 @@ Sound effects play on phase transitions via a system audio player:
 ### Admin Controls
 
 The admin page provides safety overrides independent of the self-service system:
+
 - **Global E-Stop** — immediately e-stops all stations and ends the match
 - **Per-station E-Stop / Disable / Clear** — individual station control
 - **Force Stop Match** — ends any active match

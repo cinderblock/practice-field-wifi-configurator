@@ -91,10 +91,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
 
               {reconfigStart && (
                 <>
-                  <Typography
-                    variant="h1"
-                    sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
-                  >
+                  <Typography variant="h1" sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                     {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
                   </Typography>
                   <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>

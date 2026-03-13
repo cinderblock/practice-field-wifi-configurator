@@ -309,7 +309,10 @@ export async function configureNetwork(stations: Stations, interfaceName: string
  * Returns the station name if the IP is reachable via a known VLAN interface,
  * or undefined if not found. Useful for disambiguating duplicate team numbers.
  */
-export async function resolveStationByNeighbor(ip: string, physicalInterface: string): Promise<StationName | undefined> {
+export async function resolveStationByNeighbor(
+  ip: string,
+  physicalInterface: string,
+): Promise<StationName | undefined> {
   const ifSuffix = new Map<string, StationName>();
   for (const station of StationNameList) {
     ifSuffix.set(`${physicalInterface}.${station}`, station);

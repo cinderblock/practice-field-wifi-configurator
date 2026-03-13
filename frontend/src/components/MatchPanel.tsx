@@ -161,9 +161,9 @@ function stationChipLabel(
   if (!team) return pretty;
 
   // Check if another joined station shares the same team number
-  const sameTeamStations = (Object.entries(allStates) as [StationName, StationControlState | undefined][])
-    .filter(([s, st]) => st?.joined && st?.teamNumber === team && s !== station)
-    .length;
+  const sameTeamStations = (Object.entries(allStates) as [StationName, StationControlState | undefined][]).filter(
+    ([s, st]) => st?.joined && st?.teamNumber === team && s !== station,
+  ).length;
 
   const suffix = state?.ready ? ' \u2713' : '';
   if (sameTeamStations > 0) {

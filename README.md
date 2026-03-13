@@ -172,6 +172,7 @@ iptables -t nat -A PREROUTING -i eth0.red1 -p udp -d 10.TE.AM.254 \
 ```
 
 This catches all UDP packets from the robot destined for the gateway IP on the station's VLAN interface and rewrites the destination to the DS laptop's guest WiFi IP. The rule is scoped to the gateway IP to avoid catching multicast/broadcast traffic. The rule is:
+
 - **Added** when the DS announces itself via TCP 1750 and its station is resolved
 - **Persistent** across DS TCP reconnects (the DS flaps every ~6s when no match is running)
 - **Removed** when the station's team assignment is cleared or changed
@@ -309,20 +310,20 @@ server {
 
 ## Environment Variables
 
-| Variable                  | Default             | Description                                                                             |
-| ------------------------- | ------------------- | --------------------------------------------------------------------------------------- |
-| `WEBSOCKET_PORT`          | `3000`              | Port for the WebSocket server                                                           |
-| `RADIO_URL`               | `http://10.0.100.2` | URL for the radio management API                                                        |
-| `VLAN_INTERFACE`          | _(none)_            | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing. |
-| `FMS_ENDPOINT`            | `false`             | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                            |
-| `SYSLOG_ENDPOINT`         | `false`             | Set to `true` to enable the syslog server                                               |
-| `RADIO_CLEAR_SCHEDULE`    | _(none)_            | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                |
-| `RADIO_CLEAR_TIMEZONE`    | _(none)_            | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                           |
-| `VLAN_HOST_OCTET`         | `254`               | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                    |
-| `TRUSTED_PROXIES`         | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                    |
-| `IPTABLES_COMMENT_PREFIX` | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                    |
+| Variable                  | Default             | Description                                                                                                                           |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBSOCKET_PORT`          | `3000`              | Port for the WebSocket server                                                                                                         |
+| `RADIO_URL`               | `http://10.0.100.2` | URL for the radio management API                                                                                                      |
+| `VLAN_INTERFACE`          | _(none)_            | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
+| `FMS_ENDPOINT`            | `false`             | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
+| `SYSLOG_ENDPOINT`         | `false`             | Set to `true` to enable the syslog server                                                                                             |
+| `RADIO_CLEAR_SCHEDULE`    | _(none)_            | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
+| `RADIO_CLEAR_TIMEZONE`    | _(none)_            | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
+| `VLAN_HOST_OCTET`         | `254`               | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
+| `TRUSTED_PROXIES`         | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
+| `IPTABLES_COMMENT_PREFIX` | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
 | `MDNS_REFLECTOR`          | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
-| `DRY_RUN`                 | _(none)_            | Set to any value to disable network operations (log-only mode for development)          |
+| `DRY_RUN`                 | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
 
 ### Trusted Proxies Configuration
 

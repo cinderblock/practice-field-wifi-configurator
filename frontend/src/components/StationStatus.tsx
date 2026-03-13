@@ -61,9 +61,7 @@ function RoutePreferenceBanner({ station }: { station: StationName }) {
   if (!routeState) return null;
 
   // Find conflicting teams that include this station
-  const myConflicts = Object.entries(routeState.conflictingTeams).filter(([, stations]) =>
-    stations.includes(station),
-  );
+  const myConflicts = Object.entries(routeState.conflictingTeams).filter(([, stations]) => stations.includes(station));
   if (myConflicts.length === 0) return null;
 
   const isSelected = routeState.preference === station;
@@ -290,7 +288,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </Tooltip>
               )}
               {/** CLEAR BUTTON */}
-              {(stationSsid || (hasStagedChange(station))) && (
+              {(stationSsid || hasStagedChange(station)) && (
                 <Tooltip title="Clear station configuration">
                   <IconButton
                     onClick={handleClearStation}
@@ -355,7 +353,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </Box>
           </Typography>
 
-          {stationSsid || (hasStagedChange(station)) ? (
+          {stationSsid || hasStagedChange(station) ? (
             <>
               {stationSsid &&
                 (isLinked ? (
@@ -673,9 +671,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                                   {telemetry.canUtil !== undefined ? `${telemetry.canUtil}%` : '—'}
                                 </TableCell>
-                                <TableCell
-                                  sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}
-                                >
+                                <TableCell sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}>
                                   {telemetry.dsCpuPercent !== undefined ? `${telemetry.dsCpuPercent}%` : '—'}
                                 </TableCell>
                               </TableRow>
@@ -710,9 +706,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 label={telemetry.dsStatus.robotComms ? 'Comms' : 'No Comms'}
                                 size="small"
                                 sx={{
-                                  backgroundColor: telemetry.dsStatus.robotComms
-                                    ? 'success.main'
-                                    : 'error.main',
+                                  backgroundColor: telemetry.dsStatus.robotComms ? 'success.main' : 'error.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -722,9 +716,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 label={telemetry.dsStatus.radioPing ? 'Radio' : 'No Radio'}
                                 size="small"
                                 sx={{
-                                  backgroundColor: telemetry.dsStatus.radioPing
-                                    ? 'info.main'
-                                    : 'error.main',
+                                  backgroundColor: telemetry.dsStatus.radioPing ? 'info.main' : 'error.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -831,63 +823,68 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         );
                       })()}
                       {/* mDNS Activity (full view only) */}
-                      {full && (() => {
-                        const mdns = mdnsActivity?.stations[station];
-                        if (!mdns) return null;
-                        return (
-                          <Box sx={{ mt: 0.5 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, mb: 0.25 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                mDNS Reflector
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                                {mdns.queriesForwarded}q / {mdns.responsesForwarded}r
-                              </Typography>
-                            </Box>
-                            {mdns.recentNames.length > 0 && (
-                              <Table
-                                size="small"
-                                sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                      {full &&
+                        (() => {
+                          const mdns = mdnsActivity?.stations[station];
+                          if (!mdns) return null;
+                          return (
+                            <Box sx={{ mt: 0.5 }}>
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  px: 1,
+                                  mb: 0.25,
+                                }}
                               >
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>IP</TableCell>
-                                    <TableCell>Requester</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {mdns.recentNames.map(entry => (
-                                    <TableRow key={entry.name}>
-                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                        {entry.services && entry.services.length > 0 ? (
-                                          <Tooltip
-                                            title={entry.services.join(', ')}
-                                            arrow
-                                            placement="right"
-                                          >
-                                            <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                                              {entry.name}
-                                            </span>
-                                          </Tooltip>
-                                        ) : (
-                                          entry.name
-                                        )}
-                                      </TableCell>
-                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                        {entry.resolvedIp ?? '—'}
-                                      </TableCell>
-                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                        {entry.requester ?? '—'}
-                                      </TableCell>
+                                <Typography variant="caption" color="text.secondary">
+                                  mDNS Reflector
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                  {mdns.queriesForwarded}q / {mdns.responsesForwarded}r
+                                </Typography>
+                              </Box>
+                              {mdns.recentNames.length > 0 && (
+                                <Table
+                                  size="small"
+                                  sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                                >
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell>Name</TableCell>
+                                      <TableCell>IP</TableCell>
+                                      <TableCell>Requester</TableCell>
                                     </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            )}
-                          </Box>
-                        );
-                      })()}
+                                  </TableHead>
+                                  <TableBody>
+                                    {mdns.recentNames.map(entry => (
+                                      <TableRow key={entry.name}>
+                                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                          {entry.services && entry.services.length > 0 ? (
+                                            <Tooltip title={entry.services.join(', ')} arrow placement="right">
+                                              <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                                {entry.name}
+                                              </span>
+                                            </Tooltip>
+                                          ) : (
+                                            entry.name
+                                          )}
+                                        </TableCell>
+                                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                          {entry.resolvedIp ?? '—'}
+                                        </TableCell>
+                                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                          {entry.requester ?? '—'}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              )}
+                            </Box>
+                          );
+                        })()}
                       {!full && <TeamChecksPanel station={station} />}
                     </Box>
                   )}
