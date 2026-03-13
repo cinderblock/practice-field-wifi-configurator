@@ -127,7 +127,15 @@ export class TeamChecker {
     }
   }
 
-  private evaluateSystemCore(data: { systemcoreEnabled?: boolean }): CheckResult {
+  private evaluateSystemCore(data: { systemcoreEnabled?: boolean; version?: string }): CheckResult {
+    if (data.systemcoreEnabled === undefined) {
+      // Older firmware doesn't report systemcoreEnabled — skip the check
+      return {
+        name: 'Radio SystemCore',
+        status: 'pass',
+        message: `Not reported by firmware${data.version ? ` (${data.version})` : ''} — update radio firmware to enable this check`,
+      };
+    }
     if (data.systemcoreEnabled === false) {
       return { name: 'Radio SystemCore', status: 'pass', expected: 'disabled', actual: 'disabled' };
     }
