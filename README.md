@@ -189,7 +189,7 @@ The backend periodically scans each configured team's subnet using `fping`, ping
 A CSA diagnostic tool at `/test` for checking individual robot network configurations. Set `TEST_INTERFACE` to a dedicated network interface, plug in a cable from a robot's network, and the tool will:
 
 1. **Detect link** — monitors carrier state at 5 Hz
-2. **Obtain DHCP lease** — runs `dhclient` to get an IP and detect the team number from the `10.TE.AM.x` subnet
+2. **Obtain DHCP lease** — runs `dhcpcd` to get an IP and detect the team number from the `10.TE.AM.x` subnet
 3. **Check radio** — fetches `/status` from `10.TE.AM.1`, verifies SystemCore is disabled and firmware is current
 4. **Check roboRIO** — probes NI SysAPI on `10.TE.AM.2`, verifies hostname, IP, and image version
 
@@ -207,7 +207,7 @@ The test interface needs to be a dedicated network path to the robot — either:
   ```
   Then set `TEST_INTERFACE=eno1.10`.
 
-The interface should **not** be managed by NetworkManager or have any existing IP configuration — the robot tester manages it entirely via `dhclient`.
+The interface should **not** be managed by NetworkManager or have any existing IP configuration — the robot tester manages it entirely via `dhcpcd`.
 
 See [TECHNICAL.md](TECHNICAL.md) for details on the startup sequence, configuration flow, match state machine, and dry-run mode.
 

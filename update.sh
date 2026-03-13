@@ -46,4 +46,18 @@ if [ "$UI_ONLY" == "true" ]; then
 else
   echo "Reloading $SERVICE"
   sudo systemctl reload-or-restart "$SERVICE"
+  echo "Watching startup logs (10s)..."
+  timeout 10 journalctl -u "$SERVICE" -f -n 0 --no-pager &
+  JOURNAL_PID=$!
+  # Wait a moment, then check if the service is still running
+  sleep 3
+  if ! systemctl is-active --quiet "$SERVICE"; then
+    echo ""
+    echo "ERROR: $SERVICE failed to start!"
+    echo "Last logs:"
+    journalctl -u "$SERVICE" -n 20 --no-pager
+    kill $JOURNAL_PID 2>/dev/null || true
+    exit 1
+  fi
+  wait $JOURNAL_PID 2>/dev/null || true
 fi

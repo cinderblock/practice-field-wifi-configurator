@@ -1,5 +1,4 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { RobotTestState, RobotTestPhase, CheckResult } from './types.js';
 import { checkRadio, checkRoboRIO, teamSubnet } from './teamChecker.js';
@@ -9,7 +8,6 @@ const execFile = promisify(execFileCb);
 
 const LINK_POLL_MS = 200;
 const CHECK_INTERVAL_MS = 10_000;
-const LEASE_FILE = '/tmp/pfms-test.lease';
 
 /** Parse a team number from an IP in the 10.TE.AM.x range. */
 function teamFromIp(ip: string): number | null {
@@ -22,18 +20,29 @@ function teamFromIp(ip: string): number | null {
   return team > 0 && team <= 25599 ? team : null;
 }
 
-/** Parse a dhclient lease file for the most recent lease. */
-function parseDhclientLease(content: string): { ip: string; router?: string } | null {
-  // Find the last lease block
-  const leases = content.split(/^lease\s*\{/m);
-  if (leases.length < 2) return null;
-  const lastLease = leases[leases.length - 1];
+/** Read the first IPv4 address assigned to an interface via `ip`. */
+async function getInterfaceIp(iface: string): Promise<{ ip: string; router?: string } | null> {
+  try {
+    const { stdout } = await execFile('ip', ['-j', 'addr', 'show', 'dev', iface]);
+    const data = JSON.parse(stdout);
+    if (!data[0]?.addr_info) return null;
+    const v4 = data[0].addr_info.find((a: { family: string }) => a.family === 'inet');
+    if (!v4) return null;
+    return { ip: v4.local };
+  } catch {
+    return null;
+  }
+}
 
-  const ipMatch = lastLease.match(/fixed-address\s+([\d.]+)/);
-  if (!ipMatch) return null;
-
-  const routerMatch = lastLease.match(/option routers\s+([\d.]+)/);
-  return { ip: ipMatch[1], router: routerMatch?.[1] };
+/** Read the default gateway for an interface from the routing table. */
+async function getInterfaceGateway(iface: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFile('ip', ['-j', 'route', 'show', 'dev', iface, 'default']);
+    const routes = JSON.parse(stdout);
+    return routes[0]?.gateway;
+  } catch {
+    return undefined;
+  }
 }
 
 export class RobotTestMonitor {
@@ -46,7 +55,7 @@ export class RobotTestMonitor {
   private checks: CheckResult[] = [];
   private linkPollTimer: NodeJS.Timeout | null = null;
   private checkTimer: NodeJS.Timeout | null = null;
-  private dhclientProc: ChildProcess | null = null;
+  private dhcpProc: ChildProcess | null = null;
   private checking = false;
 
   constructor(
@@ -71,7 +80,7 @@ export class RobotTestMonitor {
       this.linkPollTimer = null;
     }
     this.stopChecking();
-    this.killDhclient();
+    this.killDhcp();
     console.log('RobotTestMonitor: stopped');
   }
 
@@ -131,7 +140,7 @@ export class RobotTestMonitor {
     this.routerIp = undefined;
     this.checks = [];
     this.stopChecking();
-    this.killDhclient();
+    this.killDhcp();
     if (!this.dryRun) {
       this.net.flushAddresses(this.interfaceName).catch(() => {});
     }
@@ -143,7 +152,7 @@ export class RobotTestMonitor {
 
   private startDhcp(): void {
     if (this.dryRun) {
-      console.log(`[dry-run] Would run dhclient on ${this.interfaceName}`);
+      console.log(`[dry-run] Would run dhcpcd on ${this.interfaceName}`);
       this.phase = 'dhcp_requesting';
       this.broadcast();
       return;
@@ -152,17 +161,27 @@ export class RobotTestMonitor {
     this.phase = 'dhcp_requesting';
     this.broadcast();
 
-    // Kill any stale dhclient for this interface
-    this.killDhclient();
+    // Kill any stale dhcpcd for this interface
+    this.killDhcp();
 
-    const proc = spawn(
-      'dhclient',
-      ['-1', '-v', '-lf', LEASE_FILE, '-pf', `/tmp/pfms-dhclient-${this.interfaceName}.pid`, this.interfaceName],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-    this.dhclientProc = proc;
+    // dhcpcd --oneshot: obtain a lease and exit
+    // --nobackground: stay in foreground (we manage the process)
+    // --waitip 4: wait until an IPv4 address is assigned
+    const proc = spawn('dhcpcd', ['--oneshot', '--nobackground', '--waitip', '4', this.interfaceName], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    this.dhcpProc = proc;
+
+    proc.on('error', err => {
+      this.dhcpProc = null;
+      console.error(`RobotTestMonitor: failed to start dhcpcd: ${err.message}`);
+      // Retry after a delay if link is still up
+      if (this.linkUp) {
+        setTimeout(() => {
+          if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
+        }, 5000);
+      }
+    });
 
     let output = '';
     proc.stdout?.on('data', (data: Buffer) => {
@@ -173,15 +192,15 @@ export class RobotTestMonitor {
     });
 
     proc.on('exit', async code => {
-      this.dhclientProc = null;
+      this.dhcpProc = null;
       if (!this.linkUp) return; // Link dropped during DHCP
 
       if (code === 0) {
         await this.handleDhcpSuccess();
       } else {
-        console.log(`RobotTestMonitor: dhclient exited with code ${code}`);
+        console.log(`RobotTestMonitor: dhcpcd exited with code ${code}`);
         for (const line of output.trim().split('\n')) {
-          console.log(`  dhclient: ${line}`);
+          console.log(`  dhcpcd: ${line}`);
         }
         // Retry after a delay if link is still up
         if (this.linkUp) {
@@ -195,39 +214,39 @@ export class RobotTestMonitor {
 
   private async handleDhcpSuccess(): Promise<void> {
     try {
-      const leaseContent = await readFile(LEASE_FILE, 'utf-8');
-      const lease = parseDhclientLease(leaseContent);
-      if (!lease) {
-        console.log('RobotTestMonitor: could not parse lease file');
+      // Read the assigned IP directly from the interface
+      const addr = await getInterfaceIp(this.interfaceName);
+      if (!addr) {
+        console.log('RobotTestMonitor: dhcpcd succeeded but no IP on interface');
         return;
       }
 
-      this.leasedIp = lease.ip;
-      this.routerIp = lease.router;
-      this.teamNumber = teamFromIp(lease.ip) ?? undefined;
+      this.leasedIp = addr.ip;
+      this.routerIp = await getInterfaceGateway(this.interfaceName);
+      this.teamNumber = teamFromIp(addr.ip) ?? undefined;
 
       if (this.teamNumber) {
         this.phase = 'ready';
-        console.log(`RobotTestMonitor: DHCP lease obtained — team ${this.teamNumber}, IP ${lease.ip}`);
+        console.log(`RobotTestMonitor: DHCP lease obtained — team ${this.teamNumber}, IP ${addr.ip}`);
       } else {
         this.phase = 'ready';
-        console.log(`RobotTestMonitor: DHCP lease obtained — IP ${lease.ip} (not a team subnet)`);
+        console.log(`RobotTestMonitor: DHCP lease obtained — IP ${addr.ip} (not a team subnet)`);
       }
 
       this.broadcast();
       this.runChecks();
     } catch (err) {
-      console.error('RobotTestMonitor: error reading lease file:', err);
+      console.error('RobotTestMonitor: error reading interface address:', err);
     }
   }
 
-  private killDhclient(): void {
-    if (this.dhclientProc) {
-      this.dhclientProc.kill();
-      this.dhclientProc = null;
+  private killDhcp(): void {
+    if (this.dhcpProc) {
+      this.dhcpProc.kill();
+      this.dhcpProc = null;
     }
-    // Also kill any orphaned dhclient for this interface
-    execFile('pkill', ['-f', `dhclient.*${this.interfaceName}`]).catch(() => {});
+    // Also release the lease and kill any orphaned dhcpcd for this interface
+    execFile('dhcpcd', ['--release', this.interfaceName]).catch(() => {});
   }
 
   // ── Robot checks ──────────────────────────────────────────────────
