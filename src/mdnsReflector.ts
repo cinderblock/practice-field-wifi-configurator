@@ -160,6 +160,71 @@ function splitMdnsName(name: string): { hostname: string; service?: string } {
   return { hostname: host.toLowerCase(), service };
 }
 
+// ── IP exclusion list ───────────────────────────────────────────────
+
+type IpMatcher = (ip: number) => boolean;
+
+/**
+ * Parse a comma-separated list of IP exclusions into matchers.
+ * Supported formats:
+ *   "10.255.0.1"        — single IP
+ *   "10.255.0.0/24"     — CIDR range
+ *   "10.255.0.1-50"     — last-octet range (10.255.0.1 through 10.255.0.50)
+ */
+function parseExcludeList(raw: string): IpMatcher[] {
+  const matchers: IpMatcher[] = [];
+  for (const entry of raw.split(/[,\s]+/).filter(Boolean)) {
+    // CIDR: "10.255.0.0/24"
+    const cidrMatch = entry.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+    if (cidrMatch) {
+      const prefix = parseInt(cidrMatch[2], 10);
+      if (prefix < 0 || prefix > 32) {
+        throw new Error(`mDNS: invalid CIDR prefix in "${entry}"`);
+      }
+      const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+      const network = (ipToNumber(cidrMatch[1]) & mask) >>> 0;
+      matchers.push((ip: number) => ((ip & mask) >>> 0) === network);
+      continue;
+    }
+
+    // Last-octet range: "10.255.0.1-50"
+    const rangeMatch = entry.match(/^(\d+\.\d+\.\d+)\.(\d+)-(\d+)$/);
+    if (rangeMatch) {
+      const base = ipToNumber(rangeMatch[1] + '.0') >>> 0;
+      const lo = parseInt(rangeMatch[2], 10);
+      const hi = parseInt(rangeMatch[3], 10);
+      if (lo > hi || lo > 255 || hi > 255) {
+        throw new Error(`mDNS: invalid range in "${entry}"`);
+      }
+      const start = (base | lo) >>> 0;
+      const end = (base | hi) >>> 0;
+      matchers.push((ip: number) => ip >= start && ip <= end);
+      continue;
+    }
+
+    // Single IP: "10.255.0.1"
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(entry)) {
+      const exact = ipToNumber(entry);
+      matchers.push((ip: number) => ip === exact);
+      continue;
+    }
+
+    throw new Error(`mDNS: unrecognized exclude entry "${entry}"`);
+  }
+  return matchers;
+}
+
+function ipToNumber(ip: string): number {
+  const parts = ip.split('.');
+  return ((parseInt(parts[0]) << 24) | (parseInt(parts[1]) << 16) | (parseInt(parts[2]) << 8) | parseInt(parts[3])) >>> 0;
+}
+
+function isExcluded(ip: string, matchers: IpMatcher[]): boolean {
+  if (matchers.length === 0) return false;
+  const num = ipToNumber(ip);
+  return matchers.some(m => m(num));
+}
+
 // ── Team IP helpers ─────────────────────────────────────────────────
 
 function teamToVlanIp(team: number, hostOctet: number): string {
@@ -189,11 +254,19 @@ export class MdnsReflector {
   private teamToStation = new Map<number, StationName>();
   /** Per-station counters and recent names for reflected packets */
   private counters = new Map<StationName, StationMdnsActivity>();
+  /** IPs/ranges to exclude from requester tracking */
+  private readonly excludedRequesters: IpMatcher[];
 
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
     private readonly vlanHostOctet: number = 254,
-  ) {}
+    excludeRequesters?: string,
+  ) {
+    this.excludedRequesters = excludeRequesters ? parseExcludeList(excludeRequesters) : [];
+    if (this.excludedRequesters.length > 0) {
+      console.log(`mDNS: excluding requesters matching ${excludeRequesters}`);
+    }
+  }
 
   /** Get the current activity state for broadcasting to clients. */
   getActivity(): MdnsActivity {
@@ -318,6 +391,8 @@ export class MdnsReflector {
       // Packet from the main network — only forward queries (laptop lookups) to VLANs
       if (isResponse) return;
 
+      const excluded = isExcluded(rinfo.address, this.excludedRequesters);
+
       const queryNames = parseQuestionNames(msg);
       const teams = new Set<number>();
       for (const name of queryNames) {
@@ -329,9 +404,11 @@ export class MdnsReflector {
         if (this.joinedTeams.has(team)) {
           const station = this.teamToStation.get(team);
           if (!station) continue;
-          const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
-          const names: MdnsResolvedName[] = teamNames.map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
-          this.incrementCounter(station, team, 'queriesForwarded', names);
+          if (!excluded) {
+            const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
+            const names: MdnsResolvedName[] = teamNames.map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
+            this.incrementCounter(station, team, 'queriesForwarded', names);
+          }
           this.forwardToVlan(msg, team);
         }
       }

@@ -245,6 +245,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     mdnsReflector = new MdnsReflector(
       s => radioManager.getTeamForStation(s),
       VlanHostOctet,
+      process.env.MDNS_EXCLUDE_REQUESTERS,
     );
     mdnsReflector.start();
     // Refresh after commit — VLAN interfaces only exist after configureNetwork completes
