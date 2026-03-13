@@ -37,7 +37,10 @@ function CheckRow({ check }: { check: CheckResult }) {
           {check.name}
         </Typography>
         {check.status === 'pass' && (check.actual || check.message) && (
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: check.actual ? 'monospace' : undefined, fontSize: '0.7rem' }}>
+          <Typography
+            variant="caption"
+            sx={{ color: 'text.secondary', fontFamily: check.actual ? 'monospace' : undefined, fontSize: '0.7rem' }}
+          >
             {check.actual ?? check.message}
           </Typography>
         )}

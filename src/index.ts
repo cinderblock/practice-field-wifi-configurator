@@ -22,6 +22,7 @@ import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
 import { MdnsReflector } from './mdnsReflector.js';
 import { TeamChecker } from './teamChecker.js';
+import { RobotTestMonitor } from './robotTestMonitor.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -45,6 +46,7 @@ const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or un
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
+const TestInterface = process.env.TEST_INTERFACE;
 const VlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
 const WebSocketPort = Number(process.env.WEBSOCKET_PORT) || 3000;
 
@@ -216,11 +218,20 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     }
   };
 
+  // Robot test monitor — CSA tool for diagnosing individual robots
+  let robotTestMonitor: RobotTestMonitor | undefined;
+  if (TestInterface) {
+    const testNet = process.env.DRY_RUN ? createDryRunBackend() : (net ?? createBackend());
+    robotTestMonitor = new RobotTestMonitor(TestInterface, testNet, state => broadcast(state), !!process.env.DRY_RUN);
+    await robotTestMonitor.start();
+  }
+
   wss.on('connection', ws => {
     if (latestSubnetScan) ws.send(JSON.stringify(latestSubnetScan));
     for (const results of latestCheckResults.values()) {
       ws.send(JSON.stringify(results));
     }
+    if (robotTestMonitor) ws.send(JSON.stringify(robotTestMonitor.getState()));
   });
 
   // Clean up state and broadcast updates when station configs change
@@ -515,6 +526,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Shutdown signal handlers
   if (net) {
     const fullCleanup = () => {
+      robotTestMonitor?.stop();
       stopAllDHCP();
       console.log('Cleaning up network rules...');
       const flushRouteTables = Promise.all(
@@ -533,6 +545,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // write /run/pfms-keep-network before sending SIGHUP, so the next startup skips
     // the iptables flush and restores routing preferences from the kernel.
     const gracefulExit = () => {
+      robotTestMonitor?.stop();
       stopAllDHCP();
       console.log('Graceful exit: network rules preserved.');
       process.exit(0);

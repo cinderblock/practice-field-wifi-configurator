@@ -19,7 +19,9 @@ import {
   isRoutePreferenceState,
   isPendingCommitState,
   isServerInfo,
+  isRobotTestState,
   RoutePreferenceState,
+  RobotTestState,
   PendingCommitState,
   ServerInfo,
   RoutePreferenceMsg,
@@ -375,6 +377,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isRobotTestState(detail)) {
+    handleRobotTestState(detail);
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -632,7 +639,29 @@ export function sendRunTeamChecks(station: StationName) {
   ws?.send(JSON.stringify({ type: 'runTeamChecks', station } satisfies RunTeamChecks));
 }
 
-// ── Server Info ─────────────────────────────────────────────────────
+// ── Robot Test State ──────────────────────────────────────────────────
+
+let currentRobotTestState: RobotTestState | null = null;
+
+function handleRobotTestState(state: RobotTestState) {
+  currentRobotTestState = state;
+  events.dispatchEvent(new CustomEvent('robotTestState', { detail: state }));
+}
+
+export function useRobotTestState(): RobotTestState | null {
+  const [state, setState] = useState<RobotTestState | null>(currentRobotTestState);
+
+  useEffect(() => {
+    setState(currentRobotTestState);
+    const handler = (e: Event) => setState((e as CustomEvent<RobotTestState>).detail);
+    events.addEventListener('robotTestState', handler);
+    return () => events.removeEventListener('robotTestState', handler);
+  }, []);
+
+  return state;
+}
+
+// ── Server Info ──────────────────────────────────────────────────────
 
 export function useServerStartTime(): number | null {
   const [startTime, setStartTime] = useState<number | null>(currentServerInfo?.startTime ?? null);

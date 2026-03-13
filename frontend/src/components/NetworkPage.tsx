@@ -22,7 +22,14 @@ import {
   StationNetworkStats,
   StationSubnetScan,
 } from '../../../src/types';
-import { allianceColor, describeIp, formatAge, formatBytes, formatDuration, prettyStationName } from '../../../src/utils';
+import {
+  allianceColor,
+  describeIp,
+  formatAge,
+  formatBytes,
+  formatDuration,
+  prettyStationName,
+} from '../../../src/utils';
 import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
 const PULSE_STYLES = {
@@ -157,7 +164,11 @@ function StationNetworkCard({
                     <TableCell sx={{ py: 0.5 }}>{describeIp(host) ?? ''}</TableCell>
                     <TableCell sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
                       {host.alive ? (
-                        <Box key={host.lastSeen} component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                        <Box
+                          key={host.lastSeen}
+                          component="span"
+                          sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+                        >
                           <Box
                             component="span"
                             sx={{

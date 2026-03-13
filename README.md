@@ -31,14 +31,15 @@ npm install
 
 ## Pages
 
-| Path                | Description                                                                   |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `/`                 | Home — station configuration form (assign teams to stations)                  |
-| `/(red\|blue)[123]` | Station page — per-station view with match controls                           |
-| `/admin`            | Admin page — global/per-station e-stop, match status, force stop              |
-| `/network`          | Network page — discovered devices, VLAN status, network stats                 |
-| `/route`            | Route page — choose which robot to talk to when a team has duplicate stations |
-| `/logs`             | Logs page — live backend log stream                                           |
+| Path                | Description                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `/`                 | Home — station configuration form (assign teams to stations)                        |
+| `/(red\|blue)[123]` | Station page — per-station view with match controls                                 |
+| `/admin`            | Admin page — global/per-station e-stop, match status, force stop                    |
+| `/network`          | Network page — discovered devices, VLAN status, network stats                       |
+| `/route`            | Route page — choose which robot to talk to when a team has duplicate stations       |
+| `/logs`             | Logs page — live backend log stream                                                 |
+| `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`) |
 
 ## Features
 
@@ -183,6 +184,31 @@ This catches all UDP packets from the robot destined for the gateway IP on the s
 
 The backend periodically scans each configured team's subnet using `fping`, pinging `.1–.253` every 10 seconds. Discovered devices (IPs that have responded at least once) are tracked with up/down status and first/last-seen timestamps, and broadcast to frontend clients. Results appear in the **Discovered Devices** section on the Network page and are cleared when station config is cleared.
 
+### Robot Network Tester
+
+A CSA diagnostic tool at `/test` for checking individual robot network configurations. Set `TEST_INTERFACE` to a dedicated network interface, plug in a cable from a robot's network, and the tool will:
+
+1. **Detect link** — monitors carrier state at 5 Hz
+2. **Obtain DHCP lease** — runs `dhclient` to get an IP and detect the team number from the `10.TE.AM.x` subnet
+3. **Check radio** — fetches `/status` from `10.TE.AM.1`, verifies SystemCore is disabled and firmware is current
+4. **Check roboRIO** — probes NI SysAPI on `10.TE.AM.2`, verifies hostname, IP, and image version
+
+Results stream live to the frontend and re-check every 10 seconds while the cable is plugged in.
+
+#### Setting Up the Test Interface
+
+The test interface needs to be a dedicated network path to the robot — either:
+
+- **Dedicated NIC** — a separate physical Ethernet port (e.g., a USB Ethernet adapter). Plug the robot's radio directly into this port.
+- **VLAN on the trunk** — if the robot is connected through the field AP, create a VLAN interface on the same trunk that carries the team VLANs. The VLAN ID must match the station the robot is on (10–60). For example, to test a robot on Red 1:
+  ```sh
+  ip link add link eno1 name eno1.10 type vlan id 10
+  ip link set eno1.10 up
+  ```
+  Then set `TEST_INTERFACE=eno1.10`.
+
+The interface should **not** be managed by NetworkManager or have any existing IP configuration — the robot tester manages it entirely via `dhclient`.
+
 See [TECHNICAL.md](TECHNICAL.md) for details on the startup sequence, configuration flow, match state machine, and dry-run mode.
 
 ## Project Structure
@@ -258,12 +284,14 @@ practice.example.com {
     rewrite /logs.html /non-existent-path
     rewrite /network.html /non-existent-path
     rewrite /route.html /non-existent-path
+    rewrite /test.html /non-existent-path
 
     rewrite @stations /station.html
     rewrite /admin /admin.html
     rewrite /logs /logs.html
     rewrite /network /network.html
     rewrite /route /route.html
+    rewrite /test /test.html
     root /path/to/frontend/dist
     file_server
 }
@@ -297,6 +325,10 @@ server {
         rewrite ^ /route.html break;
     }
 
+    location = /test {
+        rewrite ^ /test.html break;
+    }
+
     location /ws {
         proxy_pass http://localhost:9001;
         proxy_http_version 1.1;
@@ -323,6 +355,7 @@ server {
 | `TRUSTED_PROXIES`         | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
 | `IPTABLES_COMMENT_PREFIX` | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
 | `MDNS_REFLECTOR`          | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
+| `TEST_INTERFACE`          | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
 | `DRY_RUN`                 | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
 
 ### Trusted Proxies Configuration

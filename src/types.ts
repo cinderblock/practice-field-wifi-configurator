@@ -778,3 +778,32 @@ export function isRunTeamChecks(msg: unknown): msg is RunTeamChecks {
   const m = msg as RunTeamChecks;
   return m.type === 'runTeamChecks' && StationNameRegex.test(m.station);
 }
+
+// ── Robot Test (CSA Tool) ───────────────────────────────────────────
+
+export type RobotTestPhase =
+  | 'disabled'
+  | 'link_down'
+  | 'link_up'
+  | 'dhcp_requesting'
+  | 'ready'
+  | 'checking'
+  | 'complete';
+
+export interface RobotTestState {
+  type: 'robotTestState';
+  phase: RobotTestPhase;
+  interfaceName: string;
+  linkUp: boolean;
+  macAddress?: string;
+  teamNumber?: number;
+  leasedIp?: string;
+  routerIp?: string;
+  checks: CheckResult[];
+  lastUpdate: number;
+}
+
+export function isRobotTestState(msg: unknown): msg is RobotTestState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as RobotTestState).type === 'robotTestState';
+}
