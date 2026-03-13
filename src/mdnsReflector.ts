@@ -13,7 +13,7 @@
  * receives its own forwarded packets — plus the directional filter above.
  */
 import dgram from 'node:dgram';
-import { MdnsActivity, StationName, StationNameList } from './types.js';
+import { MdnsActivity, MdnsResolvedName, StationMdnsActivity, StationName, StationNameList } from './types.js';
 
 const MDNS_ADDR = '224.0.0.251';
 const MDNS_PORT = 5353;
@@ -73,12 +73,12 @@ function parseQuestionNames(buf: Buffer): string[] {
   return names;
 }
 
-/** Extract all answer record names from an mDNS packet. */
-function parseAnswerNames(buf: Buffer): string[] {
+/** Extract answer records from an mDNS packet, including A record IPs. */
+function parseAnswerRecords(buf: Buffer): { name: string; resolvedIp?: string }[] {
   if (buf.length < 12) return [];
   const qdCount = buf.readUInt16BE(4);
   const anCount = buf.readUInt16BE(6);
-  const names: string[] = [];
+  const records: { name: string; resolvedIp?: string }[] = [];
 
   // Skip past question section
   let offset = 12;
@@ -87,17 +87,23 @@ function parseAnswerNames(buf: Buffer): string[] {
     offset += bytesRead + 4;
   }
 
-  // Read answer record names
+  // Read answer records
   for (let i = 0; i < anCount && offset < buf.length; i++) {
     const { name, bytesRead } = readDnsName(buf, offset);
-    if (name) names.push(name);
     offset += bytesRead;
     if (offset + 10 > buf.length) break;
+    const type = buf.readUInt16BE(offset);
     const rdLength = buf.readUInt16BE(offset + 8);
-    offset += 10 + rdLength; // TYPE(2) + CLASS(2) + TTL(4) + RDLENGTH(2) + RDATA
+    let resolvedIp: string | undefined;
+    // A record: TYPE=1, RDLENGTH=4 → 4 bytes of IPv4
+    if (type === 1 && rdLength === 4 && offset + 14 <= buf.length) {
+      resolvedIp = `${buf[offset + 10]}.${buf[offset + 11]}.${buf[offset + 12]}.${buf[offset + 13]}`;
+    }
+    offset += 10 + rdLength;
+    if (name) records.push({ name, resolvedIp });
   }
 
-  return names;
+  return records;
 }
 
 // ── FRC name matching ───────────────────────────────────────────────
@@ -122,6 +128,36 @@ function extractTeamFromName(dnsName: string): number | null {
     if (match) return parseInt(match[1], 10);
   }
   return null;
+}
+
+// ── mDNS name condensing ────────────────────────────────────────────
+
+/**
+ * Split an mDNS name into hostname + optional service type.
+ *
+ * Examples:
+ *   "roborio-846-frc._ni-rt._tcp.local" → { hostname: "roborio-846-frc.local", service: "_ni-rt._tcp" }
+ *   "_services._dns-sd._udp.local"      → { hostname: "_services._dns-sd._udp.local" }  (no host prefix)
+ *   "roborio-846-frc.local"             → { hostname: "roborio-846-frc.local" }
+ *
+ * A service suffix is detected when a label starting with '_' appears
+ * after at least one non-underscore label.
+ */
+function splitMdnsName(name: string): { hostname: string; service?: string } {
+  // Strip .local suffix for processing, re-add at end
+  const stripped = name.replace(/\.local\.?$/i, '');
+  const labels = stripped.split('.');
+
+  // Find the first label starting with '_' — everything from there is the service
+  const serviceIdx = labels.findIndex(l => l.startsWith('_'));
+  if (serviceIdx <= 0) {
+    // No service suffix, or the name starts with _ (pure service query)
+    return { hostname: name.toLowerCase() };
+  }
+
+  const host = labels.slice(0, serviceIdx).join('.') + '.local';
+  const service = labels.slice(serviceIdx).join('.');
+  return { hostname: host.toLowerCase(), service };
 }
 
 // ── Team IP helpers ─────────────────────────────────────────────────
@@ -149,8 +185,10 @@ export class MdnsReflector {
   private socket: dgram.Socket | null = null;
   /** Teams whose VLAN we've joined multicast on → their VLAN IP */
   private joinedTeams = new Map<number, string>();
-  /** Per-team counters and recent names for reflected packets */
-  private counters = new Map<number, { queriesForwarded: number; responsesForwarded: number; recentNames: string[] }>();
+  /** Reverse lookup: team number → station name (rebuilt in refreshMemberships) */
+  private teamToStation = new Map<number, StationName>();
+  /** Per-station counters and recent names for reflected packets */
+  private counters = new Map<StationName, StationMdnsActivity>();
 
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
@@ -159,11 +197,11 @@ export class MdnsReflector {
 
   /** Get the current activity state for broadcasting to clients. */
   getActivity(): MdnsActivity {
-    const teams: MdnsActivity['teams'] = {};
-    for (const [team, counts] of this.counters) {
-      teams[team] = { ...counts, recentNames: [...counts.recentNames] };
+    const stations: MdnsActivity['stations'] = {};
+    for (const [station, activity] of this.counters) {
+      stations[station] = { ...activity, recentNames: [...activity.recentNames] };
     }
-    return { type: 'mdnsActivity', teams };
+    return { type: 'mdnsActivity', stations };
   }
 
   start(): void {
@@ -210,10 +248,15 @@ export class MdnsReflector {
   refreshMemberships(): void {
     if (!this.socket) return;
 
+    // Rebuild team → station reverse map
+    this.teamToStation.clear();
     const activeTeams = new Set<number>();
     for (const station of StationNameList) {
       const team = this.getTeamForStation(station);
-      if (team !== null) activeTeams.add(team);
+      if (team !== null) {
+        activeTeams.add(team);
+        this.teamToStation.set(team, station);
+      }
     }
 
     // Leave multicast on VLANs that are no longer active
@@ -226,7 +269,14 @@ export class MdnsReflector {
           // Interface may already be gone
         }
         this.joinedTeams.delete(team);
-        this.counters.delete(team);
+      }
+    }
+
+    // Clean up counters for stations that no longer have a team
+    for (const station of this.counters.keys()) {
+      const team = this.getTeamForStation(station);
+      if (team === null || !activeTeams.has(team)) {
+        this.counters.delete(station);
       }
     }
 
@@ -254,11 +304,15 @@ export class MdnsReflector {
       // Packet from a team VLAN — only forward responses (robot answers) to main
       if (!isResponse) return;
 
-      const answerNames = parseAnswerNames(msg);
-      const team = answerNames.map(extractTeamFromName).find(t => t !== null);
+      const records = parseAnswerRecords(msg);
+      const team = records.map(r => extractTeamFromName(r.name)).find(t => t !== null);
       if (team == null) return;
 
-      this.incrementCounter(sourceTeam, 'responsesForwarded', answerNames);
+      const station = this.teamToStation.get(sourceTeam);
+      if (!station) return;
+
+      const names: MdnsResolvedName[] = records.map(r => ({ name: r.name.toLowerCase(), resolvedIp: r.resolvedIp }));
+      this.incrementCounter(station, sourceTeam, 'responsesForwarded', names);
       this.forwardToMain(msg);
     } else {
       // Packet from the main network — only forward queries (laptop lookups) to VLANs
@@ -273,8 +327,11 @@ export class MdnsReflector {
 
       for (const team of teams) {
         if (this.joinedTeams.has(team)) {
+          const station = this.teamToStation.get(team);
+          if (!station) continue;
           const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
-          this.incrementCounter(team, 'queriesForwarded', teamNames);
+          const names: MdnsResolvedName[] = teamNames.map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
+          this.incrementCounter(station, team, 'queriesForwarded', names);
           this.forwardToVlan(msg, team);
         }
       }
@@ -299,25 +356,41 @@ export class MdnsReflector {
 
   private static readonly MAX_RECENT_NAMES = 10;
 
-  private incrementCounter(team: number, field: 'queriesForwarded' | 'responsesForwarded', names?: string[]) {
-    let entry = this.counters.get(team);
+  private incrementCounter(station: StationName, team: number, field: 'queriesForwarded' | 'responsesForwarded', names: MdnsResolvedName[]) {
+    let entry = this.counters.get(station);
     if (!entry) {
-      entry = { queriesForwarded: 0, responsesForwarded: 0, recentNames: [] };
-      this.counters.set(team, entry);
+      entry = { team, queriesForwarded: 0, responsesForwarded: 0, recentNames: [] };
+      this.counters.set(station, entry);
     }
     entry[field]++;
-    if (names) {
-      for (const raw of names) {
-        const name = raw.toLowerCase();
-        // Move to front if already present, otherwise prepend
-        const idx = entry.recentNames.indexOf(name);
-        if (idx !== -1) entry.recentNames.splice(idx, 1);
-        entry.recentNames.unshift(name);
+    for (const incoming of names) {
+      // Condense service discovery names: group by hostname, collect services
+      const { hostname, service } = splitMdnsName(incoming.name);
+
+      // Move to front if already present (merge fields), otherwise prepend
+      const idx = entry.recentNames.findIndex(r => r.name === hostname);
+      if (idx !== -1) {
+        const existing = entry.recentNames.splice(idx, 1)[0];
+        // Merge services list
+        const services = existing.services ? [...existing.services] : [];
+        if (service && !services.includes(service)) services.push(service);
+        entry.recentNames.unshift({
+          name: hostname,
+          resolvedIp: incoming.resolvedIp ?? existing.resolvedIp,
+          requester: incoming.requester ?? existing.requester,
+          services: services.length > 0 ? services : undefined,
+        });
+      } else {
+        entry.recentNames.unshift({
+          name: hostname,
+          resolvedIp: incoming.resolvedIp,
+          requester: incoming.requester,
+          services: service ? [service] : undefined,
+        });
       }
-      // Cap the list
-      if (entry.recentNames.length > MdnsReflector.MAX_RECENT_NAMES) {
-        entry.recentNames.length = MdnsReflector.MAX_RECENT_NAMES;
-      }
+    }
+    if (entry.recentNames.length > MdnsReflector.MAX_RECENT_NAMES) {
+      entry.recentNames.length = MdnsReflector.MAX_RECENT_NAMES;
     }
   }
 

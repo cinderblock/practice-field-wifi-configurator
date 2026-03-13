@@ -696,15 +696,26 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
 
 // ── mDNS Reflector Activity ─────────────────────────────────────────
 
+export interface MdnsResolvedName {
+  name: string;
+  /** Resolved IPv4 address from A record, if seen */
+  resolvedIp?: string;
+  /** Source IP of the query that triggered this lookup */
+  requester?: string;
+  /** Service types discovered for this hostname (e.g. ['_ni-rt._tcp', '_ni._tcp']) */
+  services?: string[];
+}
+
+export interface StationMdnsActivity {
+  team: number;
+  queriesForwarded: number;
+  responsesForwarded: number;
+  recentNames: MdnsResolvedName[];
+}
+
 export interface MdnsActivity {
   type: 'mdnsActivity';
-  /** Per-team counters and recently reflected names */
-  teams: Record<number, {
-    queriesForwarded: number;
-    responsesForwarded: number;
-    /** Recently reflected DNS names (deduplicated, most recent first) */
-    recentNames: string[];
-  }>;
+  stations: Partial<Record<StationName, StationMdnsActivity>>;
 }
 
 export function isMdnsActivity(msg: unknown): msg is MdnsActivity {

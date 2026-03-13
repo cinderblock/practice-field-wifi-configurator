@@ -26,6 +26,7 @@ import {
   useTelemetryCallback,
   useNetworkStats,
   useSubnetScan,
+  useMdnsActivity,
   useRoutePreferenceState,
   sendRoutePreference,
 } from '../hooks/useBackend';
@@ -124,6 +125,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const telemetry = useLatestTelemetry(station);
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
+  const mdnsActivity = useMdnsActivity();
 
   const {
     ssid: stationSsid,
@@ -468,13 +470,13 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         </TableHead>
                         <TableBody>
                           <TableRow>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 200, 100)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(signalDbm)} dBm
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 150, 150)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(noiseDbm)} dBm
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(signalNoiseRatio)} dB
                             </TableCell>
                           </TableRow>
@@ -497,28 +499,28 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                               sx={{
                                 color:
                                   connectionQuality === 'excellent'
-                                    ? 'rgb(76, 175, 80)'
+                                    ? 'success.main'
                                     : connectionQuality === 'good'
-                                      ? 'rgb(139, 195, 74)'
+                                      ? 'success.light'
                                       : connectionQuality === 'caution'
-                                        ? 'rgb(255, 193, 7)'
+                                        ? 'warning.main'
                                         : connectionQuality === 'warning'
-                                          ? 'rgb(244, 67, 54)'
-                                          : 'rgb(128, 128, 128)',
+                                          ? 'error.main'
+                                          : 'text.disabled',
                               }}
                             >
                               {connectionQuality}
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(bandwidthUsedMbps)} Mbps
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(100, 200, 255)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(
                                 (bandwidthUsedMbps! / Math.min(rxRateMbps!, txRateMbps!)) * 100,
                               )}
                               %
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(200, 150, 100)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'warning.light', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(dataAgeMs)} ms
                             </TableCell>
                           </TableRow>
@@ -541,28 +543,28 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         <TableBody>
                           <TableRow>
                             <TableCell>Rate</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(txRateMbps)} Mbps
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(rxRateMbps)} Mbps
                             </TableCell>
                           </TableRow>
                           <TableRow>
                             <TableCell>Packets</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(txPackets)}
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(rxPackets)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
                             <TableCell>Bytes</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 255, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(txBytes)}
                             </TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(255, 80, 80)', textAlign: 'right' }}>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'error.main', textAlign: 'right' }}>
                               {formatNumberWithThinSpace(rxBytes)}
                             </TableCell>
                           </TableRow>
@@ -595,7 +597,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   <TableCell
                                     sx={{
                                       whiteSpace: 'nowrap',
-                                      color: 'rgb(255, 80, 80)',
+                                      color: 'error.main',
                                       textAlign: 'right',
                                       fontFamily: 'monospace',
                                     }}
@@ -605,7 +607,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   <TableCell
                                     sx={{
                                       whiteSpace: 'nowrap',
-                                      color: 'rgb(255, 80, 80)',
+                                      color: 'error.main',
                                       textAlign: 'right',
                                       fontFamily: 'monospace',
                                     }}
@@ -618,7 +620,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   <TableCell
                                     sx={{
                                       whiteSpace: 'nowrap',
-                                      color: 'rgb(80, 255, 80)',
+                                      color: 'success.main',
                                       textAlign: 'right',
                                       fontFamily: 'monospace',
                                     }}
@@ -628,7 +630,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   <TableCell
                                     sx={{
                                       whiteSpace: 'nowrap',
-                                      color: 'rgb(80, 255, 80)',
+                                      color: 'success.main',
                                       textAlign: 'right',
                                       fontFamily: 'monospace',
                                     }}
@@ -659,7 +661,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                             </TableHead>
                             <TableBody>
                               <TableRow>
-                                <TableCell sx={{ whiteSpace: 'nowrap', color: 'rgb(76, 175, 80)', textAlign: 'right' }}>
+                                <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.main', textAlign: 'right' }}>
                                   {telemetry.batteryVoltage?.toFixed(1)} V
                                 </TableCell>
                                 <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
@@ -672,7 +674,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   {telemetry.canUtil !== undefined ? `${telemetry.canUtil}%` : '—'}
                                 </TableCell>
                                 <TableCell
-                                  sx={{ whiteSpace: 'nowrap', color: 'rgb(80, 150, 255)', textAlign: 'right' }}
+                                  sx={{ whiteSpace: 'nowrap', color: 'info.light', textAlign: 'right' }}
                                 >
                                   {telemetry.dsCpuPercent !== undefined ? `${telemetry.dsCpuPercent}%` : '—'}
                                 </TableCell>
@@ -695,10 +697,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 sx={{
                                   backgroundColor:
                                     telemetry.dsStatus.mode === 'teleOp'
-                                      ? 'rgb(33, 150, 243)'
+                                      ? 'info.main'
                                       : telemetry.dsStatus.mode === 'auto'
-                                        ? 'rgb(76, 175, 80)'
-                                        : 'rgb(255, 152, 0)',
+                                        ? 'success.main'
+                                        : 'warning.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -709,8 +711,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 size="small"
                                 sx={{
                                   backgroundColor: telemetry.dsStatus.robotComms
-                                    ? 'rgb(76, 175, 80)'
-                                    : 'rgb(244, 67, 54)',
+                                    ? 'success.main'
+                                    : 'error.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -721,8 +723,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 size="small"
                                 sx={{
                                   backgroundColor: telemetry.dsStatus.radioPing
-                                    ? 'rgb(33, 150, 243)'
-                                    : 'rgb(244, 67, 54)',
+                                    ? 'info.main'
+                                    : 'error.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -732,7 +734,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 label={telemetry.dsStatus.rioPing ? 'RIO' : 'No RIO'}
                                 size="small"
                                 sx={{
-                                  backgroundColor: telemetry.dsStatus.rioPing ? 'rgb(0, 188, 212)' : 'rgb(244, 67, 54)',
+                                  backgroundColor: telemetry.dsStatus.rioPing ? 'info.main' : 'error.main',
                                   color: '#fff',
                                   fontSize: '0.7rem',
                                   height: 20,
@@ -743,7 +745,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   label="E-STOP"
                                   size="small"
                                   sx={{
-                                    backgroundColor: 'rgb(244, 67, 54)',
+                                    backgroundColor: 'error.main',
                                     color: '#fff',
                                     fontSize: '0.7rem',
                                     height: 20,
@@ -756,7 +758,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                   label="BROWNOUT"
                                   size="small"
                                   sx={{
-                                    backgroundColor: 'rgb(255, 152, 0)',
+                                    backgroundColor: 'warning.main',
                                     color: '#fff',
                                     fontSize: '0.7rem',
                                     height: 20,
@@ -825,6 +827,64 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                                 ))}
                               </TableBody>
                             </Table>
+                          </Box>
+                        );
+                      })()}
+                      {/* mDNS Activity (full view only) */}
+                      {full && (() => {
+                        const mdns = mdnsActivity?.stations[station];
+                        if (!mdns) return null;
+                        return (
+                          <Box sx={{ mt: 0.5 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, mb: 0.25 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                mDNS Reflector
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                {mdns.queriesForwarded}q / {mdns.responsesForwarded}r
+                              </Typography>
+                            </Box>
+                            {mdns.recentNames.length > 0 && (
+                              <Table
+                                size="small"
+                                sx={{ '& .MuiTableCell-root': { padding: '2px 8px', fontSize: '0.875rem' } }}
+                              >
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>Name</TableCell>
+                                    <TableCell>IP</TableCell>
+                                    <TableCell>Requester</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {mdns.recentNames.map(entry => (
+                                    <TableRow key={entry.name}>
+                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                        {entry.services && entry.services.length > 0 ? (
+                                          <Tooltip
+                                            title={entry.services.join(', ')}
+                                            arrow
+                                            placement="right"
+                                          >
+                                            <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                              {entry.name}
+                                            </span>
+                                          </Tooltip>
+                                        ) : (
+                                          entry.name
+                                        )}
+                                      </TableCell>
+                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                        {entry.resolvedIp ?? '—'}
+                                      </TableCell>
+                                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                        {entry.requester ?? '—'}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            )}
                           </Box>
                         );
                       })()}
