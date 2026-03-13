@@ -389,6 +389,12 @@ export type StationControlState = {
 
 export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';
 
+export type DSConnectionInfo = {
+  ip: string;
+  /** Server timestamp (Date.now()) of the last packet received from this DS */
+  lastSeen: number;
+};
+
 export type MatchState = {
   type: 'matchState';
   phase: MatchPhase;
@@ -396,8 +402,8 @@ export type MatchState = {
   totalMatchTime: number;
   config: MatchConfig;
   stationStates: Partial<Record<StationName, StationControlState>>;
-  /** Map of station → DS IP address for stations with a connected Driver Station */
-  connectedStations: Partial<Record<StationName, string>>;
+  /** Map of station → DS connection info for stations with a connected Driver Station */
+  connectedStations: Partial<Record<StationName, DSConnectionInfo>>;
   endReason?: MatchEndReason;
 };
 

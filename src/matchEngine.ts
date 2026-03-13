@@ -41,7 +41,7 @@ export class MatchEngine {
   private prePausePhase: MatchPhase | null = null;
   private sequenceNumbers = new Map<StationName, number>();
   private stationStates = new Map<StationName, StationControlState>();
-  private dsAddresses = new Map<StationName, string>();
+  private dsConnections = new Map<StationName, { ip: string; lastSeen: number }>();
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
@@ -63,17 +63,37 @@ export class MatchEngine {
       this.sequenceNumbers.set(station, 0);
     }
     setInterval(() => this.sendJoinedHeartbeat(), HEARTBEAT_INTERVAL_MS);
+
+    // Sweep stale DS connections — if no packet in 20s (~3 missed heartbeats), clear
+    setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      for (const [station, conn] of this.dsConnections) {
+        if (now - conn.lastSeen > 20_000) {
+          this.dsConnections.delete(station);
+          changed = true;
+          console.log(`DS stale: ${station} (last seen ${Math.round((now - conn.lastSeen) / 1000)}s ago)`);
+        }
+      }
+      if (changed) this.broadcast();
+    }, 5_000);
   }
 
   setDSAddress(station: StationName, ip: string) {
-    if (this.dsAddresses.get(station) === ip) return;
-    this.dsAddresses.set(station, ip);
-    this.broadcast();
+    const now = Date.now();
+    const existing = this.dsConnections.get(station);
+    const ipChanged = !existing || existing.ip !== ip;
+    // Always update lastSeen, but only broadcast when the IP changed or
+    // enough time has passed to warrant a UI heartbeat update (~2s debounce).
+    this.dsConnections.set(station, { ip, lastSeen: now });
+    if (ipChanged || !existing || now - existing.lastSeen >= 2_000) {
+      this.broadcast();
+    }
   }
 
   clearDSAddress(station: StationName) {
-    if (!this.dsAddresses.has(station)) return;
-    this.dsAddresses.delete(station);
+    if (!this.dsConnections.has(station)) return;
+    this.dsConnections.delete(station);
     this.broadcast();
   }
 
@@ -315,7 +335,7 @@ export class MatchEngine {
       // Always expose config so clients can show/edit pending timing
       config: this.config ?? this.pendingConfig,
       stationStates,
-      connectedStations: Object.fromEntries(this.dsAddresses),
+      connectedStations: Object.fromEntries(this.dsConnections),
       endReason: this.phase === 'postMatch' ? this.endReason : undefined,
     };
   }
@@ -438,7 +458,7 @@ export class MatchEngine {
   }
 
   private sendDSPacket(station: StationName) {
-    const ip = this.dsAddresses.get(station);
+    const ip = this.dsConnections.get(station)?.ip;
     if (!ip) return;
 
     const state = this.stationStates.get(station)!;

@@ -13,22 +13,31 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import { StationMdnsActivity, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
+import GlobalStyles from '@mui/material/GlobalStyles';
+
+import { DSConnectionInfo, StationMdnsActivity, StationName, StationNetworkStats, StationSubnetScan } from '../../../src/types';
 import { allianceColor, describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
 import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
+
+const DS_PULSE_STYLES = {
+  '@keyframes ds-pulse': {
+    '0%': { transform: 'scale(1.8)', opacity: 1 },
+    '100%': { transform: 'scale(1)', opacity: 0.4 },
+  },
+} as const;
 
 function StationNetworkCard({
   station,
   stats,
   scan,
   mdns,
-  dsIp,
+  dsInfo,
 }: {
   station: StationName;
   stats?: StationNetworkStats;
   scan?: StationSubnetScan;
   mdns?: StationMdnsActivity;
-  dsIp?: string;
+  dsInfo?: DSConnectionInfo;
 }) {
   const team = scan?.team ?? mdns?.team;
 
@@ -45,9 +54,24 @@ function StationNetworkCard({
               </Typography>
             )}
           </Typography>
-          {dsIp && (
+          {dsInfo && (
             <Chip
-              label={`DS: ${dsIp}`}
+              key={dsInfo.lastSeen}
+              label={
+                <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <Box
+                    component="span"
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: 'success.main',
+                      animation: 'ds-pulse 2s ease-out forwards',
+                    }}
+                  />
+                  DS: {dsInfo.ip}
+                </Box>
+              }
               size="small"
               color="info"
               variant="outlined"
@@ -201,6 +225,7 @@ export function NetworkPage() {
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
+      <GlobalStyles styles={DS_PULSE_STYLES} />
       <Typography variant="h3" gutterBottom>
         Network Status
       </Typography>
@@ -213,7 +238,7 @@ export function NetworkPage() {
               stats={networkStats?.stations[s]}
               scan={subnetScan?.stations[s]}
               mdns={mdnsActivity?.stations[s]}
-              dsIp={matchState?.connectedStations[s]}
+              dsInfo={matchState?.connectedStations[s]}
             />
           ))}
         </Grid>
@@ -225,7 +250,7 @@ export function NetworkPage() {
               stats={networkStats?.stations[s]}
               scan={subnetScan?.stations[s]}
               mdns={mdnsActivity?.stations[s]}
-              dsIp={matchState?.connectedStations[s]}
+              dsInfo={matchState?.connectedStations[s]}
             />
           ))}
         </Grid>
