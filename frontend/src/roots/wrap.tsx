@@ -5,7 +5,6 @@ import Backdrop from '@mui/material/Backdrop';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { useHistory, useLatest, serverToBrowserTime } from '../hooks/useBackend.js';
-import GithubCorner from '../components/GithubCorner';
 import { StatusBar } from '../components/StatusBar';
 
 const EstimatedReconfigurationTime = 35; // seconds
@@ -108,7 +107,6 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               )}
             </Grid>
           </Backdrop>
-          <GithubCorner href="https://github.com/cinderblock/practice-field-wifi-configurator" />
         </ThemeProvider>
       </ErrorBoundary>
     </StrictMode>

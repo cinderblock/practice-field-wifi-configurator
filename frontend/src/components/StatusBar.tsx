@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
+import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import Button from '@mui/material/Button';
+import GitHubIcon from '@mui/icons-material/GitHub';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
 import { usePendingCommit, sendApplyConfig, useServerStartTime, serverToBrowserTime } from '../hooks/useBackend';
 
@@ -124,6 +126,18 @@ export function StatusBar() {
           </Button>
         </Tooltip>
       )}
+      <Tooltip title="View source on GitHub" arrow>
+        <IconButton
+          component="a"
+          href="https://github.com/cinderblock/practice-field-wifi-configurator"
+          target="_blank"
+          rel="noopener"
+          size="small"
+          sx={{ ml: 'auto', p: 0, color: 'text.secondary' }}
+        >
+          <GitHubIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }
