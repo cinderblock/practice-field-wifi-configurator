@@ -41,7 +41,7 @@ export class MatchEngine {
   private prePausePhase: MatchPhase | null = null;
   private sequenceNumbers = new Map<StationName, number>();
   private stationStates = new Map<StationName, StationControlState>();
-  private dsConnections = new Map<StationName, { ip: string; lastSeen: number }>();
+  private dsConnections = new Map<StationName, { ip: string; lastSeen: number; blockedDsIps?: string[] }>();
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
@@ -85,10 +85,17 @@ export class MatchEngine {
     const ipChanged = !existing || existing.ip !== ip;
     // Always update lastSeen, but only broadcast when the IP changed or
     // enough time has passed to warrant a UI heartbeat update (~2s debounce).
-    this.dsConnections.set(station, { ip, lastSeen: now });
+    this.dsConnections.set(station, { ip, lastSeen: now, blockedDsIps: existing?.blockedDsIps });
     if (ipChanged || !existing || now - existing.lastSeen >= 2_000) {
       this.broadcast();
     }
+  }
+
+  setBlockedDS(station: StationName, blockedIps: string[] | undefined) {
+    const existing = this.dsConnections.get(station);
+    if (!existing) return;
+    existing.blockedDsIps = blockedIps;
+    this.broadcast();
   }
 
   clearDSAddress(station: StationName) {

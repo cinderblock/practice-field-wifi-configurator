@@ -349,6 +349,97 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       return `10.${high}.${low}.${VlanHostOctet}`;
     }
 
+    // Track which DS IPs have active TCP connections (refcounted by fmsServer).
+    // Used to prevent DNAT thrashing when two DSes compete for the same station.
+    const connectedDsIps = new Set<string>();
+
+    // Synchronous record of the accepted DS IP per station. Updated immediately
+    // in trySetDSAddress (before the async addDnatRule resolves) to close the race
+    // window where a second DS could sneak in during the first DS's iptables call.
+    const acceptedDsForStation = new Map<StationName, string>();
+
+    // Track blocked (duplicate) DS IPs per station. Multiple DSes can be blocked
+    // simultaneously (e.g. someone opens 3 Driver Stations). Map: station → ip → vlanInterface
+    const blockedDsRules = new Map<StationName, Map<string, string>>();
+
+    /** Block a duplicate DS from forwarding packets to the robot's VLAN. */
+    async function blockDuplicateDS(station: StationName, dsIp: string) {
+      if (!net || !VlanInterface) return;
+      let stationBlocks = blockedDsRules.get(station);
+      if (stationBlocks?.has(dsIp)) return; // Already blocked
+      if (!stationBlocks) {
+        stationBlocks = new Map();
+        blockedDsRules.set(station, stationBlocks);
+      }
+      const vlanInterface = `${VlanInterface}.${station}`;
+      await net.iptables({
+        action: '-I',
+        chain: 'FORWARD',
+        source: dsIp,
+        outInterface: vlanInterface,
+        jump: 'DROP',
+        comment: `${IPTABLES_COMMENT_PREFIX}block-dup-ds-${station}`,
+      });
+      stationBlocks.set(dsIp, vlanInterface);
+      console.warn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${vlanInterface})`);
+      matchEngine.setBlockedDS(station, [...stationBlocks!.keys()]);
+    }
+
+    /** Remove the FORWARD DROP rule for one blocked DS. */
+    async function unblockDS(station: StationName, dsIp: string) {
+      if (!net) return;
+      const stationBlocks = blockedDsRules.get(station);
+      const vlanInterface = stationBlocks?.get(dsIp);
+      if (!vlanInterface) return;
+      await net.iptables({
+        action: '-D',
+        chain: 'FORWARD',
+        source: dsIp,
+        outInterface: vlanInterface,
+        jump: 'DROP',
+        comment: `${IPTABLES_COMMENT_PREFIX}block-dup-ds-${station}`,
+      });
+      stationBlocks!.delete(dsIp);
+      if (stationBlocks!.size === 0) blockedDsRules.delete(station);
+      console.log(`Unblocked duplicate DS ${dsIp} for ${station}`);
+      const remaining = blockedDsRules.get(station);
+      matchEngine.setBlockedDS(station, remaining ? [...remaining.keys()] : undefined);
+    }
+
+    /** Remove all FORWARD DROP rules for a station. */
+    async function unblockAllDS(station: StationName) {
+      const stationBlocks = blockedDsRules.get(station);
+      if (!stationBlocks) return;
+      for (const ip of [...stationBlocks.keys()]) {
+        await unblockDS(station, ip);
+      }
+    }
+
+    /**
+     * Attempt to set the DS address for a station. Returns true if accepted,
+     * false if this DS was blocked as a duplicate.
+     */
+    function trySetDSAddress(station: StationName, dsIp: string): boolean {
+      const accepted = acceptedDsForStation.get(station);
+      // Same IP as current — always accept (idempotent)
+      if (!accepted || accepted === dsIp) {
+        acceptedDsForStation.set(station, dsIp);
+        matchEngine.setDSAddress(station, dsIp);
+        return true;
+      }
+      // Different IP, but current DS still has an active TCP connection — block this one
+      if (connectedDsIps.has(accepted)) {
+        blockDuplicateDS(station, dsIp).catch(err => {
+          console.error(`Failed to block duplicate DS for ${station}:`, err);
+        });
+        return false;
+      }
+      // Current DS is gone — accept the new one
+      acceptedDsForStation.set(station, dsIp);
+      matchEngine.setDSAddress(station, dsIp);
+      return true;
+    }
+
     /**
      * Add a PREROUTING DNAT rule so all UDP from the robot destined for
      * the gateway (MASQUERADE source) gets forwarded to the real DS laptop
@@ -363,7 +454,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       const gatewayIp = teamGatewayIp(team);
       const existing = activeDnatRules.get(station);
       if (existing?.dsIp === dsIp) return; // Already set, idempotent
-      if (existing) await removeDnatRule(station); // Different DS, remove old rule first
+      // Don't swap DNAT to a different DS if the current one still has an active
+      // TCP connection — prevents thrashing when two DSes compete for one station.
+      if (existing && connectedDsIps.has(existing.dsIp)) return;
+      if (existing) await removeDnatRule(station); // Current DS disconnected, swap to new one
       await net.iptables({
         action: '-A',
         table: 'nat',
@@ -414,7 +508,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       console.log(`DNAT rule removed: ${station}`);
     }
 
-    // Clean up DNAT rules when stations are deconfigured or team changes
+    // Clean up DNAT and blocked DS rules when stations are deconfigured or team changes
     radioManager.addConfigChangeListener(() => {
       for (const [station, existing] of [...activeDnatRules]) {
         const team = radioManager.getTeamForStation(station);
@@ -422,6 +516,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           removeDnatRule(station).catch(err => {
             console.error(`Failed to remove DNAT rule for ${station}:`, err);
           });
+          unblockAllDS(station).catch(err => {
+            console.error(`Failed to unblock DSes for ${station}:`, err);
+          });
+          acceptedDsForStation.delete(station);
           matchEngine.clearDSAddress(station);
         }
       }
@@ -429,6 +527,30 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
     runFMS().then(fms => {
       if (!fms) return;
+
+      fms.on('dsConnected', ({ address }) => connectedDsIps.add(address));
+      fms.on('dsDisconnected', ({ address }) => {
+        connectedDsIps.delete(address);
+        // Clean up blocked/primary DS state when a DS disconnects
+        for (const [station, rule] of [...activeDnatRules]) {
+          if (rule.dsIp === address) {
+            // Primary DS disconnected — clear accepted state and unblock all.
+            // Blocked DSes will compete on their next heartbeat via trySetDSAddress.
+            acceptedDsForStation.delete(station);
+            unblockAllDS(station).catch(err => {
+              console.error(`Failed to unblock DSes for ${station}:`, err);
+            });
+          }
+        }
+        for (const [station, stationBlocks] of [...blockedDsRules]) {
+          if (stationBlocks.has(address)) {
+            // Blocked DS disconnected — clean up its FORWARD DROP rule
+            unblockDS(station, address).catch(err => {
+              console.error(`Failed to unblock DS ${address} for ${station}:`, err);
+            });
+          }
+        }
+      });
 
       // Track which stations have already had checks triggered this session,
       // so we don't re-run on every DS UDP heartbeat.
@@ -460,7 +582,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
               .then(station => {
                 station ??= radioManager.getStationForTeam(teamNumber);
                 if (station) {
-                  matchEngine.setDSAddress(station, address);
+                  if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
                   addDnatRule(station, address);
                   if (!checksTriggered.has(station)) {
                     checksTriggered.add(station);
@@ -476,7 +598,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
             // Common case: unique team numbers — direct lookup, no subprocess needed
             const station = radioManager.getStationForTeam(teamNumber);
             if (station) {
-              matchEngine.setDSAddress(station, address);
+              if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
               addDnatRule(station, address);
               if (!checksTriggered.has(station)) {
                 checksTriggered.add(station);

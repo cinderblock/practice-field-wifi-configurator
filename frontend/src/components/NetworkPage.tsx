@@ -1,3 +1,4 @@
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -92,6 +93,14 @@ function StationNetworkCard({
             />
           )}
         </Box>
+
+        {dsInfo?.blockedDsIps && dsInfo.blockedDsIps.length > 0 && (
+          <Alert severity="warning" sx={{ mb: 1, py: 0, fontSize: '0.8rem' }}>
+            {dsInfo.blockedDsIps.length === 1 ? 'Second' : `${dsInfo.blockedDsIps.length} extra`} DS blocked:{' '}
+            <strong>{dsInfo.blockedDsIps.join(', ')}</strong> — only {dsInfo.ip} can control this station. Close the
+            other Driver Station{dsInfo.blockedDsIps.length > 1 ? 's' : ''}.
+          </Alert>
+        )}
 
         {/* Forwarding Counters */}
         {stats ? (

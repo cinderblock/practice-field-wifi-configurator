@@ -393,6 +393,8 @@ export type DSConnectionInfo = {
   ip: string;
   /** Server timestamp (Date.now()) of the last packet received from this DS */
   lastSeen: number;
+  /** If set, these DS IPs are trying to connect and are being blocked */
+  blockedDsIps?: string[];
 };
 
 export type MatchState = {
