@@ -55,6 +55,9 @@ function UptimeDisplay({ serverStartTime }: { serverStartTime: number }) {
     return () => clearInterval(interval);
   }, [serverStartTime]);
 
+  // Hide after 1 hour — uptime is only interesting shortly after a restart
+  if (uptime >= 3_600_000) return null;
+
   return (
     <Tooltip title="Backend uptime" arrow>
       <Typography
