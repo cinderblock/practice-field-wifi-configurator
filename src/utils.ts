@@ -23,6 +23,7 @@ export function formatDuration(since: number): string {
 }
 
 export function describeIp(host: DiscoveredHost): string | null {
+  if (host.source === 'conntrack') return 'Guest Network';
   const lastOctet = parseInt(host.ip.split('.')[3]);
   if (lastOctet === 1) return 'Radio';
   if (lastOctet === 2) return 'roboRIO';

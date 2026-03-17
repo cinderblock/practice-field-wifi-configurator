@@ -583,6 +583,8 @@ export interface DiscoveredHost {
   lastSeen: number;
   /** Start of the current consecutive-alive streak (reset when host goes down) */
   onlineSince: number;
+  /** How this host was discovered: 'fping' (team subnet scan) or 'conntrack' (guest network flow) */
+  source?: 'fping' | 'conntrack';
 }
 
 export interface StationSubnetScan {

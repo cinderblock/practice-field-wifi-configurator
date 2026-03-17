@@ -161,7 +161,18 @@ function StationNetworkCard({
               <TableBody>
                 {scan.hosts.map(host => (
                   <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
-                    <TableCell sx={{ fontFamily: 'monospace', py: 0.5 }}>{host.ip}</TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', py: 0.5 }}>
+                      {host.ip}
+                      {host.source === 'conntrack' && (
+                        <Chip
+                          label="Guest"
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          sx={{ ml: 0.75, height: 18, fontSize: '0.6rem' }}
+                        />
+                      )}
+                    </TableCell>
                     <TableCell sx={{ py: 0.5 }}>
                       <Chip
                         label={host.alive ? 'UP' : 'DOWN'}
