@@ -88,6 +88,7 @@ export function StatusBar() {
   return (
     <Box
       sx={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -133,7 +134,7 @@ export function StatusBar() {
           target="_blank"
           rel="noopener"
           size="small"
-          sx={{ ml: 'auto', p: 0, color: 'text.secondary' }}
+          sx={{ position: 'absolute', right: 4, p: 0, color: 'text.secondary' }}
         >
           <GitHubIcon sx={{ fontSize: 14 }} />
         </IconButton>
