@@ -1,7 +1,7 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { RobotTestState, RobotTestPhase, CheckResult } from './types.js';
-import { checkRadio, checkRoboRIO, teamSubnet } from './teamChecker.js';
+import { checkRadio, checkRoboRIO, checkTeamConsistency, teamSubnet } from './teamChecker.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
 const execFile = promisify(execFileCb);
@@ -259,11 +259,12 @@ export class RobotTestMonitor {
     this.broadcast();
 
     try {
-      const [radioResults, rioResults] = await Promise.all([
+      const [radioResults, rioResults, consistencyResults] = await Promise.all([
         checkRadio(this.teamNumber),
         checkRoboRIO(this.teamNumber),
+        checkTeamConsistency(this.teamNumber),
       ]);
-      this.checks = [...radioResults, ...rioResults];
+      this.checks = [...consistencyResults, ...radioResults, ...rioResults];
       this.phase = 'complete';
     } catch (err) {
       console.error('RobotTestMonitor: check error:', err);

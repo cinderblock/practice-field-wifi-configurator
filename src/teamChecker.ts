@@ -271,6 +271,111 @@ export async function checkRoboRIO(team: number, extraIps: string[] = []): Promi
   return checks;
 }
 
+// ── Team number consistency ─────────────────────────────────────────
+
+/** Extract a team number from an SSID like "1234" or "1234-Comp". */
+function teamFromSsid(ssid: string): number | null {
+  const match = ssid.match(/^(\d{1,5})/);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return num > 0 && num <= 25599 ? num : null;
+}
+
+/** Extract a team number from a roboRIO hostname like "roboRIO-1234-FRC". */
+function teamFromHostname(hostname: string): number | null {
+  const match = hostname.match(/^roboRIO-(\d+)-FRC$/i);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return num > 0 && num <= 25599 ? num : null;
+}
+
+/**
+ * Verify team number consistency across DHCP range, radio SSID, and roboRIO hostname.
+ * The `dhcpTeam` is derived from the DHCP-assigned IP (10.TE.AM.x).
+ */
+export async function checkTeamConsistency(dhcpTeam: number): Promise<CheckResult[]> {
+  const sources: { source: string; team: number }[] = [{ source: 'DHCP', team: dhcpTeam }];
+  const problems: string[] = [];
+
+  // Try to get team from radio
+  const radioIp = `${teamSubnet(dhcpTeam)}.1`;
+  try {
+    const res = await fetchWithTimeout(`http://${radioIp}/status`);
+    if (res.ok) {
+      const data = (await res.json()) as Record<string, unknown>;
+      // Robot radios report teamNumber directly; fall back to parsing SSID
+      let radioTeam: number | null = null;
+      let radioLabel = 'Radio';
+      if (typeof data.teamNumber === 'number') {
+        radioTeam = data.teamNumber;
+        radioLabel = `Radio (team ${radioTeam})`;
+      } else {
+        // Try SSID from networkStatus6 (6 GHz band, uses team-only SSID) or top-level
+        const ssid =
+          (data.networkStatus6 as { ssid?: string } | undefined)?.ssid ??
+          (typeof data.ssid === 'string' ? data.ssid : undefined);
+        if (ssid) {
+          radioTeam = teamFromSsid(ssid);
+          radioLabel = `Radio SSID (${ssid})`;
+        }
+      }
+      if (radioTeam) {
+        sources.push({ source: radioLabel, team: radioTeam });
+        if (radioTeam !== dhcpTeam) problems.push(`${radioLabel} → team ${radioTeam}`);
+      }
+    }
+  } catch {
+    // Radio unreachable — skip, other checks will report this
+  }
+
+  // Try to get team from roboRIO hostname
+  const rioIp = expectedIP(dhcpTeam);
+  try {
+    const res = await fetchWithTimeout(`http://${rioIp}/nisysapi/server`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/xml' },
+      body: 'Function=SearchForItemsAndProperties&Version=00010001&response_encoding=UTF-8&Plugins=nisyscfg&FilterMode=00000002',
+    });
+    if (res.ok) {
+      const xml = await res.text();
+      const bags = parseNISysAPIResponse(xml);
+      const systemBag = bags.find(b => b.itemName.endsWith('/system'));
+      const hostname = systemBag?.properties.get(TAG_HOSTNAME);
+      if (hostname) {
+        const rioTeam = teamFromHostname(hostname);
+        if (rioTeam) {
+          sources.push({ source: `roboRIO (${hostname})`, team: rioTeam });
+          if (rioTeam !== dhcpTeam) problems.push(`roboRIO hostname "${hostname}" → team ${rioTeam}`);
+        }
+      }
+    }
+  } catch {
+    // RIO unreachable — skip
+  }
+
+  if (problems.length > 0) {
+    return [
+      {
+        name: 'Team Consistency',
+        status: 'fail',
+        expected: `All devices: team ${dhcpTeam}`,
+        actual: sources.map(s => `${s.source}: ${s.team}`).join(', '),
+        message: `Team number mismatch: ${problems.join('; ')}`,
+      },
+    ];
+  }
+
+  // All sources agree (or only DHCP was available)
+  const detail = sources.length > 1 ? sources.map(s => s.source).join(', ') : 'DHCP only';
+  return [
+    {
+      name: 'Team Consistency',
+      status: 'pass',
+      actual: `Team ${dhcpTeam} (${detail})`,
+    },
+  ];
+}
+
 // ── TeamChecker (station-based wrapper) ─────────────────────────────
 
 type HostLookup = (station: StationName) => DiscoveredHost[];
