@@ -108,22 +108,24 @@ export function handleScoringRequest(
           errors: [],
         };
 
-        for (const event of events) {
-          if (!isScoreEvent(event)) {
-            results.rejected++;
-            results.errors.push(`Invalid event: ${JSON.stringify(event)}`);
-            continue;
+        engine.batch(() => {
+          for (const event of events) {
+            if (!isScoreEvent(event)) {
+              results.rejected++;
+              results.errors.push(`Invalid event: ${JSON.stringify(event)}`);
+              continue;
+            }
+            const result = engine.submitEvent(event);
+            if (result === 'unknown_element') {
+              results.rejected++;
+              results.errors.push(`Unknown element "${event.element}" (configure it via PUT /api/score/config first)`);
+            } else if (result === 'deduplicated') {
+              results.deduplicated++;
+            } else {
+              results.accepted++;
+            }
           }
-          const result = engine.submitEvent(event);
-          if (result === 'unknown_element') {
-            results.rejected++;
-            results.errors.push(`Unknown element "${event.element}" (configure it via PUT /api/score/config first)`);
-          } else if (result === 'deduplicated') {
-            results.deduplicated++;
-          } else {
-            results.accepted++;
-          }
-        }
+        });
 
         json(res, results.rejected > 0 ? 207 : 200, results);
       })

@@ -32,6 +32,7 @@ export class ScoringEngine {
   private windowTimer: NodeJS.Timeout | null = null;
   private windowTimerTarget: number | undefined;
   private autoRegisterLimit = 1;
+  private suppressBroadcast = false;
   private listeners: ((state: ScoreState) => void)[] = [];
 
   /** Set the maximum number of elements that can be auto-registered from incoming events. */
@@ -123,6 +124,21 @@ export class ScoringEngine {
 
     this.broadcast();
     return processed.deduplicated ? 'deduplicated' : processed;
+  }
+
+  /** Process multiple events with a single broadcast at the end (if any changed state). */
+  batch(fn: () => void): void {
+    const eventsBefore = this.events.length;
+    const elementsBefore = this.elements.size;
+    this.suppressBroadcast = true;
+    try {
+      fn();
+    } finally {
+      this.suppressBroadcast = false;
+      if (this.events.length !== eventsBefore || this.elements.size !== elementsBefore) {
+        this.broadcast();
+      }
+    }
   }
 
   /** Configure a scoring element. */
@@ -365,6 +381,7 @@ export class ScoringEngine {
   }
 
   private broadcast(): void {
+    if (this.suppressBroadcast) return;
     const state = this.getState();
     for (const listener of this.listeners) {
       try {
