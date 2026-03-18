@@ -2,22 +2,53 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-import type { ScoreState } from '../../../src/types';
 import { useScoreState } from '../hooks/useBackend';
+
+const CAST_APP_ID = typeof __CAST_APP_ID__ !== 'undefined' ? __CAST_APP_ID__ : '';
 
 /**
  * Full-screen scoreboard designed for casting to a TV on the LAN.
  * Dark background, large numbers, auto-updating via WebSocket.
+ * Also serves as a Google Cast custom receiver when loaded on a Chromecast.
  * Access at /scores
  */
 export function ScoreboardPage() {
   const score = useScoreState();
   const [, setTick] = useState(0);
+  const [castAvailable, setCastAvailable] = useState(false);
 
   // Re-render every second for sliding window countdown
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Initialize Cast Receiver (when running on a Chromecast)
+  useEffect(() => {
+    try {
+      if (typeof cast !== 'undefined' && cast.framework?.CastReceiverContext) {
+        cast.framework.CastReceiverContext.getInstance().start();
+      }
+    } catch {
+      // Not on a Chromecast — ignore
+    }
+  }, []);
+
+  // Initialize Cast Sender (when running in a normal browser)
+  useEffect(() => {
+    if (!CAST_APP_ID) return;
+    window.__onGCastApiAvailable = (isAvailable: boolean) => {
+      if (!isAvailable) return;
+      try {
+        cast.framework.CastContext.getInstance().setOptions({
+          receiverApplicationId: CAST_APP_ID,
+          autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+        });
+        setCastAvailable(true);
+      } catch {
+        // Cast SDK not available
+      }
+    };
   }, []);
 
   if (!score) {
@@ -44,6 +75,13 @@ export function ScoreboardPage() {
         userSelect: 'none',
       }}
     >
+      {/* Cast button — top right, only shown when Cast SDK is available */}
+      {castAvailable && (
+        <Box sx={{ position: 'absolute', top: 12, right: 16 }}>
+          <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
+        </Box>
+      )}
+
       {/* Main score display */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
         <AllianceScore alliance="red" total={score.red.total} />
