@@ -25,13 +25,15 @@ function teamFromIp(ip: string): number | null {
   return team > 0 && team <= 25599 ? team : null;
 }
 
-/** Read the first IPv4 address assigned to an interface via `ip`. */
-async function getInterfaceIp(iface: string): Promise<{ ip: string; router?: string } | null> {
+/** Read the DHCP-assigned IPv4 address on an interface, skipping any static addresses we added. */
+async function getInterfaceIp(iface: string, excludeIps: string[] = []): Promise<{ ip: string } | null> {
   try {
     const { stdout } = await execFile('ip', ['-j', 'addr', 'show', 'dev', iface]);
     const data = JSON.parse(stdout);
     if (!data[0]?.addr_info) return null;
-    const v4 = data[0].addr_info.find((a: { family: string }) => a.family === 'inet');
+    const v4 = data[0].addr_info.find(
+      (a: { family: string; local: string }) => a.family === 'inet' && !excludeIps.includes(a.local),
+    );
     if (!v4) return null;
     return { ip: v4.local };
   } catch {
@@ -256,7 +258,7 @@ export class RobotTestMonitor {
   private async handleDhcpSuccess(): Promise<void> {
     try {
       // Read the assigned IP directly from the interface
-      const addr = await getInterfaceIp(this.interfaceName);
+      const addr = await getInterfaceIp(this.interfaceName, [FACTORY_PROBE_IP]);
       if (!addr) {
         console.log('RobotTestMonitor: dhcpcd succeeded but no IP on interface');
         return;
