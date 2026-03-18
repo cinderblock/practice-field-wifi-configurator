@@ -1,6 +1,6 @@
 import type { StationName, CheckResult, TeamCheckResults, DiscoveredHost } from './types.js';
 
-const FETCH_TIMEOUT = 3000;
+const FETCH_TIMEOUT = 750;
 
 // ── Help URLs ───────────────────────────────────────────────────────
 
@@ -84,6 +84,28 @@ function parseNISysAPIResponse(xml: string): NISysAPIBag[] {
 }
 
 // ── Standalone check functions ──────────────────────────────────────
+
+const FACTORY_DEFAULT_IP = '192.168.69.1';
+
+/** Check if the radio is reachable at the factory default IP (192.168.69.1). */
+export async function checkFactoryDefault(): Promise<CheckResult[]> {
+  try {
+    const res = await fetchWithTimeout(`http://${FACTORY_DEFAULT_IP}/status`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { teamNumber?: number; version?: string };
+    return [
+      {
+        name: 'Factory Default Radio',
+        status: 'warn',
+        actual: `Reachable at ${FACTORY_DEFAULT_IP}${data.teamNumber ? ` (team ${data.teamNumber})` : ''}${data.version ? `, ${data.version}` : ''}`,
+        message: 'Radio is responding on factory default IP — this may indicate an unconfigured or reset radio',
+      },
+    ];
+  } catch {
+    // Not reachable — normal, no result needed
+    return [];
+  }
+}
 
 function evaluateSystemCore(data: { systemcoreEnabled?: boolean; version?: string }): CheckResult {
   if (data.systemcoreEnabled === undefined) {

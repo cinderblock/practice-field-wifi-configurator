@@ -1,13 +1,18 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { RobotTestState, RobotTestPhase, CheckResult } from './types.js';
-import { checkRadio, checkRoboRIO, checkTeamConsistency, teamSubnet } from './teamChecker.js';
+import type { RobotTestState, RobotTestPhase, CheckResult, FirmwareUpdateProgress } from './types.js';
+import { checkRadio, checkRoboRIO, checkTeamConsistency, checkFactoryDefault } from './teamChecker.js';
+import { updateRadioFirmware } from './firmwareUpdater.js';
+import type { FirmwareStore } from './firmwareStore.js';
 import type { NetworkBackend } from './node-ip/index.js';
 
 const execFile = promisify(execFileCb);
 
 const LINK_POLL_MS = 200;
-const CHECK_INTERVAL_MS = 10_000;
+const CHECK_INTERVAL_MS = 5_000;
+/** Secondary IP added to the test interface so we can reach factory-default radios at 192.168.69.1. */
+const FACTORY_PROBE_IP = '192.168.69.8';
+const FACTORY_PROBE_PREFIX = 24;
 
 /** Parse a team number from an IP in the 10.TE.AM.x range. */
 function teamFromIp(ip: string): number | null {
@@ -57,11 +62,16 @@ export class RobotTestMonitor {
   private checkTimer: NodeJS.Timeout | null = null;
   private dhcpProc: ChildProcess | null = null;
   private checking = false;
+  private firmwareUpdating = false;
+  /** True if the interface is a VLAN sub-interface (link state mirrors parent, not meaningful). */
+  private skipLinkDetection = false;
 
   constructor(
     private readonly interfaceName: string,
     private readonly net: NetworkBackend,
     private readonly onStateChange: (state: RobotTestState) => void,
+    private readonly onFirmwareProgress?: (progress: FirmwareUpdateProgress) => void,
+    private readonly firmwareStore?: FirmwareStore,
     private readonly dryRun = false,
   ) {}
 
@@ -69,6 +79,22 @@ export class RobotTestMonitor {
     console.log(`RobotTestMonitor: starting on ${this.interfaceName}`);
     if (!this.dryRun) {
       await this.net.setInterfaceUp(this.interfaceName);
+      // Detect if this is a VLAN sub-interface — link state mirrors the parent
+      // and is meaningless for detecting whether a robot is plugged in.
+      try {
+        const interfaces = await this.net.listInterfaces(this.interfaceName);
+        const iface = interfaces[0];
+        if (iface?.link?.kind === 'vlan' || this.interfaceName.includes('.')) {
+          this.skipLinkDetection = true;
+          console.log(`RobotTestMonitor: ${this.interfaceName} is a VLAN — skipping link detection`);
+        }
+      } catch {
+        // Fall back to link detection
+      }
+    }
+    if (this.skipLinkDetection) {
+      // VLAN interface: treat as always linked, go straight to DHCP
+      this.handleLinkUp();
     }
     this.linkPollTimer = setInterval(() => this.pollLink(), LINK_POLL_MS);
     this.broadcast();
@@ -102,6 +128,7 @@ export class RobotTestMonitor {
   // ── Link detection ────────────────────────────────────────────────
 
   private async pollLink(): Promise<void> {
+    if (this.skipLinkDetection) return; // VLAN: link state is meaningless
     try {
       const interfaces = await this.net.listInterfaces(this.interfaceName);
       const iface = interfaces[0];
@@ -129,6 +156,16 @@ export class RobotTestMonitor {
     this.phase = 'link_up';
     console.log(`RobotTestMonitor: link UP on ${this.interfaceName}`);
     this.broadcast();
+    // Add secondary IP for factory-default radio detection (192.168.69.1)
+    if (!this.dryRun) {
+      this.net
+        .addAddress({
+          interfaceName: this.interfaceName,
+          address: FACTORY_PROBE_IP,
+          prefixLength: FACTORY_PROBE_PREFIX,
+        })
+        .catch(() => {}); // May already exist from a previous link cycle
+    }
     this.startDhcp();
   }
 
@@ -167,9 +204,13 @@ export class RobotTestMonitor {
     // dhcpcd --oneshot: obtain a lease and exit
     // --nobackground: stay in foreground (we manage the process)
     // --waitip 4: wait until an IPv4 address is assigned
-    const proc = spawn('dhcpcd', ['--oneshot', '--nobackground', '--waitip', '4', this.interfaceName], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const proc = spawn(
+      'dhcpcd',
+      ['--oneshot', '--nobackground', '--waitip', '4', '--timeout', '1', this.interfaceName],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     this.dhcpProc = proc;
 
     proc.on('error', err => {
@@ -179,7 +220,7 @@ export class RobotTestMonitor {
       if (this.linkUp) {
         setTimeout(() => {
           if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
-        }, 5000);
+        }, 1000);
       }
     });
 
@@ -202,11 +243,11 @@ export class RobotTestMonitor {
         for (const line of output.trim().split('\n')) {
           console.log(`  dhcpcd: ${line}`);
         }
-        // Retry after a delay if link is still up
+        // Retry after a short delay if link is still up
         if (this.linkUp) {
           setTimeout(() => {
             if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
-          }, 2000);
+          }, 500);
         }
       }
     });
@@ -259,13 +300,22 @@ export class RobotTestMonitor {
     this.broadcast();
 
     try {
-      const [radioResults, rioResults, consistencyResults] = await Promise.all([
+      const [radioResults, rioResults, consistencyResults, factoryResult] = await Promise.all([
         checkRadio(this.teamNumber),
         checkRoboRIO(this.teamNumber),
         checkTeamConsistency(this.teamNumber),
+        checkFactoryDefault(),
       ]);
-      this.checks = [...consistencyResults, ...radioResults, ...rioResults];
+      this.checks = [...consistencyResults, ...factoryResult, ...radioResults, ...rioResults];
       this.phase = 'complete';
+
+      // Trigger background firmware download if the radio needs an update
+      if (this.firmwareStore) {
+        const fwCheck = radioResults.find(c => c.name === 'Radio Firmware');
+        if (fwCheck?.status === 'fail') {
+          this.firmwareStore.startBackgroundDownloads();
+        }
+      }
     } catch (err) {
       console.error('RobotTestMonitor: check error:', err);
     } finally {
@@ -284,6 +334,52 @@ export class RobotTestMonitor {
     if (this.checkTimer) {
       clearTimeout(this.checkTimer);
       this.checkTimer = null;
+    }
+  }
+
+  // ── Firmware update ──────────────────────────────────────────────
+
+  /** Check if the radio's current firmware needs an update. */
+  radioNeedsFirmwareUpdate(): boolean {
+    const fwCheck = this.checks.find(c => c.name === 'Radio Firmware');
+    return fwCheck?.status === 'fail';
+  }
+
+  /** Run the full firmware update flow. Throws on failure. */
+  async startFirmwareUpdate(
+    wpaKey: string | undefined,
+    wpaKey24: string | undefined,
+    skipReconfigure = false,
+  ): Promise<void> {
+    if (this.firmwareUpdating) throw new Error('Firmware update already in progress');
+    if (!this.teamNumber) throw new Error('No team number detected — plug in a robot first');
+    if (!this.linkUp) throw new Error('Link is down — plug in a cable first');
+    if (!skipReconfigure && !wpaKey)
+      throw new Error('WPA passphrase required for reconfiguration (or check "Skip reconfiguration")');
+    if (!this.firmwareStore) throw new Error('Firmware store not configured');
+
+    this.firmwareUpdating = true;
+    this.stopChecking();
+
+    const startTime = Date.now();
+    const sendProgress = (p: Omit<FirmwareUpdateProgress, 'type' | 'elapsedMs'>) => {
+      this.onFirmwareProgress?.({ type: 'firmwareUpdateProgress', elapsedMs: Date.now() - startTime, ...p });
+    };
+
+    try {
+      await updateRadioFirmware(this.teamNumber, wpaKey, wpaKey24, skipReconfigure, this.firmwareStore, sendProgress);
+      // Re-run checks after successful update
+      this.runChecks();
+    } catch (err) {
+      sendProgress({
+        step: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        progress: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    } finally {
+      this.firmwareUpdating = false;
     }
   }
 

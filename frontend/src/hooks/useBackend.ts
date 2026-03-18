@@ -20,8 +20,11 @@ import {
   isPendingCommitState,
   isServerInfo,
   isRobotTestState,
+  isFirmwareUpdateProgress,
   RoutePreferenceState,
   RobotTestState,
+  FirmwareUpdateProgress,
+  FirmwareUpdateRequest,
   PendingCommitState,
   ServerInfo,
   RoutePreferenceMsg,
@@ -382,6 +385,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isFirmwareUpdateProgress(detail)) {
+    handleFirmwareProgress(detail);
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -659,6 +667,39 @@ export function useRobotTestState(): RobotTestState | null {
   }, []);
 
   return state;
+}
+
+// ── Firmware Update Progress ─────────────────────────────────────────
+
+let currentFirmwareProgress: FirmwareUpdateProgress | null = null;
+
+function handleFirmwareProgress(progress: FirmwareUpdateProgress) {
+  currentFirmwareProgress = progress;
+  events.dispatchEvent(new CustomEvent('firmwareProgress', { detail: progress }));
+}
+
+export function useFirmwareUpdateProgress(): FirmwareUpdateProgress | null {
+  const [progress, setProgress] = useState<FirmwareUpdateProgress | null>(currentFirmwareProgress);
+
+  useEffect(() => {
+    setProgress(currentFirmwareProgress);
+    const handler = (e: Event) => setProgress((e as CustomEvent<FirmwareUpdateProgress>).detail);
+    events.addEventListener('firmwareProgress', handler);
+    return () => events.removeEventListener('firmwareProgress', handler);
+  }, []);
+
+  return progress;
+}
+
+export function sendFirmwareUpdateRequest(wpaKey?: string, wpaKey24?: string, skipReconfigure?: boolean) {
+  ws?.send(
+    JSON.stringify({
+      type: 'firmwareUpdateRequest',
+      wpaKey,
+      wpaKey24,
+      skipReconfigure,
+    } satisfies FirmwareUpdateRequest),
+  );
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -239,6 +240,160 @@ export function AdminPage() {
       <GlobalEStopSection />
       <MatchStatusSection />
       <StationControlSection />
+      <FirmwareSection />
     </Container>
+  );
+}
+
+// ── Firmware Management ─────────────────────────────────────────────
+
+interface FirmwareEntry {
+  version: string;
+  checksum: string;
+  filePath?: string;
+  downloadUrl?: string;
+  upgradeFrom: string;
+  downloading?: boolean;
+}
+
+function FirmwareSection() {
+  const [entries, setEntries] = useState<FirmwareEntry[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadVersion, setUploadVersion] = useState('');
+  const [uploadChecksum, setUploadChecksum] = useState('');
+  const [uploadType, setUploadType] = useState<'from12x' | 'pre12x'>('from12x');
+  const [message, setMessage] = useState('');
+
+  const refreshEntries = useCallback(() => {
+    fetch('/api/firmware')
+      .then(r => r.json())
+      .then(data => setEntries(data.entries ?? []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshEntries();
+    const interval = setInterval(refreshEntries, 10_000);
+    return () => clearInterval(interval);
+  }, [refreshEntries]);
+
+  const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fileInput = form.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = fileInput?.files?.[0];
+    if (!file || !uploadVersion || !uploadChecksum) return;
+
+    setUploading(true);
+    setMessage('');
+    try {
+      const data = await file.arrayBuffer();
+      const params = new URLSearchParams({ checksum: uploadChecksum, version: uploadVersion, upgradeFrom: uploadType });
+      const res = await fetch(`/api/firmware/upload?${params}`, {
+        method: 'POST',
+        body: data,
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setMessage(`Uploaded: ${json.entry?.version ?? 'ok'}`);
+        refreshEntries();
+      } else {
+        setMessage(`Error: ${json.error}`);
+      }
+    } catch (err) {
+      setMessage(`Upload failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const triggerDownload = () => {
+    fetch('/api/firmware/download', { method: 'POST' }).then(() => {
+      setMessage('Background download started');
+      setTimeout(refreshEntries, 3000);
+    });
+  };
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Typography variant="h5" gutterBottom>
+          Radio Firmware
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Firmware files are downloaded automatically when internet is available. Upload manually if the server is
+          offline.
+        </Typography>
+
+        {entries.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            {entries.map((entry, i) => (
+              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <Chip
+                  label={entry.filePath ? 'Cached' : entry.downloading ? 'Downloading' : 'Missing'}
+                  size="small"
+                  color={entry.filePath ? 'success' : entry.downloading ? 'info' : 'warning'}
+                  variant={entry.filePath ? 'filled' : 'outlined'}
+                />
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                  v{entry.version} ({entry.upgradeFrom === 'from12x' ? '1.2.x+' : 'pre-1.2'})
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                  {entry.checksum.slice(0, 12)}...
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <Button size="small" variant="outlined" onClick={triggerDownload}>
+            Download from Internet
+          </Button>
+        </Box>
+
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Manual Upload
+        </Typography>
+        <form onSubmit={handleUpload}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <input type="file" accept=".enc,.bin,.img" required disabled={uploading} />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <input
+                type="text"
+                placeholder="Version (e.g. 2.0.1)"
+                value={uploadVersion}
+                onChange={e => setUploadVersion(e.target.value)}
+                required
+                style={{ flex: 1, padding: '4px 8px' }}
+              />
+              <input
+                type="text"
+                placeholder="SHA-256 checksum"
+                value={uploadChecksum}
+                onChange={e => setUploadChecksum(e.target.value)}
+                required
+                style={{ flex: 2, padding: '4px 8px', fontFamily: 'monospace' }}
+              />
+              <select value={uploadType} onChange={e => setUploadType(e.target.value as 'from12x' | 'pre12x')}>
+                <option value="from12x">From 1.2.x+</option>
+                <option value="pre12x">Pre-1.2</option>
+              </select>
+            </Box>
+            <Button type="submit" size="small" variant="contained" disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Upload Firmware'}
+            </Button>
+          </Box>
+        </form>
+        {message && (
+          <Typography
+            variant="body2"
+            sx={{ mt: 1, color: message.startsWith('Error') ? 'error.main' : 'success.main' }}
+          >
+            {message}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   );
 }

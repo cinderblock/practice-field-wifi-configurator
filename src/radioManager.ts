@@ -595,6 +595,16 @@ class RadioManager {
     return isNaN(num) ? null : num;
   }
 
+  /** Look up the WPA key for a team number from the active station configurations. */
+  getWpaKeyForTeam(team: number): string | null {
+    for (const config of Object.values(this.activeConfig)) {
+      if (!config?.ssid) continue;
+      const num = parseInt(config.ssid.split('-', 2)[0]);
+      if (num === team && config.wpaKey) return config.wpaKey;
+    }
+    return null;
+  }
+
   async setSyslogIP(ip: string): Promise<void> {
     return this.configureRadio({ syslogIpAddress: ip });
   }

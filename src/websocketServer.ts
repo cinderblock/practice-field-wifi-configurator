@@ -21,6 +21,7 @@ import {
   isRoutePreferenceMsg,
   isApplyConfig,
   isRunTeamChecks,
+  isFirmwareUpdateRequest,
   RoutePreferenceState,
   PendingCommitState,
   ServerInfo,
@@ -37,6 +38,8 @@ import {
   getConflictingTeams,
 } from './routePreferenceManager.js';
 
+export type HttpRequestHandler = (req: IncomingMessage, res: ServerResponse) => boolean;
+
 export interface WebSocketContext {
   server: ReturnType<typeof createServer>;
   wss: WebSocketServer;
@@ -47,6 +50,11 @@ export interface WebSocketContext {
 }
 
 export type RunTeamChecksCallback = (station: StationName) => void;
+export type FirmwareUpdateCallback = (
+  wpaKey: string | undefined,
+  wpaKey24: string | undefined,
+  skipReconfigure: boolean,
+) => void;
 
 export function setupWebSocket(
   radioManager: RadioManager,
@@ -54,6 +62,8 @@ export function setupWebSocket(
   port: number,
   trustedProxyMatcher?: CIDRMatcher,
   onRunTeamChecks?: RunTeamChecksCallback,
+  httpHandlers?: HttpRequestHandler[],
+  onFirmwareUpdate?: FirmwareUpdateCallback,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -65,7 +75,14 @@ export function setupWebSocket(
   const serverStartTime = Date.now();
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    // CORS headers
+    // Try registered HTTP handlers first (e.g. scoring API)
+    if (httpHandlers) {
+      for (const handler of httpHandlers) {
+        if (handler(req, res)) return;
+      }
+    }
+
+    // CORS headers for unhandled routes
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -256,6 +273,8 @@ export function setupWebSocket(
         });
       } else if (isRunTeamChecks(data)) {
         onRunTeamChecks?.(data.station);
+      } else if (isFirmwareUpdateRequest(data)) {
+        onFirmwareUpdate?.(data.wpaKey, data.wpaKey24, !!data.skipReconfigure);
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

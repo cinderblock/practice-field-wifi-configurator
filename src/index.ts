@@ -23,6 +23,8 @@ import { SubnetScanner } from './subnetScanner.js';
 import { MdnsReflector } from './mdnsReflector.js';
 import { TeamChecker } from './teamChecker.js';
 import { RobotTestMonitor } from './robotTestMonitor.js';
+import { FirmwareStore } from './firmwareStore.js';
+import { handleFirmwareRequest } from './firmwareApi.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -136,6 +138,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     WebSocketPort,
     trustedProxyMatcher,
     station => onRunTeamChecks?.(station),
+    [
+      (req, res) => handleFirmwareRequest(req, res, firmwareStore),
+    ],
+    (wpaKey, wpaKey24, skipReconfigure) => {
+      if (!robotTestMonitor) return;
+      // Auto-detect WPA key from active station config if not provided
+      const team = robotTestMonitor.getState().teamNumber;
+      const resolvedKey = wpaKey || (team ? (radioManager.getWpaKeyForTeam(team) ?? undefined) : undefined);
+      robotTestMonitor.startFirmwareUpdate(resolvedKey, wpaKey24, skipReconfigure).catch(err => {
+        console.error('Firmware update failed:', err.message);
+      });
+    },
   );
   setBroadcast(broadcast);
 
@@ -218,11 +232,23 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     }
   };
 
+  // Firmware store — persistent cache for radio firmware files
+  const firmwareStore = new FirmwareStore();
+  // Start downloading known firmware files in the background (non-blocking, retries on failure)
+  firmwareStore.startBackgroundDownloads();
+
   // Robot test monitor — CSA tool for diagnosing individual robots
   let robotTestMonitor: RobotTestMonitor | undefined;
   if (TestInterface) {
     const testNet = process.env.DRY_RUN ? createDryRunBackend() : (net ?? createBackend());
-    robotTestMonitor = new RobotTestMonitor(TestInterface, testNet, state => broadcast(state), !!process.env.DRY_RUN);
+    robotTestMonitor = new RobotTestMonitor(
+      TestInterface,
+      testNet,
+      state => broadcast(state),
+      progress => broadcast(progress),
+      firmwareStore,
+      !!process.env.DRY_RUN,
+    );
     await robotTestMonitor.start();
   }
 

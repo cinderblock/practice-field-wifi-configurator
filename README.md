@@ -276,6 +276,7 @@ practice.example.com {
     }
 
     reverse_proxy /ws localhost:9001
+    reverse_proxy /api/* localhost:9001
 
     # Prevent direct access to html files
     rewrite /index.html /non-existent-path
@@ -327,6 +328,12 @@ server {
 
     location = /test {
         rewrite ^ /test.html break;
+    }
+
+    location /api/ {
+        proxy_pass http://localhost:9001;
+        proxy_set_header Host $host;
+        client_max_body_size 100m;  # firmware uploads
     }
 
     location /ws {

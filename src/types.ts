@@ -811,3 +811,47 @@ export function isRobotTestState(msg: unknown): msg is RobotTestState {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as RobotTestState).type === 'robotTestState';
 }
+
+// ── Firmware Update ─────────────────────────────────────────────────
+
+export type FirmwareUpdateStep =
+  | 'verifying'
+  | 'downloading'
+  | 'uploading'
+  | 'flashing'
+  | 'waiting_reboot'
+  | 'reconfiguring'
+  | 'verifying_config'
+  | 'complete'
+  | 'error';
+
+export interface FirmwareUpdateProgress {
+  type: 'firmwareUpdateProgress';
+  step: FirmwareUpdateStep;
+  message: string;
+  /** 0-100 overall progress estimate */
+  progress: number;
+  /** Milliseconds since the update started */
+  elapsedMs: number;
+  error?: string;
+}
+
+export function isFirmwareUpdateProgress(msg: unknown): msg is FirmwareUpdateProgress {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as FirmwareUpdateProgress).type === 'firmwareUpdateProgress';
+}
+
+export interface FirmwareUpdateRequest {
+  type: 'firmwareUpdateRequest';
+  /** WPA passphrase for 6GHz band. Optional if auto-detected from station config. */
+  wpaKey?: string;
+  /** WPA passphrase for 2.4GHz band. Defaults to the 6GHz key if omitted. */
+  wpaKey24?: string;
+  /** If true, flash firmware only — do not reconfigure the radio afterward (leaves it in factory default state). */
+  skipReconfigure?: boolean;
+}
+
+export function isFirmwareUpdateRequest(msg: unknown): msg is FirmwareUpdateRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as FirmwareUpdateRequest).type === 'firmwareUpdateRequest';
+}
