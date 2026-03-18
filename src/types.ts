@@ -855,3 +855,120 @@ export function isFirmwareUpdateRequest(msg: unknown): msg is FirmwareUpdateRequ
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as FirmwareUpdateRequest).type === 'firmwareUpdateRequest';
 }
+
+// ── Scoring System ──────────────────────────────────────────────────
+
+/** Configuration for a single scoring element (e.g. "speaker", "amp", "foul") */
+export interface ScoringElementConfig {
+  /** Unique element identifier (e.g. "speaker", "amp", "coral_l1") */
+  id: string;
+  /** Human-readable display name */
+  name: string;
+  /** Points awarded per count */
+  pointValue: number;
+  /** If true, points are awarded to the OPPOSING alliance (for fouls/penalties) */
+  awardToOpponent?: boolean;
+  /** Match phases during which this element scores. Omit or empty = always active. */
+  activePhases?: MatchPhase[];
+  /** Events for the same element+alliance within this window (ms) are merged. Default: 0 (no dedup) */
+  deduplicationWindowMs?: number;
+  /** True if this element was auto-registered from an incoming event (not explicitly configured) */
+  autoRegistered?: boolean;
+}
+
+/** A score event submitted by an external device via the HTTP API */
+export interface ScoreEvent {
+  /** Identifier of the reporting device/sensor */
+  source: string;
+  /** Which alliance triggered the scoring action */
+  alliance: Alliance;
+  /** Scoring element identifier (must match a configured element) */
+  element: string;
+  /** Number of scores. Default 1. Negative values for corrections. */
+  count?: number;
+  /**
+   * Device-side timestamp (ms since epoch). Optional — the server always records
+   * its own receive time, but this lets devices report *when* the score actually
+   * happened (e.g. if the device buffers events offline or has network latency).
+   * Used for display and ordering; deduplication still uses server receive time.
+   */
+  timestamp?: number;
+}
+
+export function isScoreEvent(msg: unknown): msg is ScoreEvent {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as ScoreEvent;
+  if (typeof m.source !== 'string' || !m.source) return false;
+  if (m.alliance !== 'red' && m.alliance !== 'blue') return false;
+  if (typeof m.element !== 'string' || !m.element) return false;
+  if (m.count !== undefined && typeof m.count !== 'number') return false;
+  if (m.timestamp !== undefined && typeof m.timestamp !== 'number') return false;
+  return true;
+}
+
+/** Internal record of a processed score event */
+export interface ProcessedScoreEvent {
+  id: string;
+  source: string;
+  alliance: Alliance;
+  element: string;
+  count: number;
+  pointValue: number;
+  /** Alliance that actually receives the points (differs from alliance if awardToOpponent) */
+  awardedTo: Alliance;
+  /** Server receive time (ms since epoch) — used for dedup and sliding window */
+  timestamp: number;
+  /** Device-reported time (ms since epoch), if provided */
+  deviceTimestamp?: number;
+  matchPhase?: MatchPhase;
+  /** True if this event was deduplicated (not counted) */
+  deduplicated: boolean;
+}
+
+/** Per-element score breakdown */
+export interface ElementScore {
+  count: number;
+  points: number;
+  lastEventTime: number;
+}
+
+/** Score totals for one alliance */
+export interface AllianceScore {
+  total: number;
+  elements: Record<string, ElementScore>;
+}
+
+/** Status of a scoring source device */
+export interface ScoringSourceStatus {
+  lastSeen: number;
+  eventCount: number;
+  lastElement?: string;
+  lastAlliance?: Alliance;
+}
+
+export type ScoringMode = 'freePlay' | 'match';
+
+/** The full score state broadcast to clients via WebSocket */
+export interface ScoreState {
+  type: 'scoreState';
+  mode: ScoringMode;
+  /** Sliding window size in seconds (freePlay mode) */
+  windowSeconds: number;
+  /** Max elements that can be auto-registered from incoming events */
+  autoRegisterLimit: number;
+  red: AllianceScore;
+  blue: AllianceScore;
+  /** Current match phase (match mode only) */
+  matchPhase?: MatchPhase;
+  /** Per-phase breakdown (match mode only) */
+  phaseBreakdown?: Record<string, { red: AllianceScore; blue: AllianceScore }>;
+  /** Status of all known scoring sources */
+  sources: Record<string, ScoringSourceStatus>;
+  /** Configured scoring elements */
+  elements: Record<string, ScoringElementConfig>;
+}
+
+export function isScoreState(msg: unknown): msg is ScoreState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ScoreState).type === 'scoreState';
+}

@@ -40,6 +40,7 @@ npm install
 | `/route`            | Route page — choose which robot to talk to when a team has duplicate stations       |
 | `/logs`             | Logs page — live backend log stream                                                 |
 | `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`) |
+| `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients         |
 
 ## Features
 
@@ -62,6 +63,50 @@ The admin page provides safety overrides: global e-stop, per-station e-stop/disa
 ### Match Audio
 
 Sound effects (charge horn, end buzzer, warning, pause/resume tones) play on phase transitions via a detected system audio player. Place `.wav` files in `sounds/`.
+
+### Scoring System
+
+An HTTP API for tracking scores from external goal-watching devices (sensors, cameras, referee tablets, ESP32s, etc.). Scoring detection is the responsibility of the devices — they send events, and the server translates them into points.
+
+**Two modes:**
+
+- **Free play (default):** 30-second sliding window — shows a rolling count of recent scores. Events age out automatically.
+- **Match mode:** scores accumulate from zero with per-phase breakdowns. Automatically activates when a match starts.
+
+**Key concepts:**
+
+- **Elements** — configurable scoring types (e.g. "speaker", "amp", "foul") with point values, optional phase restrictions, and deduplication windows
+- **Sources** — each device identifies itself; the server tracks health and event counts
+- **Deduplication** — when multiple sensors watch the same goal, events within a configurable window merge into one
+- **Fouls** — elements with `awardToOpponent: true` give points to the opposing alliance
+- **Phase restrictions** — elements can be limited to specific match phases (e.g. auto-only bonuses)
+
+**Quick start for a scoring device:**
+
+```
+POST /api/score?key=YOUR_KEY HTTP/1.1
+Host: pfms.local:3000
+Content-Type: application/json
+
+{"source":"goal-1","alliance":"red","element":"speaker"}
+```
+
+Authentication via `X-API-Key` header or `?key=` query parameter. Optional if `SCORING_API_KEY` is not set.
+
+Full API documentation is served at `GET /api/score/schema` as an [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0) spec in JSON. Point any OpenAPI-compatible tool (Swagger UI, Redoc, code generators) at it, or read it directly from tiny devices.
+
+| Endpoint             | Method | Auth     | Description                                 |
+| -------------------- | ------ | -------- | ------------------------------------------- |
+| `/api/score`         | POST   | Required | Submit score event(s)                       |
+| `/api/score`         | GET    | None     | Get current score state                     |
+| `/api/score/reset`   | POST   | Required | Reset all scores                            |
+| `/api/score/config`  | GET    | None     | Get element configuration                   |
+| `/api/score/config`  | PUT    | Required | Replace element configuration               |
+| `/api/score/mode`    | PUT    | Required | Set scoring mode and/or sliding window size |
+| `/api/score/sources` | GET    | None     | List scoring sources and their status       |
+| `/api/score/schema`  | GET    | None     | Machine-readable API schema                 |
+
+Score state is also broadcast in real time to all WebSocket clients as `scoreState` messages.
 
 ### Duplicate Team Handling
 
@@ -349,21 +394,23 @@ server {
 
 ## Environment Variables
 
-| Variable                  | Default             | Description                                                                                                                           |
-| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEBSOCKET_PORT`          | `3000`              | Port for the WebSocket server                                                                                                         |
-| `RADIO_URL`               | `http://10.0.100.2` | URL for the radio management API                                                                                                      |
-| `VLAN_INTERFACE`          | _(none)_            | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
-| `FMS_ENDPOINT`            | `false`             | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
-| `SYSLOG_ENDPOINT`         | `false`             | Set to `true` to enable the syslog server                                                                                             |
-| `RADIO_CLEAR_SCHEDULE`    | _(none)_            | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
-| `RADIO_CLEAR_TIMEZONE`    | _(none)_            | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
-| `VLAN_HOST_OCTET`         | `254`               | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
-| `TRUSTED_PROXIES`         | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
-| `IPTABLES_COMMENT_PREFIX` | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
-| `MDNS_REFLECTOR`          | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
-| `TEST_INTERFACE`          | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
-| `DRY_RUN`                 | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
+| Variable                      | Default             | Description                                                                                                                           |
+| ----------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBSOCKET_PORT`              | `3000`              | Port for the WebSocket server                                                                                                         |
+| `RADIO_URL`                   | `http://10.0.100.2` | URL for the radio management API                                                                                                      |
+| `VLAN_INTERFACE`              | _(none)_            | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
+| `FMS_ENDPOINT`                | `false`             | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
+| `SYSLOG_ENDPOINT`             | `false`             | Set to `true` to enable the syslog server                                                                                             |
+| `RADIO_CLEAR_SCHEDULE`        | _(none)_            | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
+| `RADIO_CLEAR_TIMEZONE`        | _(none)_            | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
+| `VLAN_HOST_OCTET`             | `254`               | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
+| `TRUSTED_PROXIES`             | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
+| `IPTABLES_COMMENT_PREFIX`     | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
+| `MDNS_REFLECTOR`              | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
+| `TEST_INTERFACE`              | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
+| `DRY_RUN`                     | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
+| `SCORING_API_KEY`             | _(none)_            | Shared secret for scoring API authentication. If unset, scoring endpoints are open to anyone on the network.                          |
+| `SCORING_AUTO_REGISTER_LIMIT` | `1`                 | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |
 
 ### Trusted Proxies Configuration
 

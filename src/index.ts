@@ -25,6 +25,8 @@ import { TeamChecker } from './teamChecker.js';
 import { RobotTestMonitor } from './robotTestMonitor.js';
 import { FirmwareStore } from './firmwareStore.js';
 import { handleFirmwareRequest } from './firmwareApi.js';
+import { ScoringEngine } from './scoringEngine.js';
+import { handleScoringRequest } from './scoringApi.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -130,6 +132,15 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   await matchAudio.init();
   matchAudio.attachToEngine(matchEngine);
 
+  // Initialize scoring engine
+  const ScoringApiKey = process.env.SCORING_API_KEY;
+  const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;
+  const scoringEngine = new ScoringEngine();
+  scoringEngine.setAutoRegisterLimit(ScoringAutoRegisterLimit);
+
+  // Auto-switch scoring mode based on match state
+  matchEngine.addStateListener(state => scoringEngine.onMatchStateChange(state));
+
   // Initialize WebSocket server (onRunTeamChecks callback is set below after teamChecker is created)
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
   const { wss, broadcast, broadcastRouteState } = setupWebSocket(
@@ -139,6 +150,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     trustedProxyMatcher,
     station => onRunTeamChecks?.(station),
     [
+      (req, res) => handleScoringRequest(req, res, scoringEngine, ScoringApiKey),
       (req, res) => handleFirmwareRequest(req, res, firmwareStore),
     ],
     (wpaKey, wpaKey24, skipReconfigure) => {
@@ -152,6 +164,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     },
   );
   setBroadcast(broadcast);
+
+  // Broadcast score state changes to all WebSocket clients
+  scoringEngine.addStateListener(broadcast);
 
   // Subnet scanning for device discovery on team VLANs
   const subnetScanner = new SubnetScanner(
@@ -258,6 +273,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       ws.send(JSON.stringify(results));
     }
     if (robotTestMonitor) ws.send(JSON.stringify(robotTestMonitor.getState()));
+    ws.send(JSON.stringify(scoringEngine.getState()));
   });
 
   // Clean up state and broadcast updates when station configs change
