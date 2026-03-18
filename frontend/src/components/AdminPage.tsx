@@ -9,11 +9,18 @@ import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 
-import { MatchPhase, StationName } from '../../../src/types';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+
+import type { MatchPhase, StationName } from '../../../src/types';
 import { allianceColor, prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   useLatest,
+  useScoreState,
   sendAdminStopMatch,
   sendAdminGlobalEStop,
   sendAdminStationEStop,
@@ -239,9 +246,194 @@ export function AdminPage() {
 
       <GlobalEStopSection />
       <MatchStatusSection />
+      <ScoringSection />
       <StationControlSection />
       <FirmwareSection />
     </Container>
+  );
+}
+
+// ── Scoring ─────────────────────────────────────────────────────────
+
+function formatAge(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${Math.round(s / 3600)}h ago`;
+}
+
+function ScoringSection() {
+  const score = useScoreState();
+  const [, setTick] = useState(0);
+
+  // Re-render every second to update sliding window / source ages
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!score) return null;
+
+  const elements = Object.values(score.elements);
+  const sources = Object.entries(score.sources);
+  const hasScores = score.red.total > 0 || score.blue.total > 0;
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h5">Scoring</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Chip
+              label={score.mode === 'freePlay' ? `Free Play (${score.windowSeconds}s)` : 'Match'}
+              size="small"
+              color={score.mode === 'match' ? 'primary' : 'default'}
+            />
+            {hasScores && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={() => fetch('/api/score/reset', { method: 'POST' })}
+                sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+              >
+                Reset
+              </Button>
+            )}
+          </Box>
+        </Box>
+
+        {/* Score totals */}
+        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <ScoreCard alliance="red" score={score.red} />
+          <ScoreCard alliance="blue" score={score.blue} />
+        </Box>
+
+        {/* Element breakdown */}
+        {elements.length > 0 && hasScores && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+              Element Breakdown
+            </Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Element</TableCell>
+                  <TableCell sx={{ color: '#d32f2f' }} align="right">
+                    Red
+                  </TableCell>
+                  <TableCell sx={{ color: '#1565c0' }} align="right">
+                    Blue
+                  </TableCell>
+                  <TableCell align="right">Pts each</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {elements.map(el => {
+                  const red = score.red.elements[el.id];
+                  const blue = score.blue.elements[el.id];
+                  if (!red && !blue) return null;
+                  return (
+                    <TableRow key={el.id}>
+                      <TableCell sx={{ py: 0.5 }}>
+                        {el.name}
+                        {el.awardToOpponent && (
+                          <Typography component="span" variant="caption" color="warning.main" sx={{ ml: 0.5 }}>
+                            (foul)
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontFamily: 'monospace' }}>
+                        {red?.count ?? 0}
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontFamily: 'monospace' }}>
+                        {blue?.count ?? 0}
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontFamily: 'monospace', color: 'text.secondary' }}>
+                        {el.pointValue}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+
+        {/* Phase breakdown (match mode) */}
+        {score.mode === 'match' && score.phaseBreakdown && Object.keys(score.phaseBreakdown).length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+              Phase Breakdown
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {Object.entries(score.phaseBreakdown).map(([phase, scores]) => (
+                <Chip
+                  key={phase}
+                  label={`${phase}: R${scores.red.total} / B${scores.blue.total}`}
+                  size="small"
+                  variant="outlined"
+                />
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Sources */}
+        {sources.length > 0 && (
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+              Sources
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {sources.map(([id, src]) => {
+                const stale = Date.now() - src.lastSeen > 30_000;
+                return (
+                  <Chip
+                    key={id}
+                    label={`${id} (${src.eventCount})`}
+                    size="small"
+                    variant="outlined"
+                    color={stale ? 'default' : 'success'}
+                    title={`Last seen: ${formatAge(src.lastSeen)}${src.lastElement ? ` — ${src.lastAlliance} ${src.lastElement}` : ''}`}
+                  />
+                );
+              })}
+            </Box>
+          </Box>
+        )}
+
+        {!hasScores && sources.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No scoring devices connected. Send events to <code>POST /api/score</code>
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScoreCard({ alliance, score }: { alliance: 'red' | 'blue'; score: { total: number } }) {
+  const color = alliance === 'red' ? '#d32f2f' : '#1565c0';
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        textAlign: 'center',
+        py: 1.5,
+        borderRadius: 1,
+        border: 2,
+        borderColor: color,
+        backgroundColor: `${color}11`,
+      }}
+    >
+      <Typography variant="h3" sx={{ fontWeight: 700, color, fontFamily: 'monospace' }}>
+        {score.total}
+      </Typography>
+      <Typography variant="caption" sx={{ color, textTransform: 'uppercase', fontWeight: 600 }}>
+        {alliance}
+      </Typography>
+    </Box>
   );
 }
 

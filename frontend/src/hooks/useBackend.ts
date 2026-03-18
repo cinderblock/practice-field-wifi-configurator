@@ -21,8 +21,10 @@ import {
   isServerInfo,
   isRobotTestState,
   isFirmwareUpdateProgress,
+  isScoreState,
   RoutePreferenceState,
   RobotTestState,
+  ScoreState,
   FirmwareUpdateProgress,
   FirmwareUpdateRequest,
   PendingCommitState,
@@ -390,6 +392,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isScoreState(detail)) {
+    handleScoreState(detail);
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -700,6 +707,28 @@ export function sendFirmwareUpdateRequest(wpaKey?: string, wpaKey24?: string, sk
       skipReconfigure,
     } satisfies FirmwareUpdateRequest),
   );
+}
+
+// ── Score State ──────────────────────────────────────────────────────
+
+let currentScoreState: ScoreState | null = null;
+
+function handleScoreState(state: ScoreState) {
+  currentScoreState = state;
+  events.dispatchEvent(new CustomEvent('scoreState', { detail: state }));
+}
+
+export function useScoreState(): ScoreState | null {
+  const [state, setState] = useState<ScoreState | null>(currentScoreState);
+
+  useEffect(() => {
+    setState(currentScoreState);
+    const handler = (e: Event) => setState((e as CustomEvent<ScoreState>).detail);
+    events.addEventListener('scoreState', handler);
+    return () => events.removeEventListener('scoreState', handler);
+  }, []);
+
+  return state;
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

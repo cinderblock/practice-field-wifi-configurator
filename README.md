@@ -40,6 +40,7 @@ npm install
 | `/route`            | Route page — choose which robot to talk to when a team has duplicate stations       |
 | `/logs`             | Logs page — live backend log stream                                                 |
 | `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`) |
+| `/scores`           | Scoreboard — full-screen TV-optimized score display for casting                     |
 | `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients         |
 
 ## Features
@@ -331,6 +332,7 @@ practice.example.com {
     rewrite /network.html /non-existent-path
     rewrite /route.html /non-existent-path
     rewrite /test.html /non-existent-path
+    rewrite /scores.html /non-existent-path
 
     rewrite @stations /station.html
     rewrite /admin /admin.html
@@ -338,6 +340,7 @@ practice.example.com {
     rewrite /network /network.html
     rewrite /route /route.html
     rewrite /test /test.html
+    rewrite /scores /scores.html
     root /path/to/frontend/dist
     file_server
 }
@@ -373,6 +376,10 @@ server {
 
     location = /test {
         rewrite ^ /test.html break;
+    }
+
+    location = /scores {
+        rewrite ^ /scores.html break;
     }
 
     location /api/ {
