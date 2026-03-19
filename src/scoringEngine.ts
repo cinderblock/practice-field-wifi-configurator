@@ -41,9 +41,9 @@ export class ScoringEngine {
     blue: [],
   };
   /** High-water mark per alliance — peak is recorded when score drops below this */
-  private highWater: Record<Alliance, { total: number; timestamp: number }> = {
-    red: { total: 0, timestamp: 0 },
-    blue: { total: 0, timestamp: 0 },
+  private highWater: Record<Alliance, { total: number; timestamp: number; recorded: boolean }> = {
+    red: { total: 0, timestamp: 0, recorded: false },
+    blue: { total: 0, timestamp: 0, recorded: false },
   };
   private autoRegisterLimit = 1;
   private suppressBroadcast = false;
@@ -222,7 +222,10 @@ export class ScoringEngine {
     this.events = [];
     this.lastDedupTimestamp.clear();
     this.peaks = { red: [], blue: [] };
-    this.highWater = { red: { total: 0, timestamp: 0 }, blue: { total: 0, timestamp: 0 } };
+    this.highWater = {
+      red: { total: 0, timestamp: 0, recorded: false },
+      blue: { total: 0, timestamp: 0, recorded: false },
+    };
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
       this.windowTimer = null;
@@ -301,17 +304,15 @@ export class ScoringEngine {
           // Score is climbing — update the high-water mark
           hw.total = total;
           hw.timestamp = now;
-        } else if (total < hw.total && hw.total > 0) {
-          // Score dropped — the high-water mark was a peak
+          hw.recorded = false;
+        } else if (total < hw.total && hw.total > 0 && !hw.recorded) {
+          // Score dropped for the first time after climbing — record the peak
           const peakList = this.peaks[alliance];
-          // Only record if it's different from the most recent peak
           if (!peakList[0] || peakList[0].total !== hw.total) {
             peakList.unshift({ total: hw.total, timestamp: hw.timestamp });
             if (peakList.length > 5) peakList.pop();
           }
-          // Reset high-water to current level
-          hw.total = total;
-          hw.timestamp = now;
+          hw.recorded = true; // Don't record again until score climbs past this mark
         }
       }
     }
