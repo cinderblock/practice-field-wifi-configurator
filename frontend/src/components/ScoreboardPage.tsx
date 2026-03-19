@@ -23,17 +23,6 @@ export function ScoreboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize Cast Receiver (when running on a Chromecast)
-  useEffect(() => {
-    try {
-      if (typeof cast !== 'undefined' && cast.framework?.CastReceiverContext) {
-        cast.framework.CastReceiverContext.getInstance().start();
-      }
-    } catch {
-      // Not on a Chromecast — ignore
-    }
-  }, []);
-
   // Initialize Cast Sender (when running in a normal browser)
   useEffect(() => {
     if (!CAST_APP_ID) return;
