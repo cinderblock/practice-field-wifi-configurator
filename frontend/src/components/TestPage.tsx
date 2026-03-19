@@ -360,6 +360,11 @@ export function TestPage() {
                     No issues
                   </Typography>
                 )}
+                <Box sx={{ mt: 0.5, pt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'success.main' }}>
+                    DHCP: {state.teamNumber}
+                  </Typography>
+                </Box>
               </Box>
             </Box>
 
