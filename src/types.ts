@@ -798,6 +798,8 @@ export interface RobotTestState {
   type: 'robotTestState';
   phase: RobotTestPhase;
   interfaceName: string;
+  /** True if the interface is a VLAN (link state not meaningful, no dedicated hardware to show) */
+  isVlan?: boolean;
   linkUp: boolean;
   macAddress?: string;
   teamNumber?: number;

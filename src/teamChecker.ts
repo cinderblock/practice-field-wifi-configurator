@@ -1,6 +1,7 @@
+import dgram from 'node:dgram';
 import type { StationName, CheckResult, TeamCheckResults, DiscoveredHost } from './types.js';
 
-const FETCH_TIMEOUT = 750;
+const FETCH_TIMEOUT = 500;
 
 // ── Help URLs ───────────────────────────────────────────────────────
 
@@ -87,6 +88,137 @@ function parseNISysAPIResponse(xml: string): NISysAPIBag[] {
 
 const FACTORY_DEFAULT_IP = '192.168.69.1';
 
+/**
+ * Send a raw mDNS multicast query on a specific interface and wait for a response.
+ * Returns the first A record IP, or null on timeout.
+ */
+function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promise<string | null> {
+  return new Promise(resolve => {
+    const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    const timer = setTimeout(() => {
+      sock.close();
+      resolve(null);
+    }, timeoutMs);
+
+    sock.on('error', () => {
+      clearTimeout(timer);
+      sock.close();
+      resolve(null);
+    });
+
+    sock.on('message', msg => {
+      // Parse DNS response — look for an A record (type 1) in the answers section
+      const ip = parseARecord(msg);
+      if (ip) {
+        clearTimeout(timer);
+        sock.close();
+        resolve(ip);
+      }
+    });
+
+    // Bind to the specific interface IP, then send the query
+    sock.bind(0, sourceIp, () => {
+      try {
+        sock.addMembership('224.0.0.251', sourceIp);
+      } catch {
+        // May fail if already a member
+      }
+      const query = buildMdnsQuery(hostname);
+      sock.send(query, 0, query.length, 5353, '224.0.0.251');
+    });
+  });
+}
+
+/** Build a minimal DNS query packet for an A record. */
+function buildMdnsQuery(hostname: string): Buffer {
+  // DNS header: ID=0, flags=0, 1 question, 0 answers
+  const header = Buffer.from([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+  // Encode hostname labels (e.g. "roboRIO-1234-FRC.local" → \x12roboRIO-1234-FRC\x05local\x00)
+  const labels = hostname.split('.').map(label => {
+    const buf = Buffer.alloc(1 + label.length);
+    buf[0] = label.length;
+    buf.write(label, 1);
+    return buf;
+  });
+  const name = Buffer.concat([...labels, Buffer.from([0])]);
+  // Type A (1), Class IN (1) with unicast-response bit
+  const qtype = Buffer.from([0, 1, 0x80, 1]);
+  return Buffer.concat([header, name, qtype]);
+}
+
+/** Parse the first A record from a DNS response. Returns the IP string or null. */
+function parseARecord(msg: Buffer): string | null {
+  if (msg.length < 12) return null;
+  const qdcount = msg.readUInt16BE(4);
+  const ancount = msg.readUInt16BE(6);
+  if (ancount === 0) return null;
+
+  // Skip the question section
+  let offset = 12;
+  for (let i = 0; i < qdcount && offset < msg.length; i++) {
+    while (offset < msg.length && msg[offset] !== 0) {
+      if ((msg[offset] & 0xc0) === 0xc0) {
+        offset += 2;
+        break;
+      }
+      offset += msg[offset] + 1;
+    }
+    if (offset < msg.length && msg[offset] === 0) offset++; // null terminator
+    offset += 4; // qtype + qclass
+  }
+
+  // Parse answer records
+  for (let i = 0; i < ancount && offset < msg.length; i++) {
+    // Skip name (may be compressed)
+    while (offset < msg.length && msg[offset] !== 0) {
+      if ((msg[offset] & 0xc0) === 0xc0) {
+        offset += 2;
+        break;
+      }
+      offset += msg[offset] + 1;
+    }
+    if (offset < msg.length && msg[offset] === 0) offset++;
+
+    if (offset + 10 > msg.length) break;
+    const rtype = msg.readUInt16BE(offset);
+    const rdlength = msg.readUInt16BE(offset + 8);
+    offset += 10;
+
+    if (rtype === 1 && rdlength === 4 && offset + 4 <= msg.length) {
+      return `${msg[offset]}.${msg[offset + 1]}.${msg[offset + 2]}.${msg[offset + 3]}`;
+    }
+    offset += rdlength;
+  }
+  return null;
+}
+
+/** Check mDNS resolution for roboRIO-{team}-FRC.local via multicast on a specific interface. */
+export async function checkMdns(team: number, sourceIp?: string): Promise<CheckResult[]> {
+  if (!sourceIp) return []; // No IP to query from — skip
+  const hostname = `roboRIO-${team}-FRC.local`;
+  const expected = expectedIP(team);
+  try {
+    const resolved = await mdnsQuery(hostname, sourceIp, FETCH_TIMEOUT);
+    if (!resolved) {
+      return [{ name: 'mDNS', status: 'error', message: `${hostname} — no response` }];
+    }
+    if (resolved === expected) {
+      return [{ name: 'mDNS', status: 'pass', actual: `${hostname} → ${resolved}` }];
+    }
+    return [
+      {
+        name: 'mDNS',
+        status: 'warn',
+        expected,
+        actual: `${hostname} → ${resolved}`,
+        message: 'mDNS resolved to unexpected IP',
+      },
+    ];
+  } catch {
+    return [{ name: 'mDNS', status: 'error', message: `${hostname} — query failed` }];
+  }
+}
+
 /** Check if the radio is reachable at the factory default IP (192.168.69.1). */
 export async function checkFactoryDefault(): Promise<CheckResult[]> {
   try {
@@ -154,7 +286,7 @@ function evaluateRadioFirmware(data: { version?: string }): CheckResult {
   };
 }
 
-/** Fetch radio /status and run all radio checks against it. */
+/** Fetch radio /status and run all radio checks against it. Firmware check first; SystemCore skipped if firmware outdated. */
 export async function checkRadio(team: number): Promise<CheckResult[]> {
   const radioIp = `${teamSubnet(team)}.1`;
   try {
@@ -162,17 +294,24 @@ export async function checkRadio(team: number): Promise<CheckResult[]> {
     if (!res.ok) {
       const msg = `Radio returned HTTP ${res.status}`;
       return [
-        { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
         { name: 'Radio Firmware', status: 'error', message: msg, helpUrl: HELP_URLS.radioFirmware },
+        { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
       ];
     }
     const data = (await res.json()) as { systemcoreEnabled?: boolean; version?: string };
-    return [evaluateSystemCore(data), evaluateRadioFirmware(data)];
+    const fwCheck = evaluateRadioFirmware(data);
+    const results: CheckResult[] = [fwCheck];
+    if (fwCheck.status === 'fail') {
+      results.push({ name: 'Radio SystemCore', status: 'warn', message: 'Skipped — update firmware first' });
+    } else {
+      results.push(evaluateSystemCore(data));
+    }
+    return results;
   } catch (err) {
     const msg = err instanceof Error && err.name === 'AbortError' ? 'Radio unreachable (timeout)' : String(err);
     return [
-      { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
       { name: 'Radio Firmware', status: 'error', message: msg, helpUrl: HELP_URLS.radioFirmware },
+      { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
     ];
   }
 }

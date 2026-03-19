@@ -1,7 +1,7 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { RobotTestState, RobotTestPhase, CheckResult, FirmwareUpdateProgress } from './types.js';
-import { checkRadio, checkRoboRIO, checkTeamConsistency, checkFactoryDefault } from './teamChecker.js';
+import { checkRadio, checkRoboRIO, checkTeamConsistency, checkFactoryDefault, checkMdns } from './teamChecker.js';
 import { updateRadioFirmware } from './firmwareUpdater.js';
 import type { FirmwareStore } from './firmwareStore.js';
 import type { NetworkBackend } from './node-ip/index.js';
@@ -9,7 +9,7 @@ import type { NetworkBackend } from './node-ip/index.js';
 const execFile = promisify(execFileCb);
 
 const LINK_POLL_MS = 200;
-const CHECK_INTERVAL_MS = 5_000;
+const CHECK_INTERVAL_MS = 1_500;
 /** Secondary IP added to the test interface so we can reach factory-default radios at 192.168.69.1. */
 const FACTORY_PROBE_IP = '192.168.69.8';
 const FACTORY_PROBE_PREFIX = 24;
@@ -26,7 +26,10 @@ function teamFromIp(ip: string): number | null {
 }
 
 /** Read the DHCP-assigned IPv4 address on an interface, skipping any static addresses we added. */
-async function getInterfaceIp(iface: string, excludeIps: string[] = []): Promise<{ ip: string } | null> {
+async function getInterfaceIp(
+  iface: string,
+  excludeIps: string[] = [],
+): Promise<{ ip: string; prefixLength: number } | null> {
   try {
     const { stdout } = await execFile('ip', ['-j', 'addr', 'show', 'dev', iface]);
     const data = JSON.parse(stdout);
@@ -35,7 +38,7 @@ async function getInterfaceIp(iface: string, excludeIps: string[] = []): Promise
       (a: { family: string; local: string }) => a.family === 'inet' && !excludeIps.includes(a.local),
     );
     if (!v4) return null;
-    return { ip: v4.local };
+    return { ip: v4.local, prefixLength: v4.prefixlen ?? 24 };
   } catch {
     return null;
   }
@@ -58,6 +61,7 @@ export class RobotTestMonitor {
   private macAddress?: string;
   private teamNumber?: number;
   private leasedIp?: string;
+  private leasedPrefix = 24;
   private routerIp?: string;
   private checks: CheckResult[] = [];
   private linkPollTimer: NodeJS.Timeout | null = null;
@@ -117,6 +121,7 @@ export class RobotTestMonitor {
       type: 'robotTestState',
       phase: this.phase,
       interfaceName: this.interfaceName,
+      isVlan: this.skipLinkDetection,
       linkUp: this.linkUp,
       macAddress: this.macAddress,
       teamNumber: this.teamNumber,
@@ -265,6 +270,7 @@ export class RobotTestMonitor {
       }
 
       this.leasedIp = addr.ip;
+      this.leasedPrefix = addr.prefixLength;
       this.routerIp = await getInterfaceGateway(this.interfaceName);
       this.teamNumber = teamFromIp(addr.ip) ?? undefined;
 
@@ -302,13 +308,42 @@ export class RobotTestMonitor {
     this.broadcast();
 
     try {
-      const [radioResults, rioResults, consistencyResults, factoryResult] = await Promise.all([
+      const [factoryResult, radioResults, rioResults, mdnsResults, consistencyResults] = await Promise.all([
+        checkFactoryDefault(),
         checkRadio(this.teamNumber),
         checkRoboRIO(this.teamNumber),
+        checkMdns(this.teamNumber, this.leasedIp),
         checkTeamConsistency(this.teamNumber),
-        checkFactoryDefault(),
       ]);
-      this.checks = [...consistencyResults, ...factoryResult, ...radioResults, ...rioResults];
+      this.checks = [...factoryResult, ...radioResults, ...rioResults, ...mdnsResults, ...consistencyResults];
+
+      // On a VLAN, if both radio and roboRIO are unreachable, the robot is likely
+      // disconnected. Release the DHCP lease and go back to requesting state so we
+      // pick up the next robot that connects.
+      const allDevicesDown =
+        radioResults.every(c => c.status === 'error') && rioResults.every(c => c.status === 'error');
+      if (this.skipLinkDetection && allDevicesDown && factoryResult.length === 0) {
+        console.log('RobotTestMonitor: all devices unreachable on VLAN — resetting to DHCP');
+        const oldIp = this.leasedIp;
+        const oldPrefix = this.leasedPrefix;
+        this.teamNumber = undefined;
+        this.leasedIp = undefined;
+        this.leasedPrefix = 24;
+        this.routerIp = undefined;
+        this.checks = [];
+        this.killDhcp();
+        if (!this.dryRun && oldIp) {
+          // Remove only the DHCP address, keep the factory probe IP (192.168.69.8)
+          this.net
+            .removeAddress({ interfaceName: this.interfaceName, address: oldIp, prefixLength: oldPrefix })
+            .catch(() => {});
+        }
+        this.phase = 'link_up';
+        this.broadcast();
+        this.startDhcp();
+        return; // Skip the re-check scheduling below
+      }
+
       this.phase = 'complete';
 
       // Trigger background firmware download if the radio needs an update

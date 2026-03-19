@@ -31,18 +31,19 @@ const PULSE_STYLES = {
 } as const;
 
 /** Map phase to which stepper step is active (0-indexed). */
-function activeStep(phase: RobotTestPhase): number {
+function activeStep(phase: RobotTestPhase, isVlan: boolean): number {
+  const offset = isVlan ? -1 : 0; // VLAN hides the link step
   switch (phase) {
     case 'disabled':
     case 'link_down':
       return 0;
     case 'link_up':
     case 'dhcp_requesting':
-      return 1;
+      return 1 + offset;
     case 'ready':
     case 'checking':
     case 'complete':
-      return 2;
+      return 2 + offset;
   }
 }
 
@@ -136,14 +137,14 @@ export function TestPage() {
     );
   }
 
-  const step = activeStep(state.phase);
-  const consistencyChecks = state.checks.filter(c => c.name === 'Team Consistency');
+  const step = activeStep(state.phase, !!state.isVlan);
+  const factoryChecks = state.checks.filter(c => c.name === 'Factory Default Radio');
   const radioChecks = state.checks.filter(c => c.name.startsWith('Radio'));
   const rioChecks = state.checks.filter(c => c.name.startsWith('roboRIO'));
-  const otherChecks = state.checks.filter(
-    c => c.name !== 'Team Consistency' && !c.name.startsWith('Radio') && !c.name.startsWith('roboRIO'),
-  );
+  const mdnsChecks = state.checks.filter(c => c.name === 'mDNS');
+  const consistencyChecks = state.checks.filter(c => c.name === 'Team Consistency');
   const firmwareOutdated = radioChecks.some(c => c.name === 'Radio Firmware' && c.status === 'fail');
+  const teamSubnet = state.teamNumber ? `10.${Math.floor(state.teamNumber / 100)}.${state.teamNumber % 100}` : null;
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -151,39 +152,44 @@ export function TestPage() {
       <Typography variant="h4" gutterBottom>
         Robot Network Tester
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Interface: <code>{state.interfaceName}</code>
-        {state.macAddress && (
-          <>
-            {' — '}
-            <code>{state.macAddress}</code>
-          </>
-        )}
-      </Typography>
+      {/* Only show interface details for dedicated NICs, not VLANs */}
+      {!state.isVlan && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Interface: <code>{state.interfaceName}</code>
+          {state.macAddress && (
+            <>
+              {' — '}
+              <code>{state.macAddress}</code>
+            </>
+          )}
+        </Typography>
+      )}
 
       <Stepper activeStep={step} orientation="vertical">
-        {/* Step 0: Link */}
-        <Step completed={state.linkUp}>
-          <StepLabel
-            error={!state.linkUp}
-            optional={
-              !state.linkUp ? (
-                <Typography variant="caption" color="text.secondary">
-                  No cable detected
-                </Typography>
-              ) : undefined
-            }
-          >
-            {state.linkUp ? (
-              <>
-                <PulseDot lastUpdate={state.lastUpdate} />
-                Link Connected
-              </>
-            ) : (
-              'Link Status'
-            )}
-          </StepLabel>
-        </Step>
+        {/* Step 0: Link — skip entirely for VLANs */}
+        {!state.isVlan && (
+          <Step completed={state.linkUp}>
+            <StepLabel
+              error={!state.linkUp}
+              optional={
+                !state.linkUp ? (
+                  <Typography variant="caption" color="text.secondary">
+                    No cable detected
+                  </Typography>
+                ) : undefined
+              }
+            >
+              {state.linkUp ? (
+                <>
+                  <PulseDot lastUpdate={state.lastUpdate} />
+                  Link Connected
+                </>
+              ) : (
+                'Link Status'
+              )}
+            </StepLabel>
+          </Step>
+        )}
 
         {/* Step 1: DHCP */}
         <Step completed={!!state.teamNumber}>
@@ -191,7 +197,7 @@ export function TestPage() {
             optional={
               state.phase === 'dhcp_requesting' ? (
                 <Typography variant="caption" color="text.secondary">
-                  Requesting DHCP lease...
+                  Waiting for robot...
                 </Typography>
               ) : state.teamNumber ? (
                 <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
@@ -200,71 +206,83 @@ export function TestPage() {
               ) : undefined
             }
           >
-            DHCP Discovery
+            {state.teamNumber ? 'Robot Detected' : 'Waiting for Robot'}
           </StepLabel>
         </Step>
 
-        {/* Step 2: Checks */}
+        {/* Step 2: Checks — always render content area to prevent layout shift */}
         <Step completed={state.phase === 'complete'}>
-          <StepLabel
-            optional={
-              state.phase === 'checking' ? (
-                <Typography variant="caption" color="text.secondary">
-                  Running checks...
-                </Typography>
-              ) : undefined
-            }
-          >
+          <StepLabel>
             Robot Checks
+            {state.phase === 'checking' && (
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                checking...
+              </Typography>
+            )}
           </StepLabel>
-          {state.checks.length > 0 && (
-            <StepContent>
-              {consistencyChecks.length > 0 && (
-                <Box sx={{ mb: 1 }}>
-                  {consistencyChecks.map((c, i) => (
-                    <CheckResultRow key={i} check={c} />
-                  ))}
-                </Box>
-              )}
-              {radioChecks.length > 0 && (
-                <Box sx={{ mb: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
-                  >
-                    Radio (
-                    {state.teamNumber ? `10.${Math.floor(state.teamNumber / 100)}.${state.teamNumber % 100}.1` : '—'})
-                  </Typography>
-                  {radioChecks.map((c, i) => (
-                    <CheckResultRow key={i} check={c} />
-                  ))}
-                  {firmwareOutdated && <FirmwareUpdateSection />}
-                </Box>
-              )}
-              {rioChecks.length > 0 && (
-                <Box sx={{ mb: 1 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
-                  >
-                    roboRIO
-                  </Typography>
-                  {rioChecks.map((c, i) => (
-                    <CheckResultRow key={i} check={c} />
-                  ))}
-                </Box>
-              )}
-              {otherChecks.length > 0 && (
-                <Box>
-                  {otherChecks.map((c, i) => (
-                    <CheckResultRow key={i} check={c} />
-                  ))}
-                </Box>
-              )}
-            </StepContent>
-          )}
+          <StepContent sx={{ minHeight: state.checks.length > 0 ? undefined : 24 }}>
+            {/* Factory default warning */}
+            {factoryChecks.map((c, i) => (
+              <CheckResultRow key={`factory-${i}`} check={c} />
+            ))}
+
+            {/* Radio checks — firmware first, then SystemCore */}
+            {radioChecks.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
+                >
+                  Radio {teamSubnet && `(${teamSubnet}.1)`}
+                </Typography>
+                {radioChecks.map((c, i) => (
+                  <CheckResultRow key={`radio-${i}`} check={c} />
+                ))}
+                {firmwareOutdated && <FirmwareUpdateSection />}
+              </Box>
+            )}
+
+            {/* roboRIO checks */}
+            {rioChecks.length > 0 && (
+              <Box sx={{ mb: 1 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
+                >
+                  roboRIO {teamSubnet && `(${teamSubnet}.2)`}
+                </Typography>
+                {rioChecks.map((c, i) => (
+                  <CheckResultRow key={`rio-${i}`} check={c} />
+                ))}
+              </Box>
+            )}
+
+            {/* mDNS */}
+            {mdnsChecks.map((c, i) => (
+              <Box key={`mdns-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                <StatusIcon status={c.status} />
+                <Typography variant="caption" sx={{ color: c.status === 'pass' ? 'text.secondary' : undefined }}>
+                  {c.actual ?? c.message}
+                </Typography>
+              </Box>
+            ))}
+
+            {/* Team consistency — compact inline display */}
+            {consistencyChecks.length > 0 && (
+              <Box sx={{ mt: 0.5 }}>
+                {consistencyChecks.map((c, i) => (
+                  <Box key={`cons-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <StatusIcon status={c.status} />
+                    <Typography variant="caption" sx={{ color: c.status === 'pass' ? 'text.secondary' : undefined }}>
+                      {c.status === 'pass' ? `Team ${state.teamNumber} consistent` : c.message}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </StepContent>
         </Step>
       </Stepper>
 
@@ -442,33 +460,65 @@ function FirmwareStatus() {
     }
   };
 
+  // Group entries by version, with columns for pre-1.2 and 1.2.x+
+  const versions = new Map<string, { pre12x?: FwEntry; from12x?: FwEntry }>();
+  for (const e of entries) {
+    const row = versions.get(e.version) ?? {};
+    if (e.upgradeFrom === 'pre12x') row.pre12x = e;
+    else row.from12x = e;
+    versions.set(e.version, row);
+  }
   const allCached = entries.length > 0 && entries.every(e => e.filePath);
+
+  const statusDot = (entry?: FwEntry) => {
+    if (!entry)
+      return (
+        <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+          —
+        </Typography>
+      );
+    const color = entry.filePath ? 'success.main' : entry.downloading ? 'info.main' : 'warning.main';
+    const label = entry.filePath ? 'cached' : entry.downloading ? 'downloading' : 'missing';
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box
+          component="span"
+          sx={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }}
+        />
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+          {label}
+        </Typography>
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ mt: 4 }}>
       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
         Firmware Store
       </Typography>
-      {entries.map((entry, i) => (
-        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
-          <Box
-            component="span"
-            sx={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: entry.filePath ? 'success.main' : entry.downloading ? 'info.main' : 'warning.main',
-              flexShrink: 0,
-            }}
-          />
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-            v{entry.version} ({entry.upgradeFrom === 'from12x' ? '1.2.x+' : 'pre-1.2'})
+      {versions.size > 0 && (
+        <Box
+          sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '2px 12px', alignItems: 'center', mb: 0.5 }}
+        >
+          <Box />
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', fontWeight: 600 }}>
+            From 1.2.x+
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-            {entry.filePath ? 'cached' : entry.downloading ? 'downloading...' : 'not available'}
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', fontWeight: 600 }}>
+            Pre-1.2
           </Typography>
+          {[...versions].map(([ver, row]) => (
+            <Box key={ver} sx={{ display: 'contents' }}>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                v{ver}
+              </Typography>
+              {statusDot(row.from12x)}
+              {statusDot(row.pre12x)}
+            </Box>
+          ))}
         </Box>
-      ))}
+      )}
       {!allCached && (
         <Button
           size="small"
