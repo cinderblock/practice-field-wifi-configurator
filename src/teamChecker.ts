@@ -219,24 +219,40 @@ export async function checkMdns(team: number, sourceIp?: string): Promise<CheckR
   }
 }
 
-/** Check if the radio is reachable at the factory default IP (192.168.69.1). */
-export async function checkFactoryDefault(): Promise<CheckResult[]> {
+/**
+ * Check if the radio is reachable at the factory default IP (192.168.69.1).
+ * Radios always respond here as a recovery fallback — this is normal.
+ * Only warn if the radio responds at the factory IP but NOT at the team IP,
+ * which means the radio hasn't been configured with a team number yet.
+ */
+export async function checkFactoryDefault(team: number): Promise<CheckResult[]> {
+  const teamIp = `${teamSubnet(team)}.1`;
+
+  const [factoryResult, teamResult] = await Promise.all([
+    fetchWithTimeout(`http://${FACTORY_DEFAULT_IP}/status`).catch(() => null),
+    fetchWithTimeout(`http://${teamIp}/status`).catch(() => null),
+  ]);
+
+  if (!factoryResult?.ok) return []; // Factory IP not reachable — no radio connected
+  if (teamResult?.ok) return []; // Both respond — normal operation
+
+  let factoryData: { teamNumber?: number; version?: string } | undefined;
   try {
-    const res = await fetchWithTimeout(`http://${FACTORY_DEFAULT_IP}/status`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { teamNumber?: number; version?: string };
-    return [
-      {
-        name: 'Factory Default Radio',
-        status: 'warn',
-        actual: `Reachable at ${FACTORY_DEFAULT_IP}${data.teamNumber ? ` (team ${data.teamNumber})` : ''}${data.version ? `, ${data.version}` : ''}`,
-        message: 'Radio is responding on factory default IP — this may indicate an unconfigured or reset radio',
-      },
-    ];
+    factoryData = (await factoryResult.json()) as { teamNumber?: number; version?: string };
   } catch {
-    // Not reachable — normal, no result needed
-    return [];
+    // Ignore parse errors
   }
+
+  // Radio responds at factory IP but not team IP — needs configuration
+  return [
+    {
+      name: 'Radio Not Configured',
+      status: 'fail',
+      actual: `Reachable at ${FACTORY_DEFAULT_IP} only${factoryData?.version ? ` (${factoryData.version})` : ''}`,
+      message:
+        'Radio responds at factory default IP but not at the team IP — it needs to be configured with a team number',
+    },
+  ];
 }
 
 function evaluateSystemCore(data: { systemcoreEnabled?: boolean; version?: string }): CheckResult {

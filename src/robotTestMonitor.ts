@@ -309,7 +309,7 @@ export class RobotTestMonitor {
 
     try {
       const [factoryResult, radioResults, rioResults, mdnsResults, consistencyResults] = await Promise.all([
-        checkFactoryDefault(),
+        checkFactoryDefault(this.teamNumber),
         checkRadio(this.teamNumber),
         checkRoboRIO(this.teamNumber),
         checkMdns(this.teamNumber, this.leasedIp),
