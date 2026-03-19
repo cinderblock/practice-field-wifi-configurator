@@ -13,6 +13,7 @@ import {
 } from './types.js';
 
 const DEFAULT_WINDOW_SECONDS = 30;
+const DEFAULT_PHASE_GRACE_SECONDS = 5;
 
 function oppositeAlliance(alliance: Alliance): Alliance {
   return alliance === 'red' ? 'blue' : 'red';
@@ -26,11 +27,19 @@ export class ScoringEngine {
   private elements = new Map<string, ScoringElementConfig>();
   private mode: ScoringMode = 'freePlay';
   private windowSeconds = DEFAULT_WINDOW_SECONDS;
+  private phaseGraceSeconds = DEFAULT_PHASE_GRACE_SECONDS;
   private currentMatchPhase: MatchPhase = 'idle';
+  /** The previous match phase and when it ended — used for grace period attribution */
+  private previousPhase: { phase: MatchPhase; endedAt: number } | null = null;
   /** Key: `${element}:${alliance}`, value: timestamp of last counted event */
   private lastDedupTimestamp = new Map<string, number>();
   private windowTimer: NodeJS.Timeout | null = null;
   private windowTimerTarget: number | undefined;
+  /** Recent peak scores in free play mode — up to 5 per alliance, newest first */
+  private peaks: Record<Alliance, { total: number; timestamp: number }[]> = {
+    red: [],
+    blue: [],
+  };
   private autoRegisterLimit = 1;
   private suppressBroadcast = false;
   private listeners: ((state: ScoreState) => void)[] = [];
@@ -95,6 +104,21 @@ export class ScoringEngine {
 
     const awardedTo = elementConfig.awardToOpponent ? oppositeAlliance(event.alliance) : event.alliance;
 
+    // During the grace period after a phase change, attribute events to the previous phase
+    // (e.g. a ball scored during auto that takes a few seconds to fall through the sensor)
+    let effectivePhase = this.currentMatchPhase;
+    if (
+      this.mode === 'match' &&
+      this.previousPhase &&
+      now - this.previousPhase.endedAt < this.phaseGraceSeconds * 1000
+    ) {
+      effectivePhase = this.previousPhase.phase;
+      // Re-evaluate phase activity against the previous phase
+      if (elementConfig.activePhases && elementConfig.activePhases.length > 0) {
+        phaseInactive = !elementConfig.activePhases.includes(effectivePhase);
+      }
+    }
+
     const processed: ProcessedScoreEvent = {
       id: `evt-${nextEventId++}`,
       source: event.source,
@@ -105,7 +129,7 @@ export class ScoringEngine {
       awardedTo,
       timestamp: now,
       deviceTimestamp: event.timestamp,
-      matchPhase: this.mode === 'match' ? this.currentMatchPhase : undefined,
+      matchPhase: this.mode === 'match' ? effectivePhase : undefined,
       // Mark as deduplicated if within dedup window OR if phase is inactive
       deduplicated: deduplicated || phaseInactive,
     };
@@ -182,10 +206,17 @@ export class ScoringEngine {
     this.broadcast();
   }
 
+  /** Set the grace period (seconds) for attributing events to the previous match phase. */
+  setPhaseGraceSeconds(seconds: number): void {
+    this.phaseGraceSeconds = Math.max(0, Math.min(30, seconds));
+    this.broadcast();
+  }
+
   /** Reset all scores and events. Sources and element config are preserved. */
   reset(): void {
     this.events = [];
     this.lastDedupTimestamp.clear();
+    this.peaks = { red: [], blue: [] };
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
       this.windowTimer = null;
@@ -212,6 +243,11 @@ export class ScoringEngine {
   onMatchStateChange(state: MatchState): void {
     const prevPhase = this.currentMatchPhase;
     this.currentMatchPhase = state.phase;
+
+    // Record when the previous phase ended for grace period attribution
+    if (prevPhase !== state.phase && prevPhase !== 'idle' && prevPhase !== 'countdown') {
+      this.previousPhase = { phase: prevPhase, endedAt: Date.now() };
+    }
 
     // Auto-switch to match mode when a match starts
     if (prevPhase === 'idle' && state.phase === 'countdown') {
@@ -249,13 +285,29 @@ export class ScoringEngine {
     const red = this.calculateAllianceScore('red');
     const blue = this.calculateAllianceScore('blue');
 
+    // Track peaks in free play mode — record when the score increases past any previous peak
+    if (this.mode === 'freePlay') {
+      const now = Date.now();
+      for (const alliance of ['red', 'blue'] as Alliance[]) {
+        const total = alliance === 'red' ? red.total : blue.total;
+        const peakList = this.peaks[alliance];
+        const currentPeak = peakList[0]?.total ?? 0;
+        if (total > 0 && total > currentPeak) {
+          peakList.unshift({ total, timestamp: now });
+          if (peakList.length > 5) peakList.pop();
+        }
+      }
+    }
+
     const state: ScoreState = {
       type: 'scoreState',
       mode: this.mode,
       windowSeconds: this.windowSeconds,
       autoRegisterLimit: this.autoRegisterLimit,
+      phaseGraceSeconds: this.phaseGraceSeconds,
       red,
       blue,
+      peaks: this.mode === 'freePlay' ? { red: this.peaks.red, blue: this.peaks.blue } : undefined,
       sources: Object.fromEntries(this.sources),
       elements: Object.fromEntries(this.elements),
     };

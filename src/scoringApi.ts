@@ -243,10 +243,11 @@ export function handleScoringRequest(
           return;
         }
 
-        const { mode, windowSeconds, autoRegisterLimit } = (data ?? {}) as {
+        const { mode, windowSeconds, autoRegisterLimit, phaseGraceSeconds } = (data ?? {}) as {
           mode?: ScoringMode;
           windowSeconds?: number;
           autoRegisterLimit?: number;
+          phaseGraceSeconds?: number;
         };
 
         if (mode !== undefined) {
@@ -271,6 +272,14 @@ export function handleScoringRequest(
             return;
           }
           engine.setAutoRegisterLimit(autoRegisterLimit);
+        }
+
+        if (phaseGraceSeconds !== undefined) {
+          if (typeof phaseGraceSeconds !== 'number' || phaseGraceSeconds < 0 || phaseGraceSeconds > 30) {
+            json(res, 400, { error: 'phaseGraceSeconds must be a number between 0 and 30' });
+            return;
+          }
+          engine.setPhaseGraceSeconds(phaseGraceSeconds);
         }
 
         json(res, 200, { ok: true, state: engine.getState() });

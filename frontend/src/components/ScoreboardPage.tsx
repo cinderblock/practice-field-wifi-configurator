@@ -131,6 +131,14 @@ export function ScoreboardPage() {
         </Box>
       )}
 
+      {/* Peaks (free play mode) */}
+      {score.peaks && (score.peaks.red.length > 0 || score.peaks.blue.length > 0) && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
+          <PeakList peaks={score.peaks.red} color="#ef5350" label="Red peaks" />
+          <PeakList peaks={score.peaks.blue} color="#42a5f5" label="Blue peaks" />
+        </Box>
+      )}
+
       {/* Phase breakdown (match mode) */}
       {score.mode === 'match' && score.phaseBreakdown && Object.keys(score.phaseBreakdown).length > 0 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, pb: 2 }}>
@@ -194,6 +202,50 @@ function AllianceScore({ alliance, total }: { alliance: 'red' | 'blue'; total: n
       >
         {alliance}
       </Typography>
+    </Box>
+  );
+}
+
+function formatTimeAgo(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  return `${Math.round(s / 3600)}h ago`;
+}
+
+function PeakList({
+  peaks,
+  color,
+  label,
+}: {
+  peaks: { total: number; timestamp: number }[];
+  color: string;
+  label: string;
+}) {
+  if (peaks.length === 0) return null;
+  return (
+    <Box>
+      <Typography
+        sx={{
+          color: 'rgba(255,255,255,0.3)',
+          fontSize: '0.7rem',
+          textTransform: 'uppercase',
+          mb: 0.5,
+          textAlign: 'center',
+        }}
+      >
+        {label}
+      </Typography>
+      {peaks.map((p, i) => (
+        <Box key={i} sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', opacity: 1 - i * 0.15 }}>
+          <Typography sx={{ color, fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 700 }}>
+            {p.total}
+          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem' }}>
+            {formatTimeAgo(p.timestamp)}
+          </Typography>
+        </Box>
+      ))}
     </Box>
   );
 }

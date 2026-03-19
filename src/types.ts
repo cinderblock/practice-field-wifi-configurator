@@ -958,8 +958,12 @@ export interface ScoreState {
   windowSeconds: number;
   /** Max elements that can be auto-registered from incoming events */
   autoRegisterLimit: number;
+  /** Grace period (seconds) for attributing events to the previous match phase after a transition */
+  phaseGraceSeconds: number;
   red: AllianceScore;
   blue: AllianceScore;
+  /** Recent peak scores in free play mode (up to 5, newest first) */
+  peaks?: { red: { total: number; timestamp: number }[]; blue: { total: number; timestamp: number }[] };
   /** Current match phase (match mode only) */
   matchPhase?: MatchPhase;
   /** Per-phase breakdown (match mode only) */
