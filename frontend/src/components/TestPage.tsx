@@ -275,11 +275,14 @@ export function TestPage() {
         <Step completed={state.phase === 'complete'}>
           <StepLabel>
             Robot Checks
-            {state.phase === 'checking' && (
-              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                checking...
-              </Typography>
-            )}
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: 1, visibility: state.phase === 'checking' ? 'visible' : 'hidden' }}
+            >
+              checking...
+            </Typography>
           </StepLabel>
           <StepContent TransitionProps={{ unmountOnExit: false }}>
             {/* 3-column check layout */}
