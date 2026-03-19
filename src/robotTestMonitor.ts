@@ -211,9 +211,10 @@ export class RobotTestMonitor {
     // dhcpcd --oneshot: obtain a lease and exit
     // --nobackground: stay in foreground (we manage the process)
     // --waitip 4: wait until an IPv4 address is assigned
+    // --noipv4ll: don't fall back to link-local (169.254.x.x) if no DHCP server responds
     const proc = spawn(
       'dhcpcd',
-      ['--oneshot', '--nobackground', '--waitip', '4', '--timeout', '1', this.interfaceName],
+      ['--oneshot', '--nobackground', '--waitip', '4', '--timeout', '1', '--noipv4ll', this.interfaceName],
       {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -266,6 +267,23 @@ export class RobotTestMonitor {
       const addr = await getInterfaceIp(this.interfaceName, [FACTORY_PROBE_IP]);
       if (!addr) {
         console.log('RobotTestMonitor: dhcpcd succeeded but no IP on interface');
+        return;
+      }
+
+      // Reject link-local addresses (169.254.x.x) — means no DHCP server responded
+      if (addr.ip.startsWith('169.254.')) {
+        console.log(`RobotTestMonitor: got link-local address ${addr.ip} — no DHCP server, retrying`);
+        if (!this.dryRun) {
+          this.net
+            .removeAddress({ interfaceName: this.interfaceName, address: addr.ip, prefixLength: addr.prefixLength })
+            .catch(() => {});
+        }
+        // Retry DHCP after a short delay
+        if (this.linkUp) {
+          setTimeout(() => {
+            if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
+          }, 500);
+        }
         return;
       }
 
