@@ -220,7 +220,7 @@ export function TestPage() {
               </Typography>
             )}
           </StepLabel>
-          <StepContent sx={{ minHeight: state.checks.length > 0 ? undefined : 24 }}>
+          <StepContent TransitionProps={{ unmountOnExit: false }}>
             {/* Factory default warning */}
             {factoryChecks.map((c, i) => (
               <CheckResultRow key={`factory-${i}`} check={c} />
