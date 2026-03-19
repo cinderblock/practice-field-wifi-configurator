@@ -320,28 +320,13 @@ practice.example.com {
     @stations {
         path_regexp ^/(red|blue)[123]$
     }
+    rewrite @stations /station
 
     reverse_proxy /ws localhost:9001
     reverse_proxy /api/* localhost:9001
 
-    # Prevent direct access to html files
-    rewrite /index.html /non-existent-path
-    rewrite /station.html /non-existent-path
-    rewrite /admin.html /non-existent-path
-    rewrite /logs.html /non-existent-path
-    rewrite /network.html /non-existent-path
-    rewrite /route.html /non-existent-path
-    rewrite /test.html /non-existent-path
-    rewrite /scores.html /non-existent-path
-
-    rewrite @stations /station.html
-    rewrite /admin /admin.html
-    rewrite /logs /logs.html
-    rewrite /network /network.html
-    rewrite /route /route.html
-    rewrite /test /test.html
-    rewrite /scores /scores.html
     root /path/to/frontend/dist
+    try_files {path} {path}.html
     file_server
 }
 ```
@@ -354,32 +339,14 @@ server {
     server_name practice.example.com;
     root /path/to/frontend/dist;
 
+    # Clean URLs: /admin → /admin.html, /scores → /scores.html, etc.
+    location / {
+        try_files $uri $uri.html $uri/ =404;
+    }
+
+    # Station pages: /red1, /blue3, etc. → /station.html
     location ~^/(red|blue)[123]$ {
         rewrite ^ /station.html break;
-    }
-
-    location = /admin {
-        rewrite ^ /admin.html break;
-    }
-
-    location = /logs {
-        rewrite ^ /logs.html break;
-    }
-
-    location = /network {
-        rewrite ^ /network.html break;
-    }
-
-    location = /route {
-        rewrite ^ /route.html break;
-    }
-
-    location = /test {
-        rewrite ^ /test.html break;
-    }
-
-    location = /scores {
-        rewrite ^ /scores.html break;
     }
 
     location /api/ {
