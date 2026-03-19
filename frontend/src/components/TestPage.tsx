@@ -66,6 +66,64 @@ function PulseDot({ lastUpdate }: { lastUpdate: number }) {
   );
 }
 
+const STARTUP_TIMER_SECONDS = 180; // 3 minutes
+
+function StartupTimer() {
+  const [deadline, setDeadline] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    if (!deadline) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setRemaining(left);
+    };
+    tick();
+    const interval = setInterval(tick, 200);
+    return () => clearInterval(interval);
+  }, [deadline]);
+
+  if (!deadline) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="caption" color="text.secondary">
+          Waiting for robot...
+        </Typography>
+        <Button
+          size="small"
+          onClick={() => setDeadline(Date.now() + STARTUP_TIMER_SECONDS * 1000)}
+          sx={{ textTransform: 'none', fontSize: '0.7rem', py: 0, px: 0.5, minHeight: 0, lineHeight: 1.4 }}
+        >
+          Just powered on
+        </Button>
+      </Box>
+    );
+  }
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const expired = remaining === 0;
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="caption" color={expired ? 'warning.main' : 'text.secondary'}>
+        {expired
+          ? 'Startup time exceeded — robot should be ready'
+          : `Startup: ${mins}:${secs.toString().padStart(2, '0')} remaining`}
+      </Typography>
+      {expired && (
+        <Button
+          size="small"
+          onClick={() => setDeadline(Date.now() + STARTUP_TIMER_SECONDS * 1000)}
+          sx={{ textTransform: 'none', fontSize: '0.7rem', py: 0, px: 0.5, minHeight: 0, lineHeight: 1.4 }}
+        >
+          Restart
+        </Button>
+      )}
+    </Box>
+  );
+}
+
 function CheckResultRow({ check }: { check: CheckResult }) {
   const failed = check.status === 'fail' || check.status === 'error' || check.status === 'warn';
   return (
@@ -201,9 +259,7 @@ export function TestPage() {
           <StepLabel
             optional={
               state.phase === 'dhcp_requesting' ? (
-                <Typography variant="caption" color="text.secondary">
-                  Waiting for robot...
-                </Typography>
+                <StartupTimer />
               ) : state.teamNumber ? (
                 <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
                   Team {state.teamNumber} — {state.leasedIp}
