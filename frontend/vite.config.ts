@@ -48,7 +48,6 @@ function gitVersion(): string {
 export default defineConfig({
   define: {
     __BUILD_VERSION__: JSON.stringify(gitVersion()),
-    __CAST_APP_ID__: JSON.stringify(process.env.CAST_APP_ID ?? '260A23F5'),
   },
   plugins: [react(), stationRoutes()],
   server: {

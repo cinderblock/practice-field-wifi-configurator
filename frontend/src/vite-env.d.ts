@@ -1,8 +1,6 @@
 /// <reference types="vite/client" />
 
 declare const __BUILD_VERSION__: string;
-declare const __CAST_APP_ID__: string;
-
 // Google Cast SDK type stubs
 declare namespace cast {
   namespace framework {
