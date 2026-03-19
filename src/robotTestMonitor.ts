@@ -22,8 +22,7 @@ function teamFromIp(ip: string): number | null {
   const low = parseInt(parts[2], 10);
   if (isNaN(high) || isNaN(low)) return null;
   const team = high * 100 + low;
-  // Team 0 and 1 are the radio's unconfigured defaults (10.0.0.x / 10.0.1.x), not real teams
-  return team > 1 && team <= 25599 ? team : null;
+  return team > 0 && team <= 25599 ? team : null;
 }
 
 /** Read the DHCP-assigned IPv4 address on an interface, skipping any static addresses we added. */
