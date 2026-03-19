@@ -251,6 +251,8 @@ export class RobotTestMonitor {
         for (const line of output.trim().split('\n')) {
           console.log(`  dhcpcd: ${line}`);
         }
+        // While waiting for DHCP, check if there's a radio at the factory default IP
+        await this.probeFactoryDefault();
         // Retry after a short delay if link is still up
         if (this.linkUp) {
           setTimeout(() => {
@@ -314,6 +316,34 @@ export class RobotTestMonitor {
     }
     // Also release the lease and kill any orphaned dhcpcd for this interface
     execFile('dhcpcd', ['--release', this.interfaceName]).catch(() => {});
+  }
+
+  /** Probe the factory default IP while waiting for DHCP. Shows results if a radio is found. */
+  private async probeFactoryDefault(): Promise<void> {
+    try {
+      const res = await fetch(`http://192.168.69.1/status`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { teamNumber?: number; version?: string };
+      this.checks = [
+        {
+          name: 'Radio Not Configured',
+          status: 'fail',
+          actual: `Reachable at 192.168.69.1${data.version ? ` (${data.version})` : ''}`,
+          message: data.teamNumber
+            ? `Radio is configured for team ${data.teamNumber} but not providing DHCP — check network path`
+            : 'Radio has no team number configured — it needs to be set up',
+        },
+      ];
+      this.broadcast();
+    } catch {
+      // Not reachable — no radio connected, clear any stale result
+      if (this.checks.length > 0) {
+        this.checks = [];
+        this.broadcast();
+      }
+    }
   }
 
   // ── Robot checks ──────────────────────────────────────────────────
