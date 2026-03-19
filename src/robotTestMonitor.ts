@@ -22,7 +22,8 @@ function teamFromIp(ip: string): number | null {
   const low = parseInt(parts[2], 10);
   if (isNaN(high) || isNaN(low)) return null;
   const team = high * 100 + low;
-  return team > 0 && team <= 25599 ? team : null;
+  // Team 0 and 1 are the radio's unconfigured defaults (10.0.0.x / 10.0.1.x), not real teams
+  return team > 1 && team <= 25599 ? team : null;
 }
 
 /** Read the DHCP-assigned IPv4 address on an interface, skipping any static addresses we added. */
@@ -232,9 +233,21 @@ export class RobotTestMonitor {
     // --nobackground: stay in foreground (we manage the process)
     // --waitip 4: wait until an IPv4 address is assigned
     // --noipv4ll: don't fall back to link-local (169.254.x.x) if no DHCP server responds
+    // --reboot 0: skip rebinding the last lease, always do a fresh discover
     const proc = spawn(
       'dhcpcd',
-      ['--oneshot', '--nobackground', '--waitip', '4', '--timeout', '1', '--noipv4ll', this.interfaceName],
+      [
+        '--oneshot',
+        '--nobackground',
+        '--waitip',
+        '4',
+        '--timeout',
+        '1',
+        '--noipv4ll',
+        '--reboot',
+        '0',
+        this.interfaceName,
+      ],
       {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
