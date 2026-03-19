@@ -95,7 +95,7 @@ export function ScoreboardPage() {
             variant="h6"
             sx={{ color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 4 }}
           >
-            {score.mode === 'match' ? (score.matchPhase ?? 'Match') : 'Free Play'}
+            {score.mode === 'match' ? (score.matchPhase ?? 'Match') : `Points in the last ${score.windowSeconds}s`}
           </Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
             —
