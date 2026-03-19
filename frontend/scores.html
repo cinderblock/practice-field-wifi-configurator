@@ -5,7 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/tomsawyerlabs.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Scoreboard</title>
-    <!-- Cast SDK: set callback BEFORE loading sender so timing works -->
+    <!-- Cast Receiver SDK: only load on Chromecast (keeps session alive) -->
+    <script>
+      if (navigator.userAgent.includes('CrKey')) {
+        var s = document.createElement('script');
+        s.src = '//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
+        s.onload = function () {
+          cast.framework.CastReceiverContext.getInstance().start();
+        };
+        document.head.appendChild(s);
+      }
+    </script>
+    <!-- Cast Sender SDK: set callback BEFORE loading sender so timing works -->
     <script>
       window['__onGCastApiAvailable'] = function (isAvailable) {
         if (!isAvailable) return;
