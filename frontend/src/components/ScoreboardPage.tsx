@@ -17,9 +17,30 @@ declare global {
  * Dark background, large numbers, auto-updating via WebSocket.
  * Access at /scores
  */
+function getInitialSwap(): boolean {
+  // URL param takes priority: ?swap=1 or ?swap=0
+  const params = new URLSearchParams(window.location.search);
+  const param = params.get('swap');
+  if (param !== null) return param === '1' || param === 'true';
+  // Fall back to localStorage
+  return localStorage.getItem('scoreboard-swap') === '1';
+}
+
 export function ScoreboardPage() {
   const score = useScoreState();
   const [, setTick] = useState(0);
+  const [swapped, setSwapped] = useState(getInitialSwap);
+
+  const toggleSwap = () => {
+    setSwapped(s => {
+      const next = !s;
+      localStorage.setItem('scoreboard-swap', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const left: 'red' | 'blue' = swapped ? 'blue' : 'red';
+  const right: 'red' | 'blue' = swapped ? 'red' : 'blue';
 
   // Re-render every second for sliding window countdown
   useEffect(() => {
@@ -51,16 +72,22 @@ export function ScoreboardPage() {
         userSelect: 'none',
       }}
     >
-      {/* Cast button — top right, only shown when Cast SDK is available */}
-      {window.__castReady && (
-        <Box sx={{ position: 'absolute', top: 12, right: 16 }}>
+      {/* Controls — top right */}
+      <Box sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Typography
+          onClick={toggleSwap}
+          sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
+        >
+          ⇄
+        </Typography>
+        {window.__castReady && (
           <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
-        </Box>
-      )}
+        )}
+      </Box>
 
       {/* Main score display */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <AllianceScore alliance="red" total={score.red.total} />
+        <AllianceScore alliance={left} total={score[left].total} />
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <Typography
             variant="h6"
@@ -72,7 +99,7 @@ export function ScoreboardPage() {
             —
           </Typography>
         </Box>
-        <AllianceScore alliance="blue" total={score.blue.total} />
+        <AllianceScore alliance={right} total={score[right].total} />
       </Box>
 
       {/* Element breakdown bar */}
@@ -87,18 +114,20 @@ export function ScoreboardPage() {
           }}
         >
           {elements.map(el => {
-            const red = score.red.elements[el.id];
-            const blue = score.blue.elements[el.id];
-            if (!red && !blue) return null;
+            const leftEl = score[left].elements[el.id];
+            const rightEl = score[right].elements[el.id];
+            if (!leftEl && !rightEl) return null;
+            const leftColor = left === 'red' ? '#ef5350' : '#42a5f5';
+            const rightColor = right === 'red' ? '#ef5350' : '#42a5f5';
             return (
               <Box key={el.id} sx={{ textAlign: 'center' }}>
                 <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', mb: 0.5 }}>{el.name}</Typography>
                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                  <Typography sx={{ color: '#ef5350', fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
-                    {red?.count ?? 0}
+                  <Typography sx={{ color: leftColor, fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
+                    {leftEl?.count ?? 0}
                   </Typography>
-                  <Typography sx={{ color: '#42a5f5', fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
-                    {blue?.count ?? 0}
+                  <Typography sx={{ color: rightColor, fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
+                    {rightEl?.count ?? 0}
                   </Typography>
                 </Box>
               </Box>
@@ -108,10 +137,14 @@ export function ScoreboardPage() {
       )}
 
       {/* Peaks (free play mode) */}
-      {score.peaks && (score.peaks.red.length > 0 || score.peaks.blue.length > 0) && (
+      {score.peaks && (score.peaks[left].length > 0 || score.peaks[right].length > 0) && (
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
-          <PeakList peaks={score.peaks.red} color="#ef5350" label="Red peaks" />
-          <PeakList peaks={score.peaks.blue} color="#42a5f5" label="Blue peaks" />
+          <PeakList peaks={score.peaks[left]} color={left === 'red' ? '#ef5350' : '#42a5f5'} label={`${left} peaks`} />
+          <PeakList
+            peaks={score.peaks[right]}
+            color={right === 'red' ? '#ef5350' : '#42a5f5'}
+            label={`${right} peaks`}
+          />
         </Box>
       )}
 
@@ -124,11 +157,15 @@ export function ScoreboardPage() {
                 {phase}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center' }}>
-                <Typography sx={{ color: '#ef5350', fontFamily: 'monospace', fontSize: '1rem' }}>
-                  {scores.red.total}
+                <Typography
+                  sx={{ color: left === 'red' ? '#ef5350' : '#42a5f5', fontFamily: 'monospace', fontSize: '1rem' }}
+                >
+                  {scores[left].total}
                 </Typography>
-                <Typography sx={{ color: '#42a5f5', fontFamily: 'monospace', fontSize: '1rem' }}>
-                  {scores.blue.total}
+                <Typography
+                  sx={{ color: right === 'red' ? '#ef5350' : '#42a5f5', fontFamily: 'monospace', fontSize: '1rem' }}
+                >
+                  {scores[right].total}
                 </Typography>
               </Box>
             </Box>
