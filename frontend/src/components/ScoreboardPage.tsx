@@ -9,6 +9,7 @@ import { useScoreState } from '../hooks/useBackend';
 declare global {
   interface Window {
     __castReady?: boolean;
+    __castSendSwap?: (swap: boolean) => void;
   }
 }
 
@@ -35,6 +36,7 @@ export function ScoreboardPage() {
     setSwapped(s => {
       const next = !s;
       localStorage.setItem('scoreboard-swap', next ? '1' : '0');
+      window.__castSendSwap?.(next);
       return next;
     });
   };

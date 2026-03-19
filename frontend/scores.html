@@ -5,30 +5,65 @@
     <link rel="icon" type="image/svg+xml" href="/tomsawyerlabs.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Scoreboard</title>
-    <!-- Cast Receiver SDK: only load on Chromecast (keeps session alive) -->
+    <!-- Cast Receiver SDK: only load on Chromecast (keeps session alive + listens for swap messages) -->
     <script>
       if (navigator.userAgent.includes('CrKey')) {
         var s = document.createElement('script');
         s.src = '//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
         s.onload = function () {
-          cast.framework.CastReceiverContext.getInstance().start();
+          var ctx = cast.framework.CastReceiverContext.getInstance();
+          var NAMESPACE = 'urn:x-cast:com.tomsawyerlabs.pfms';
+          ctx.addCustomMessageListener(NAMESPACE, function (event) {
+            try {
+              var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+              if (data && data.swap !== undefined) {
+                localStorage.setItem('scoreboard-swap', data.swap ? '1' : '0');
+                window.location.reload();
+              }
+            } catch (e) {}
+          });
+          ctx.start();
         };
         document.head.appendChild(s);
       }
     </script>
     <!-- Cast Sender SDK: set callback BEFORE loading sender so timing works -->
     <script>
+      var CAST_NAMESPACE = 'urn:x-cast:com.tomsawyerlabs.pfms';
       window['__onGCastApiAvailable'] = function (isAvailable) {
         if (!isAvailable) return;
         try {
-          cast.framework.CastContext.getInstance().setOptions({
+          var ctx = cast.framework.CastContext.getInstance();
+          ctx.setOptions({
             receiverApplicationId: '260A23F5',
             autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+          });
+          // When a Cast session starts, send the current swap state to the receiver
+          ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, function (event) {
+            if (
+              event.sessionState === cast.framework.SessionState.SESSION_STARTED ||
+              event.sessionState === cast.framework.SessionState.SESSION_RESUMED
+            ) {
+              var swap = localStorage.getItem('scoreboard-swap') === '1';
+              var session = ctx.getCurrentSession();
+              if (session) {
+                session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap }));
+              }
+            }
           });
           window.__castReady = true;
         } catch (e) {
           console.warn('Cast init failed:', e);
         }
+      };
+      // Allow the scoreboard component to send swap updates to the receiver
+      window.__castSendSwap = function (swap) {
+        try {
+          var session = cast.framework.CastContext.getInstance().getCurrentSession();
+          if (session) {
+            session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap }));
+          }
+        } catch (e) {}
       };
     </script>
     <script src="//www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
