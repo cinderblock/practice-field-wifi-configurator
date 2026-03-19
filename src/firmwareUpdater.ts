@@ -239,7 +239,7 @@ export async function updateRadioFirmware(
     ssidSuffix: savedConfig.ssidSuffix,
     wpaKey6: wpaKey,
     wpaKey24: wpaKey24 || wpaKey,
-    channel: '',
+    channel: 0,
   };
 
   try {

@@ -69,6 +69,7 @@ export class RobotTestMonitor {
   private dhcpProc: ChildProcess | null = null;
   private checking = false;
   private firmwareUpdating = false;
+  private factoryProbeTimer: NodeJS.Timeout | null = null;
   /** True if the interface is a VLAN sub-interface (link state mirrors parent, not meaningful). */
   private skipLinkDetection = false;
 
@@ -112,6 +113,7 @@ export class RobotTestMonitor {
       this.linkPollTimer = null;
     }
     this.stopChecking();
+    this.stopFactoryProbe();
     this.killDhcp();
     console.log('RobotTestMonitor: stopped');
   }
@@ -173,6 +175,7 @@ export class RobotTestMonitor {
         })
         .catch(() => {}); // May already exist from a previous link cycle
     }
+    this.startFactoryProbe();
     this.startDhcp();
   }
 
@@ -184,12 +187,29 @@ export class RobotTestMonitor {
     this.routerIp = undefined;
     this.checks = [];
     this.stopChecking();
+    this.stopFactoryProbe();
     this.killDhcp();
     if (!this.dryRun) {
       this.net.flushAddresses(this.interfaceName).catch(() => {});
     }
     console.log(`RobotTestMonitor: link DOWN on ${this.interfaceName}`);
     this.broadcast();
+  }
+
+  // ── Factory default probe ──────────────────────────────────────────
+
+  private startFactoryProbe(): void {
+    this.stopFactoryProbe();
+    // Probe immediately, then every 2 seconds
+    this.probeFactoryDefault();
+    this.factoryProbeTimer = setInterval(() => this.probeFactoryDefault(), 2000);
+  }
+
+  private stopFactoryProbe(): void {
+    if (this.factoryProbeTimer) {
+      clearInterval(this.factoryProbeTimer);
+      this.factoryProbeTimer = null;
+    }
   }
 
   // ── DHCP ──────────────────────────────────────────────────────────
@@ -251,8 +271,6 @@ export class RobotTestMonitor {
         for (const line of output.trim().split('\n')) {
           console.log(`  dhcpcd: ${line}`);
         }
-        // While waiting for DHCP, check if there's a radio at the factory default IP
-        await this.probeFactoryDefault();
         // Retry after a short delay if link is still up
         if (this.linkUp) {
           setTimeout(() => {
@@ -318,31 +336,38 @@ export class RobotTestMonitor {
     execFile('dhcpcd', ['--release', this.interfaceName]).catch(() => {});
   }
 
-  /** Probe the factory default IP while waiting for DHCP. Shows results if a radio is found. */
+  /** Continuously probe the factory default IP. Updates only the factory-related check result. */
   private async probeFactoryDefault(): Promise<void> {
+    let factoryCheck: CheckResult | null = null;
     try {
       const res = await fetch(`http://192.168.69.1/status`, {
         signal: AbortSignal.timeout(500),
       });
-      if (!res.ok) return;
-      const data = (await res.json()) as { teamNumber?: number; version?: string };
-      this.checks = [
-        {
-          name: 'Radio Not Configured',
-          status: 'fail',
-          actual: `Reachable at 192.168.69.1${data.version ? ` (${data.version})` : ''}`,
-          message: data.teamNumber
-            ? `Radio is configured for team ${data.teamNumber} but not providing DHCP — check network path`
-            : 'Radio has no team number configured — it needs to be set up',
-        },
-      ];
-      this.broadcast();
-    } catch {
-      // Not reachable — no radio connected, clear any stale result
-      if (this.checks.length > 0) {
-        this.checks = [];
-        this.broadcast();
+      if (res.ok) {
+        const data = (await res.json()) as { teamNumber?: number; version?: string };
+        if (!this.teamNumber) {
+          // No DHCP yet — radio is there but we can't reach it via team IP
+          factoryCheck = {
+            name: 'Radio Detected',
+            status: data.teamNumber ? 'warn' : 'fail',
+            actual: `At 192.168.69.1${data.version ? ` (${data.version})` : ''}${data.teamNumber ? `, team ${data.teamNumber}` : ''}`,
+            message: data.teamNumber
+              ? `Radio configured for team ${data.teamNumber} but not providing DHCP — check network path`
+              : 'Radio has no team number — needs to be configured',
+          };
+        }
+        // When we DO have a team number, the full checkFactoryDefault() in runChecks handles it
       }
+    } catch {
+      // Not reachable — no factory-IP radio
+    }
+
+    // Merge: remove old factory check, add new one if present
+    const filtered = this.checks.filter(c => c.name !== 'Radio Detected' && c.name !== 'Radio Not Configured');
+    const updated = factoryCheck ? [factoryCheck, ...filtered] : filtered;
+    if (updated.length !== this.checks.length || factoryCheck) {
+      this.checks = updated;
+      this.broadcast();
     }
   }
 

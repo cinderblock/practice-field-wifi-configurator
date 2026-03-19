@@ -138,7 +138,7 @@ export function TestPage() {
   }
 
   const step = activeStep(state.phase, !!state.isVlan);
-  const factoryChecks = state.checks.filter(c => c.name === 'Radio Not Configured');
+  const factoryChecks = state.checks.filter(c => c.name === 'Radio Not Configured' || c.name === 'Radio Detected');
   const radioChecks = state.checks.filter(c => c.name.startsWith('Radio'));
   const rioChecks = state.checks.filter(c => c.name.startsWith('roboRIO'));
   const mdnsChecks = state.checks.filter(c => c.name === 'mDNS');
