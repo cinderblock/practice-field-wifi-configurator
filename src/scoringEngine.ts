@@ -40,6 +40,11 @@ export class ScoringEngine {
     red: [],
     blue: [],
   };
+  /** High-water mark per alliance — peak is recorded when score drops below this */
+  private highWater: Record<Alliance, { total: number; timestamp: number }> = {
+    red: { total: 0, timestamp: 0 },
+    blue: { total: 0, timestamp: 0 },
+  };
   private autoRegisterLimit = 1;
   private suppressBroadcast = false;
   private listeners: ((state: ScoreState) => void)[] = [];
@@ -217,6 +222,7 @@ export class ScoringEngine {
     this.events = [];
     this.lastDedupTimestamp.clear();
     this.peaks = { red: [], blue: [] };
+    this.highWater = { red: { total: 0, timestamp: 0 }, blue: { total: 0, timestamp: 0 } };
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
       this.windowTimer = null;
@@ -285,16 +291,27 @@ export class ScoringEngine {
     const red = this.calculateAllianceScore('red');
     const blue = this.calculateAllianceScore('blue');
 
-    // Track peaks in free play mode — record when the score increases past any previous peak
+    // Track peaks in free play mode — record when the score drops after reaching a high
     if (this.mode === 'freePlay') {
       const now = Date.now();
       for (const alliance of ['red', 'blue'] as Alliance[]) {
         const total = alliance === 'red' ? red.total : blue.total;
-        const peakList = this.peaks[alliance];
-        const currentPeak = peakList[0]?.total ?? 0;
-        if (total > 0 && total > currentPeak) {
-          peakList.unshift({ total, timestamp: now });
-          if (peakList.length > 5) peakList.pop();
+        const hw = this.highWater[alliance];
+        if (total > hw.total) {
+          // Score is climbing — update the high-water mark
+          hw.total = total;
+          hw.timestamp = now;
+        } else if (total < hw.total && hw.total > 0) {
+          // Score dropped — the high-water mark was a peak
+          const peakList = this.peaks[alliance];
+          // Only record if it's different from the most recent peak
+          if (!peakList[0] || peakList[0].total !== hw.total) {
+            peakList.unshift({ total: hw.total, timestamp: hw.timestamp });
+            if (peakList.length > 5) peakList.pop();
+          }
+          // Reset high-water to current level
+          hw.total = total;
+          hw.timestamp = now;
         }
       }
     }
