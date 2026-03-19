@@ -192,30 +192,33 @@ function parseARecord(msg: Buffer): string | null {
   return null;
 }
 
-/** Check mDNS resolution for roboRIO-{team}-FRC.local via multicast on a specific interface. */
-export async function checkMdns(team: number, sourceIp?: string): Promise<CheckResult[]> {
-  if (!sourceIp) return []; // No IP to query from — skip
-  const hostname = `roboRIO-${team}-FRC.local`;
-  const expected = expectedIP(team);
+/** Check mDNS resolution for a hostname via multicast on a specific interface. */
+export async function checkMdns(
+  name: string,
+  hostname: string,
+  expectedIp: string | undefined,
+  sourceIp?: string,
+): Promise<CheckResult[]> {
+  if (!sourceIp) return [];
   try {
     const resolved = await mdnsQuery(hostname, sourceIp, FETCH_TIMEOUT);
     if (!resolved) {
-      return [{ name: 'mDNS', status: 'error', message: `${hostname} — no response` }];
+      return [{ name, status: 'error', message: `${hostname} — no response` }];
     }
-    if (resolved === expected) {
-      return [{ name: 'mDNS', status: 'pass', actual: `${hostname} → ${resolved}` }];
+    if (!expectedIp || resolved === expectedIp) {
+      return [{ name, status: 'pass', actual: `${hostname} → ${resolved}` }];
     }
     return [
       {
-        name: 'mDNS',
+        name,
         status: 'warn',
-        expected,
+        expected: expectedIp,
         actual: `${hostname} → ${resolved}`,
-        message: 'mDNS resolved to unexpected IP',
+        message: 'Resolved to unexpected IP',
       },
     ];
   } catch {
-    return [{ name: 'mDNS', status: 'error', message: `${hostname} — query failed` }];
+    return [{ name, status: 'error', message: `${hostname} — query failed` }];
   }
 }
 
@@ -302,9 +305,10 @@ function evaluateRadioFirmware(data: { version?: string }): CheckResult {
   };
 }
 
-/** Fetch radio /status and run all radio checks against it. Firmware check first; SystemCore skipped if firmware outdated. */
-export async function checkRadio(team: number): Promise<CheckResult[]> {
+/** Fetch radio /status and run all radio checks. Firmware first; SystemCore skipped if outdated. Includes detected team number. */
+export async function checkRadio(team: number, sourceIp?: string): Promise<CheckResult[]> {
   const radioIp = `${teamSubnet(team)}.1`;
+  const results: CheckResult[] = [];
   try {
     const res = await fetchWithTimeout(`http://${radioIp}/status`);
     if (!res.ok) {
@@ -314,15 +318,26 @@ export async function checkRadio(team: number): Promise<CheckResult[]> {
         { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
       ];
     }
-    const data = (await res.json()) as { systemcoreEnabled?: boolean; version?: string };
+    const data = (await res.json()) as { systemcoreEnabled?: boolean; version?: string; teamNumber?: number };
     const fwCheck = evaluateRadioFirmware(data);
-    const results: CheckResult[] = [fwCheck];
+    results.push(fwCheck);
     if (fwCheck.status === 'fail') {
       results.push({ name: 'Radio SystemCore', status: 'warn', message: 'Skipped — update firmware first' });
     } else {
       results.push(evaluateSystemCore(data));
     }
-    return results;
+    // Report detected team number for consistency checking
+    if (data.teamNumber !== undefined) {
+      results.push({
+        name: 'Radio Team',
+        status: data.teamNumber === team ? 'pass' : 'fail',
+        actual: `${data.teamNumber}`,
+        ...(data.teamNumber !== team && {
+          expected: `${team}`,
+          message: 'Radio team number does not match DHCP subnet',
+        }),
+      });
+    }
   } catch (err) {
     const msg = err instanceof Error && err.name === 'AbortError' ? 'Radio unreachable (timeout)' : String(err);
     return [
@@ -330,6 +345,12 @@ export async function checkRadio(team: number): Promise<CheckResult[]> {
       { name: 'Radio SystemCore', status: 'error', message: msg, helpUrl: HELP_URLS.radioSystemCore },
     ];
   }
+
+  // radio.local mDNS check
+  const mdns = await checkMdns('Radio mDNS', 'radio.local', radioIp, sourceIp);
+  results.push(...mdns);
+
+  return results;
 }
 
 /**
@@ -365,8 +386,8 @@ async function findRoboRIO(team: number, extraIps: string[]): Promise<{ ip: stri
   return null;
 }
 
-/** Run roboRIO checks. `extraIps` are additional addresses to probe beyond the standard .2 (e.g. other alive hosts, pre-filtered to exclude .1 radio and .254 gateway). */
-export async function checkRoboRIO(team: number, extraIps: string[] = []): Promise<CheckResult[]> {
+/** Run roboRIO checks. `extraIps` are additional addresses to probe beyond the standard .2. */
+export async function checkRoboRIO(team: number, extraIps: string[] = [], sourceIp?: string): Promise<CheckResult[]> {
   const result = await findRoboRIO(team, extraIps);
   if (!result) {
     return [
@@ -444,6 +465,23 @@ export async function checkRoboRIO(team: number, extraIps: string[] = []): Promi
       helpUrl: HELP_URLS.roboRIOImage,
     });
   }
+
+  // Extract team number from hostname for consistency display
+  if (hostname) {
+    const rioTeam = teamFromHostname(hostname);
+    if (rioTeam !== null) {
+      checks.push({
+        name: 'roboRIO Team',
+        status: rioTeam === team ? 'pass' : 'fail',
+        actual: `${rioTeam}`,
+        ...(rioTeam !== team && { expected: `${team}`, message: 'roboRIO team does not match DHCP subnet' }),
+      });
+    }
+  }
+
+  // roboRIO mDNS check
+  const mdns = await checkMdns('roboRIO mDNS', `roboRIO-${team}-FRC.local`, expectedIP(team), sourceIp);
+  checks.push(...mdns);
 
   return checks;
 }

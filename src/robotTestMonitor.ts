@@ -1,7 +1,7 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { RobotTestState, RobotTestPhase, CheckResult, FirmwareUpdateProgress } from './types.js';
-import { checkRadio, checkRoboRIO, checkTeamConsistency, checkFactoryDefault, checkMdns } from './teamChecker.js';
+import { checkRadio, checkRoboRIO, checkFactoryDefault } from './teamChecker.js';
 import { updateRadioFirmware } from './firmwareUpdater.js';
 import type { FirmwareStore } from './firmwareStore.js';
 import type { NetworkBackend } from './node-ip/index.js';
@@ -393,14 +393,12 @@ export class RobotTestMonitor {
     this.broadcast();
 
     try {
-      const [factoryResult, radioResults, rioResults, mdnsResults, consistencyResults] = await Promise.all([
+      const [factoryResult, radioResults, rioResults] = await Promise.all([
         checkFactoryDefault(this.teamNumber),
-        checkRadio(this.teamNumber),
-        checkRoboRIO(this.teamNumber),
-        checkMdns(this.teamNumber, this.leasedIp),
-        checkTeamConsistency(this.teamNumber),
+        checkRadio(this.teamNumber, this.leasedIp),
+        checkRoboRIO(this.teamNumber, [], this.leasedIp),
       ]);
-      this.checks = [...factoryResult, ...radioResults, ...rioResults, ...mdnsResults, ...consistencyResults];
+      this.checks = [...factoryResult, ...radioResults, ...rioResults];
 
       // On a VLAN, if both radio and roboRIO are unreachable, the robot is likely
       // disconnected. Release the DHCP lease and go back to requesting state so we

@@ -138,13 +138,18 @@ export function TestPage() {
   }
 
   const step = activeStep(state.phase, !!state.isVlan);
-  const factoryChecks = state.checks.filter(c => c.name === 'Radio Not Configured' || c.name === 'Radio Detected');
-  const radioChecks = state.checks.filter(c => c.name.startsWith('Radio'));
+  const radioChecks = state.checks.filter(
+    c => c.name.startsWith('Radio') && c.name !== 'Radio Detected' && c.name !== 'Radio Not Configured',
+  );
   const rioChecks = state.checks.filter(c => c.name.startsWith('roboRIO'));
-  const mdnsChecks = state.checks.filter(c => c.name === 'mDNS');
-  const consistencyChecks = state.checks.filter(c => c.name === 'Team Consistency');
+  const networkChecks = state.checks.filter(
+    c => c.name === 'Radio Detected' || c.name === 'Radio Not Configured' || c.name === 'Team Consistency',
+  );
   const firmwareOutdated = radioChecks.some(c => c.name === 'Radio Firmware' && c.status === 'fail');
   const teamSubnet = state.teamNumber ? `10.${Math.floor(state.teamNumber / 100)}.${state.teamNumber % 100}` : null;
+  const radioTeam = radioChecks.find(c => c.name === 'Radio Team')?.actual;
+  const rioTeam = rioChecks.find(c => c.name === 'roboRIO Team')?.actual;
+  const allTeamsMatch = radioTeam && rioTeam && radioTeam === rioTeam && radioTeam === String(state.teamNumber);
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -221,65 +226,114 @@ export function TestPage() {
             )}
           </StepLabel>
           <StepContent TransitionProps={{ unmountOnExit: false }}>
-            {/* Factory default warning */}
-            {factoryChecks.map((c, i) => (
-              <CheckResultRow key={`factory-${i}`} check={c} />
-            ))}
-
-            {/* Radio checks — firmware first, then SystemCore */}
-            {radioChecks.length > 0 && (
-              <Box sx={{ mb: 1 }}>
+            {/* 3-column check layout */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.5, mb: 1 }}>
+              {/* Column 1: Radio */}
+              <Box>
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
+                  sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
                 >
-                  Radio {teamSubnet && `(${teamSubnet}.1)`}
+                  Radio {teamSubnet && <code style={{ fontWeight: 400 }}>{teamSubnet}.1</code>}
                 </Typography>
-                {radioChecks.map((c, i) => (
-                  <CheckResultRow key={`radio-${i}`} check={c} />
-                ))}
+                {radioChecks
+                  .filter(c => c.name !== 'Radio Team')
+                  .map((c, i) => (
+                    <CheckResultRow key={`radio-${i}`} check={c} />
+                  ))}
                 {firmwareOutdated && <FirmwareUpdateSection />}
-              </Box>
-            )}
-
-            {/* roboRIO checks */}
-            {rioChecks.length > 0 && (
-              <Box sx={{ mb: 1 }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600, mb: 0.5, display: 'block' }}
-                >
-                  roboRIO {teamSubnet && `(${teamSubnet}.2)`}
-                </Typography>
-                {rioChecks.map((c, i) => (
-                  <CheckResultRow key={`rio-${i}`} check={c} />
-                ))}
-              </Box>
-            )}
-
-            {/* mDNS */}
-            {mdnsChecks.map((c, i) => (
-              <Box key={`mdns-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-                <StatusIcon status={c.status} />
-                <Typography variant="caption" sx={{ color: c.status === 'pass' ? 'text.secondary' : undefined }}>
-                  {c.actual ?? c.message}
-                </Typography>
-              </Box>
-            ))}
-
-            {/* Team consistency — compact inline display */}
-            {consistencyChecks.length > 0 && (
-              <Box sx={{ mt: 0.5 }}>
-                {consistencyChecks.map((c, i) => (
-                  <Box key={`cons-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <StatusIcon status={c.status} />
-                    <Typography variant="caption" sx={{ color: c.status === 'pass' ? 'text.secondary' : undefined }}>
-                      {c.status === 'pass' ? `Team ${state.teamNumber} consistent` : c.message}
+                {radioTeam && (
+                  <Box sx={{ mt: 0.5, pt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontFamily: 'monospace',
+                        color: radioTeam === String(state.teamNumber) ? 'success.main' : 'error.main',
+                      }}
+                    >
+                      Team: {radioTeam}
                     </Typography>
                   </Box>
+                )}
+              </Box>
+
+              {/* Column 2: roboRIO */}
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
+                >
+                  roboRIO {teamSubnet && <code style={{ fontWeight: 400 }}>{teamSubnet}.2</code>}
+                </Typography>
+                {rioChecks
+                  .filter(c => c.name !== 'roboRIO Team')
+                  .map((c, i) => (
+                    <CheckResultRow key={`rio-${i}`} check={c} />
+                  ))}
+                {rioTeam && (
+                  <Box sx={{ mt: 0.5, pt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontFamily: 'monospace',
+                        color: rioTeam === String(state.teamNumber) ? 'success.main' : 'error.main',
+                      }}
+                    >
+                      Team: {rioTeam}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Column 3: Network */}
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}
+                >
+                  Network
+                </Typography>
+                {networkChecks.map((c, i) => (
+                  <CheckResultRow key={`net-${i}`} check={c} />
                 ))}
+                {networkChecks.length === 0 && (
+                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.75rem' }}>
+                    No issues
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            {/* Team consistency summary */}
+            {(radioTeam || rioTeam) && (
+              <Box
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, pt: 1, borderTop: 1, borderColor: 'divider' }}
+              >
+                <StatusIcon status={allTeamsMatch ? 'pass' : 'fail'} />
+                <Typography variant="caption">
+                  {allTeamsMatch ? (
+                    <>
+                      Team <strong>{state.teamNumber}</strong> — consistent across all devices
+                    </>
+                  ) : (
+                    <>
+                      Team mismatch — DHCP: <strong>{state.teamNumber}</strong>
+                      {radioTeam && (
+                        <>
+                          , Radio: <strong>{radioTeam}</strong>
+                        </>
+                      )}
+                      {rioTeam && (
+                        <>
+                          , roboRIO: <strong>{rioTeam}</strong>
+                        </>
+                      )}
+                    </>
+                  )}
+                </Typography>
               </Box>
             )}
           </StepContent>
