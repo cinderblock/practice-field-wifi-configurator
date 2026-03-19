@@ -5,7 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/tomsawyerlabs.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Scoreboard</title>
-    <!-- Cast Sender SDK — enables the cast button when viewing in a normal browser (HTTPS only) -->
+    <!-- Cast SDK: set callback BEFORE loading sender so timing works -->
+    <script>
+      window['__onGCastApiAvailable'] = function (isAvailable) {
+        if (!isAvailable) return;
+        try {
+          cast.framework.CastContext.getInstance().setOptions({
+            receiverApplicationId: '260A23F5',
+            autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+          });
+          window.__castReady = true;
+        } catch (e) {
+          console.warn('Cast init failed:', e);
+        }
+      };
+    </script>
     <script src="//www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
     <style>
       :root {

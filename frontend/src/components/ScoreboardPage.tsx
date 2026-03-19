@@ -4,30 +4,12 @@ import Typography from '@mui/material/Typography';
 
 import { useScoreState } from '../hooks/useBackend';
 
-const CAST_APP_ID = typeof __CAST_APP_ID__ !== 'undefined' ? __CAST_APP_ID__ : '';
-
-/** Whether the Cast SDK initialized successfully — set by initCastSender before React mounts. */
-let castInitialized = false;
-
-/**
- * Initialize the Cast Sender SDK. Must be called BEFORE React renders
- * because the SDK calls __onGCastApiAvailable synchronously after its
- * script loads — a useEffect would be too late.
- */
-export function initCastSender(): void {
-  if (!CAST_APP_ID) return;
-  window.__onGCastApiAvailable = (isAvailable: boolean) => {
-    if (!isAvailable) return;
-    try {
-      cast.framework.CastContext.getInstance().setOptions({
-        receiverApplicationId: CAST_APP_ID,
-        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-      });
-      castInitialized = true;
-    } catch {
-      // Cast SDK not available
-    }
-  };
+// Cast initialization happens in scores.html before this module loads.
+// Check window.__castReady to know if it succeeded.
+declare global {
+  interface Window {
+    __castReady?: boolean;
+  }
 }
 
 /**
@@ -70,7 +52,7 @@ export function ScoreboardPage() {
       }}
     >
       {/* Cast button — top right, only shown when Cast SDK is available */}
-      {castInitialized && (
+      {window.__castReady && (
         <Box sx={{ position: 'absolute', top: 12, right: 16 }}>
           <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
         </Box>
