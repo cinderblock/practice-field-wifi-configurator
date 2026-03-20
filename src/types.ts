@@ -997,9 +997,47 @@ export function isScoreState(msg: unknown): msg is ScoreState {
 
 export interface StopCast {
   type: 'stopCast';
+  /** If set, stop only this specific receiver. If omitted, stop all. */
+  receiverId?: string;
 }
 
 export function isStopCast(msg: unknown): msg is StopCast {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as StopCast).type === 'stopCast';
+}
+
+/** Sent by a cast receiver (TV) to register itself with the backend. */
+export interface CastReceiverRegister {
+  type: 'castReceiverRegister';
+  /** Human-readable name for the display (e.g. "Warehouse TV") */
+  name: string;
+  swapped: boolean;
+}
+
+export function isCastReceiverRegister(msg: unknown): msg is CastReceiverRegister {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as CastReceiverRegister).type === 'castReceiverRegister';
+}
+
+/** Sent by admin to swap a specific receiver's display orientation. */
+export interface CastReceiverSwap {
+  type: 'castReceiverSwap';
+  receiverId: string;
+  swapped: boolean;
+}
+
+export function isCastReceiverSwap(msg: unknown): msg is CastReceiverSwap {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as CastReceiverSwap).type === 'castReceiverSwap';
+}
+
+/** Broadcast to all clients: current state of all cast receivers. */
+export interface CastReceiverList {
+  type: 'castReceiverList';
+  receivers: { id: string; name: string; swapped: boolean }[];
+}
+
+export function isCastReceiverList(msg: unknown): msg is CastReceiverList {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as CastReceiverList).type === 'castReceiverList';
 }

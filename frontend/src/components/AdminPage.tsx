@@ -27,6 +27,8 @@ import {
   sendAdminStationDisable,
   sendAdminClearEStop,
   sendStopCast,
+  useCastReceivers,
+  sendCastReceiverSwap,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -265,6 +267,7 @@ function formatAge(ts: number): string {
 
 function ScoringSection() {
   const score = useScoreState();
+  const castReceivers = useCastReceivers();
   const [, setTick] = useState(0);
 
   // Re-render every second to update sliding window / source ages
@@ -310,14 +313,6 @@ function ScoringSection() {
                 />
               </>
             )}
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={sendStopCast}
-              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
-            >
-              Stop Cast
-            </Button>
             {hasScores && (
               <Button
                 size="small"
@@ -428,6 +423,30 @@ function ScoringSection() {
                   />
                 );
               })}
+            </Box>
+          </Box>
+        )}
+
+        {/* Cast Receivers */}
+        {castReceivers.length > 0 && (
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+              Displays
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {castReceivers.map(r => (
+                <Chip
+                  key={r.id}
+                  label={`${r.name} (${r.swapped ? 'swapped' : 'normal'})`}
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  onClick={() => sendCastReceiverSwap(r.id, !r.swapped)}
+                  onDelete={() => sendStopCast(r.id)}
+                  deleteIcon={<Typography sx={{ fontSize: '0.7rem', cursor: 'pointer', px: 0.5 }}>✕</Typography>}
+                  title={`Click to ${r.swapped ? 'un-swap' : 'swap'} red/blue. ✕ to stop.`}
+                />
+              ))}
             </Box>
           </Box>
         )}

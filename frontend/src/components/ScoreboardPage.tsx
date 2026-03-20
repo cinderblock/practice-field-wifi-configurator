@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-import { useScoreState } from '../hooks/useBackend';
+import { useScoreState, sendCastReceiverRegister } from '../hooks/useBackend';
 import type { ScoreBatch } from '../../../src/types';
 
 // Cast initialization happens in scores.html before this module loads.
@@ -37,6 +37,17 @@ export function ScoreboardPage() {
 
   const left: 'red' | 'blue' = swapped ? 'blue' : 'red';
   const right: 'red' | 'blue' = swapped ? 'red' : 'blue';
+
+  // Register as a cast receiver if running on Chromecast
+  useEffect(() => {
+    if (window.__isCastReceiver) {
+      // Small delay to ensure WebSocket is connected
+      const timer = setTimeout(() => {
+        sendCastReceiverRegister(document.title || 'Cast Display', swapped);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-render every second for time-ago displays
   useEffect(() => {

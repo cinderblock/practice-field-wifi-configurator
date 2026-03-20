@@ -23,6 +23,9 @@ import {
   isRunTeamChecks,
   isFirmwareUpdateRequest,
   isStopCast,
+  isCastReceiverRegister,
+  isCastReceiverSwap,
+  CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
   ServerInfo,
@@ -103,6 +106,18 @@ export function setupWebSocket(
   /** Track which IP each WebSocket connection belongs to */
   const wsToIp = new Map<WebSocket, string>();
 
+  /** Track registered cast receivers (TV displays) */
+  let nextReceiverId = 1;
+  const castReceivers = new Map<WebSocket, { id: string; name: string; swapped: boolean }>();
+
+  function broadcastReceiverList() {
+    const list: CastReceiverList = {
+      type: 'castReceiverList',
+      receivers: [...castReceivers.values()],
+    };
+    broadcast(list);
+  }
+
   function broadcast(msg: unknown) {
     const data = JSON.stringify(msg);
     wss.clients.forEach(client => {
@@ -179,6 +194,9 @@ export function setupWebSocket(
 
     ws.on('close', () => {
       wsToIp.delete(ws);
+      if (castReceivers.delete(ws)) {
+        broadcastReceiverList();
+      }
     });
 
     ws.on('error', err => {
@@ -277,7 +295,34 @@ export function setupWebSocket(
       } else if (isFirmwareUpdateRequest(data)) {
         onFirmwareUpdate?.(data.wpaKey, data.wpaKey24, !!data.skipReconfigure);
       } else if (isStopCast(data)) {
-        broadcast(data);
+        if (data.receiverId) {
+          // Stop a specific receiver
+          for (const [rws, info] of castReceivers) {
+            if (info.id === data.receiverId && rws.readyState === WebSocket.OPEN) {
+              rws.send(JSON.stringify(data));
+            }
+          }
+        } else {
+          broadcast(data);
+        }
+      } else if (isCastReceiverRegister(data)) {
+        const id = `cast-${nextReceiverId++}`;
+        castReceivers.set(ws, { id, name: data.name, swapped: data.swapped });
+        // Send the assigned ID back to the receiver
+        ws.send(JSON.stringify({ type: 'castReceiverId', id }));
+        broadcastReceiverList();
+      } else if (isCastReceiverSwap(data)) {
+        // Find the target receiver and send it the swap command
+        for (const [rws, info] of castReceivers) {
+          if (info.id === data.receiverId) {
+            info.swapped = data.swapped;
+            if (rws.readyState === WebSocket.OPEN) {
+              rws.send(JSON.stringify(data));
+            }
+            break;
+          }
+        }
+        broadcastReceiverList();
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

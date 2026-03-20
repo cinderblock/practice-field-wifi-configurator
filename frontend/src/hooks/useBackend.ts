@@ -23,6 +23,12 @@ import {
   isFirmwareUpdateProgress,
   isScoreState,
   isStopCast,
+  isCastReceiverList,
+  isCastReceiverSwap,
+  CastReceiverList,
+  CastReceiverRegister,
+  CastReceiverSwap,
+  StopCast,
   RoutePreferenceState,
   RobotTestState,
   ScoreState,
@@ -403,6 +409,16 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isCastReceiverList(detail)) {
+    handleCastReceiverList(detail);
+    return;
+  }
+
+  if (isCastReceiverSwap(detail)) {
+    handleCastReceiverSwap(detail);
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -750,8 +766,46 @@ function handleStopCast() {
   }
 }
 
-export function sendStopCast() {
-  ws?.send(JSON.stringify({ type: 'stopCast' }));
+export function sendStopCast(receiverId?: string) {
+  ws?.send(JSON.stringify({ type: 'stopCast', receiverId } satisfies StopCast));
+}
+
+// ── Cast Receiver List ──────────────────────────────────────────────
+
+let currentCastReceivers: CastReceiverList['receivers'] = [];
+
+function handleCastReceiverList(msg: CastReceiverList) {
+  currentCastReceivers = msg.receivers;
+  events.dispatchEvent(new CustomEvent('castReceiverList', { detail: msg.receivers }));
+}
+
+function handleCastReceiverSwap(msg: CastReceiverSwap) {
+  // On receiver: apply the swap
+  if (window.__isCastReceiver) {
+    localStorage.setItem('scoreboard-swap', msg.swapped ? '1' : '0');
+    window.location.reload();
+  }
+}
+
+export function useCastReceivers(): CastReceiverList['receivers'] {
+  const [receivers, setReceivers] = useState(currentCastReceivers);
+
+  useEffect(() => {
+    setReceivers(currentCastReceivers);
+    const handler = (e: Event) => setReceivers((e as CustomEvent<CastReceiverList['receivers']>).detail);
+    events.addEventListener('castReceiverList', handler);
+    return () => events.removeEventListener('castReceiverList', handler);
+  }, []);
+
+  return receivers;
+}
+
+export function sendCastReceiverSwap(receiverId: string, swapped: boolean) {
+  ws?.send(JSON.stringify({ type: 'castReceiverSwap', receiverId, swapped } satisfies CastReceiverSwap));
+}
+
+export function sendCastReceiverRegister(name: string, swapped: boolean) {
+  ws?.send(JSON.stringify({ type: 'castReceiverRegister', name, swapped } satisfies CastReceiverRegister));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────
