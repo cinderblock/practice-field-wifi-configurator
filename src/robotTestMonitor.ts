@@ -260,7 +260,7 @@ export class RobotTestMonitor {
       if (this.linkUp) {
         setTimeout(() => {
           if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
-        }, 1000);
+        }, 5000);
       }
     });
 
@@ -283,11 +283,11 @@ export class RobotTestMonitor {
         for (const line of output.trim().split('\n')) {
           console.log(`  dhcpcd: ${line}`);
         }
-        // Retry after a short delay if link is still up
+        // Retry after a delay if link is still up
         if (this.linkUp) {
           setTimeout(() => {
             if (this.linkUp && this.phase === 'dhcp_requesting') this.startDhcp();
-          }, 500);
+          }, 5000);
         }
       }
     });
@@ -367,6 +367,10 @@ export class RobotTestMonitor {
               ? `Radio configured for team ${data.teamNumber} but not providing DHCP — check network path`
               : 'Radio has no team number — needs to be configured',
           };
+          // Radio detected — trigger an immediate DHCP attempt if we're waiting
+          if (this.phase === 'dhcp_requesting' && !this.dhcpProc) {
+            this.startDhcp();
+          }
         }
         // When we DO have a team number, the full checkFactoryDefault() in runChecks handles it
       }
