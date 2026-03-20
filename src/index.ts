@@ -249,6 +249,8 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Firmware store — persistent cache for radio firmware files
   const firmwareStore = new FirmwareStore();
+  // Broadcast firmware store changes (download progress, availability) to all clients
+  firmwareStore.addListener(entries => broadcast({ type: 'firmwareStoreUpdate', entries }));
   // Start downloading known firmware files in the background (non-blocking, retries on failure)
   firmwareStore.startBackgroundDownloads();
 
@@ -274,6 +276,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     }
     if (robotTestMonitor) ws.send(JSON.stringify(robotTestMonitor.getState()));
     ws.send(JSON.stringify(scoringEngine.getState()));
+    ws.send(JSON.stringify({ type: 'firmwareStoreUpdate', entries: firmwareStore.getEntries() }));
   });
 
   // Clean up state and broadcast updates when station configs change

@@ -18,6 +18,12 @@ export interface FirmwareEntry {
   upgradeFrom: 'from12x' | 'pre12x';
   /** Whether a download is currently in progress */
   downloading?: boolean;
+  /** Download progress: bytes received so far */
+  downloadedBytes?: number;
+  /** Download progress: total bytes (if known from Content-Length) */
+  totalBytes?: number;
+  /** Error message if download failed */
+  downloadError?: string;
 }
 
 interface FirmwareManifest {
@@ -50,9 +56,12 @@ function firmwareFilename(version: string, upgradeFrom: 'from12x' | 'pre12x'): s
   return `VH-109_${version}.${upgradeFrom === 'pre12x' ? '' : 'FROM_1_2_X.'}img.enc`;
 }
 
+export type FirmwareStoreListener = (entries: FirmwareEntry[]) => void;
+
 export class FirmwareStore {
   private dir: string;
   private entries: FirmwareEntry[] = [];
+  private listeners: FirmwareStoreListener[] = [];
 
   constructor(storeDir?: string) {
     this.dir = storeDir ?? DEFAULT_STORE_DIR;
@@ -61,6 +70,24 @@ export class FirmwareStore {
     }
     this.loadManifest();
     this.reconcileKnownReleases();
+  }
+
+  /** Register a listener for firmware store changes. */
+  addListener(fn: FirmwareStoreListener): () => void {
+    this.listeners.push(fn);
+    return () => {
+      const idx = this.listeners.indexOf(fn);
+      if (idx >= 0) this.listeners.splice(idx, 1);
+    };
+  }
+
+  private notify(): void {
+    const entries = this.getEntries();
+    for (const fn of this.listeners) {
+      try {
+        fn(entries);
+      } catch {}
+    }
   }
 
   /** Get all firmware entries and their availability status. */
@@ -133,39 +160,70 @@ export class FirmwareStore {
     }
 
     entry.downloading = true;
+    entry.downloadedBytes = 0;
+    entry.totalBytes = undefined;
+    entry.downloadError = undefined;
+    this.notify();
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`Downloading firmware ${filename} (attempt ${attempt}/${retries})...`);
+        entry.downloadedBytes = 0;
+        this.notify();
+
         const res = await fetch(entry.downloadUrl, {
           signal: AbortSignal.timeout(300_000), // 5 minute timeout
         });
         if (!res.ok || !res.body) {
           throw new Error(`HTTP ${res.status}`);
         }
+
+        const contentLength = res.headers.get('content-length');
+        entry.totalBytes = contentLength ? parseInt(contentLength, 10) : undefined;
+        this.notify();
+
+        // Stream to disk with progress tracking
         const ws = createWriteStream(filePath);
-        await pipeline(res.body as unknown as NodeJS.ReadableStream, ws);
+        const reader = (res.body as unknown as NodeJS.ReadableStream)[Symbol.asyncIterator]();
+        for await (const chunk of { [Symbol.asyncIterator]: () => reader }) {
+          ws.write(chunk as Buffer);
+          entry.downloadedBytes = (entry.downloadedBytes ?? 0) + (chunk as Buffer).length;
+          // Throttle notifications to ~every 100KB
+          if (entry.downloadedBytes % 102400 < (chunk as Buffer).length) {
+            this.notify();
+          }
+        }
+        await new Promise<void>((resolve, reject) => {
+          ws.end(() => resolve());
+          ws.on('error', reject);
+        });
+
         entry.filePath = filePath;
         entry.downloading = false;
+        entry.downloadedBytes = undefined;
+        entry.totalBytes = undefined;
         this.saveManifest();
+        this.notify();
         console.log(`Firmware downloaded: ${filename}`);
         return;
       } catch (err) {
-        // Remove partial file so it doesn't get mistaken for a complete download
         try {
           if (existsSync(filePath)) unlinkSync(filePath);
         } catch {}
         lastError = err instanceof Error ? err : new Error(String(err));
         console.warn(`Firmware download failed (attempt ${attempt}/${retries}): ${lastError.message}`);
         if (attempt < retries) {
-          // Exponential backoff: 5s, 20s, 80s
           await new Promise(r => setTimeout(r, 5000 * Math.pow(4, attempt - 1)));
         }
       }
     }
 
     entry.downloading = false;
+    entry.downloadedBytes = undefined;
+    entry.totalBytes = undefined;
+    entry.downloadError = lastError?.message;
+    this.notify();
     console.error(`Firmware download failed after ${retries} attempts: ${lastError?.message}`);
   }
 
@@ -193,7 +251,7 @@ export class FirmwareStore {
   private saveManifest(): void {
     const manifestPath = join(this.dir, MANIFEST_FILE);
     const data: FirmwareManifest = {
-      entries: this.entries.map(({ downloading, ...rest }) => rest),
+      entries: this.entries.map(({ downloading, downloadedBytes, totalBytes, downloadError, ...rest }) => rest),
     };
     writeFileSync(manifestPath, JSON.stringify(data, null, 2));
   }

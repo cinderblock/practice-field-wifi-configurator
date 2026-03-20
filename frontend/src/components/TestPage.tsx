@@ -20,7 +20,12 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import type { CheckResult, RobotTestPhase } from '../../../src/types';
-import { useRobotTestState, useFirmwareUpdateProgress, sendFirmwareUpdateRequest } from '../hooks/useBackend';
+import {
+  useRobotTestState,
+  useFirmwareUpdateProgress,
+  useFirmwareStore,
+  sendFirmwareUpdateRequest,
+} from '../hooks/useBackend';
 import { StatusIcon } from './TeamChecksPanel';
 
 const PULSE_STYLES = {
@@ -527,34 +532,14 @@ function FirmwareUpdateSection() {
 
 // ── Firmware Status ─────────────────────────────────────────────────
 
-interface FwEntry {
-  version: string;
-  checksum: string;
-  filePath?: string;
-  downloadUrl?: string;
-  upgradeFrom: string;
-  downloading?: boolean;
-}
-
 function FirmwareStatus() {
-  const [entries, setEntries] = useState<FwEntry[]>([]);
+  const entries = useFirmwareStore();
   const [uploading, setUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadVersion, setUploadVersion] = useState('');
   const [uploadChecksum, setUploadChecksum] = useState('');
   const [uploadType, setUploadType] = useState<'from12x' | 'pre12x'>('from12x');
   const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    const refresh = () =>
-      fetch('/api/firmware')
-        .then(r => r.json())
-        .then(data => setEntries(data.entries ?? []))
-        .catch(() => {});
-    refresh();
-    const interval = setInterval(refresh, 15_000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -579,6 +564,7 @@ function FirmwareStatus() {
   };
 
   // Group entries by version, with columns for pre-1.2 and 1.2.x+
+  type FwEntry = (typeof entries)[number];
   const versions = new Map<string, { pre12x?: FwEntry; from12x?: FwEntry }>();
   for (const e of entries) {
     const row = versions.get(e.version) ?? {};
@@ -588,6 +574,12 @@ function FirmwareStatus() {
   }
   const allCached = entries.length > 0 && entries.every(e => e.filePath);
 
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  };
+
   const statusDot = (entry?: FwEntry) => {
     if (!entry)
       return (
@@ -595,8 +587,21 @@ function FirmwareStatus() {
           —
         </Typography>
       );
-    const color = entry.filePath ? 'success.main' : entry.downloading ? 'info.main' : 'warning.main';
-    const label = entry.filePath ? 'cached' : entry.downloading ? 'downloading' : 'missing';
+    const color = entry.filePath
+      ? 'success.main'
+      : entry.downloading
+        ? 'info.main'
+        : entry.downloadError
+          ? 'error.main'
+          : 'warning.main';
+    let label = entry.filePath ? 'cached' : entry.downloading ? 'downloading' : 'missing';
+    if (entry.downloading && entry.downloadedBytes !== undefined) {
+      const progress = entry.totalBytes
+        ? `${Math.round((entry.downloadedBytes / entry.totalBytes) * 100)}%`
+        : formatBytes(entry.downloadedBytes);
+      label = `downloading ${progress}`;
+    }
+    if (entry.downloadError) label = `failed: ${entry.downloadError}`;
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         <Box

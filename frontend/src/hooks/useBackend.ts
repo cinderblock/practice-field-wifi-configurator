@@ -399,6 +399,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (typeof detail === 'object' && detail !== null && (detail as { type: string }).type === 'firmwareStoreUpdate') {
+    handleFirmwareStoreUpdate((detail as unknown as { entries: FirmwareEntry[] }).entries);
+    return;
+  }
+
   if (isScoreState(detail)) {
     handleScoreState(detail);
     return;
@@ -731,6 +736,30 @@ export function useFirmwareUpdateProgress(): FirmwareUpdateProgress | null {
   }, []);
 
   return progress;
+}
+
+// ── Firmware Store State ─────────────────────────────────────────────
+
+import type { FirmwareEntry } from '../../../src/firmwareStore';
+
+let currentFirmwareEntries: FirmwareEntry[] = [];
+
+function handleFirmwareStoreUpdate(entries: FirmwareEntry[]) {
+  currentFirmwareEntries = entries;
+  events.dispatchEvent(new CustomEvent('firmwareStoreUpdate', { detail: entries }));
+}
+
+export function useFirmwareStore(): FirmwareEntry[] {
+  const [entries, setEntries] = useState<FirmwareEntry[]>(currentFirmwareEntries);
+
+  useEffect(() => {
+    setEntries(currentFirmwareEntries);
+    const handler = (e: Event) => setEntries((e as CustomEvent<FirmwareEntry[]>).detail);
+    events.addEventListener('firmwareStoreUpdate', handler);
+    return () => events.removeEventListener('firmwareStoreUpdate', handler);
+  }, []);
+
+  return entries;
 }
 
 export function sendFirmwareUpdateRequest(wpaKey?: string, wpaKey24?: string, skipReconfigure?: boolean) {
