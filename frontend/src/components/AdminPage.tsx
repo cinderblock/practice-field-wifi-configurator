@@ -29,6 +29,7 @@ import {
   sendStopCast,
   useCastReceivers,
   sendCastReceiverSwap,
+  useFirmwareStore,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -487,35 +488,19 @@ function ScoreCard({ alliance, score }: { alliance: 'red' | 'blue'; score: { tot
 
 // ── Firmware Management ─────────────────────────────────────────────
 
-interface FirmwareEntry {
-  version: string;
-  checksum: string;
-  filePath?: string;
-  downloadUrl?: string;
-  upgradeFrom: string;
-  downloading?: boolean;
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function FirmwareSection() {
-  const [entries, setEntries] = useState<FirmwareEntry[]>([]);
+  const entries = useFirmwareStore();
   const [uploading, setUploading] = useState(false);
   const [uploadVersion, setUploadVersion] = useState('');
   const [uploadChecksum, setUploadChecksum] = useState('');
   const [uploadType, setUploadType] = useState<'from12x' | 'pre12x'>('from12x');
   const [message, setMessage] = useState('');
-
-  const refreshEntries = useCallback(() => {
-    fetch('/api/firmware')
-      .then(r => r.json())
-      .then(data => setEntries(data.entries ?? []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    refreshEntries();
-    const interval = setInterval(refreshEntries, 10_000);
-    return () => clearInterval(interval);
-  }, [refreshEntries]);
 
   const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -529,17 +514,9 @@ function FirmwareSection() {
     try {
       const data = await file.arrayBuffer();
       const params = new URLSearchParams({ checksum: uploadChecksum, version: uploadVersion, upgradeFrom: uploadType });
-      const res = await fetch(`/api/firmware/upload?${params}`, {
-        method: 'POST',
-        body: data,
-      });
+      const res = await fetch(`/api/firmware/upload?${params}`, { method: 'POST', body: data });
       const json = await res.json();
-      if (res.ok) {
-        setMessage(`Uploaded: ${json.entry?.version ?? 'ok'}`);
-        refreshEntries();
-      } else {
-        setMessage(`Error: ${json.error}`);
-      }
+      setMessage(res.ok ? `Uploaded: ${json.entry?.version ?? 'ok'}` : `Error: ${json.error}`);
     } catch (err) {
       setMessage(`Upload failed: ${err instanceof Error ? err.message : err}`);
     } finally {
@@ -547,84 +524,106 @@ function FirmwareSection() {
     }
   };
 
+  const allCached = entries.length > 0 && entries.every(e => e.filePath);
+  const anyDownloading = entries.some(e => e.downloading);
+
   const triggerDownload = () => {
-    fetch('/api/firmware/download', { method: 'POST' }).then(() => {
-      setMessage('Background download started');
-      setTimeout(refreshEntries, 3000);
-    });
+    fetch('/api/firmware/download', { method: 'POST' });
   };
 
   return (
     <Card sx={{ mt: 2 }}>
       <CardContent>
-        <Typography variant="h5" gutterBottom>
-          Radio Firmware
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Firmware files are downloaded automatically when internet is available. Upload manually if the server is
-          offline.
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h5">Radio Firmware</Typography>
+          {!allCached && !anyDownloading && (
+            <Button size="small" variant="outlined" onClick={triggerDownload} sx={{ textTransform: 'none' }}>
+              Download from Internet
+            </Button>
+          )}
+        </Box>
 
         {entries.length > 0 && (
           <Box sx={{ mb: 2 }}>
-            {entries.map((entry, i) => (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                <Chip
-                  label={entry.filePath ? 'Cached' : entry.downloading ? 'Downloading' : 'Missing'}
-                  size="small"
-                  color={entry.filePath ? 'success' : entry.downloading ? 'info' : 'warning'}
-                  variant={entry.filePath ? 'filled' : 'outlined'}
-                />
-                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                  v{entry.version} ({entry.upgradeFrom === 'from12x' ? '1.2.x+' : 'pre-1.2'})
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                  {entry.checksum.slice(0, 12)}...
-                </Typography>
-              </Box>
-            ))}
+            {entries.map((entry, i) => {
+              let statusLabel = 'Missing';
+              let statusColor: 'success' | 'info' | 'warning' | 'error' = 'warning';
+              if (entry.filePath) {
+                statusLabel = 'Cached';
+                statusColor = 'success';
+              } else if (entry.downloading) {
+                statusColor = 'info';
+                if (entry.downloadedBytes !== undefined && entry.totalBytes) {
+                  statusLabel = `Downloading ${Math.round((entry.downloadedBytes / entry.totalBytes) * 100)}%`;
+                } else if (entry.downloadedBytes !== undefined) {
+                  statusLabel = `Downloading ${formatBytes(entry.downloadedBytes)}`;
+                } else {
+                  statusLabel = 'Downloading...';
+                }
+              } else if (entry.downloadError) {
+                statusLabel = 'Failed';
+                statusColor = 'error';
+              }
+
+              return (
+                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                  <Chip
+                    label={statusLabel}
+                    size="small"
+                    color={statusColor}
+                    variant={entry.filePath ? 'filled' : 'outlined'}
+                  />
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                    v{entry.version} ({entry.upgradeFrom === 'from12x' ? '1.2.x+' : 'pre-1.2'})
+                  </Typography>
+                  {entry.downloadError && (
+                    <Typography variant="caption" color="error.main" sx={{ fontSize: '0.7rem' }}>
+                      {entry.downloadError}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         )}
 
-        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <Button size="small" variant="outlined" onClick={triggerDownload}>
-            Download from Internet
-          </Button>
-        </Box>
-
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Manual Upload
-        </Typography>
-        <form onSubmit={handleUpload}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <input type="file" accept=".enc,.bin,.img" required disabled={uploading} />
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <input
-                type="text"
-                placeholder="Version (e.g. 2.0.1)"
-                value={uploadVersion}
-                onChange={e => setUploadVersion(e.target.value)}
-                required
-                style={{ flex: 1, padding: '4px 8px' }}
-              />
-              <input
-                type="text"
-                placeholder="SHA-256 checksum"
-                value={uploadChecksum}
-                onChange={e => setUploadChecksum(e.target.value)}
-                required
-                style={{ flex: 2, padding: '4px 8px', fontFamily: 'monospace' }}
-              />
-              <select value={uploadType} onChange={e => setUploadType(e.target.value as 'from12x' | 'pre12x')}>
-                <option value="from12x">From 1.2.x+</option>
-                <option value="pre12x">Pre-1.2</option>
-              </select>
-            </Box>
-            <Button type="submit" size="small" variant="contained" disabled={uploading}>
-              {uploading ? 'Uploading...' : 'Upload Firmware'}
-            </Button>
-          </Box>
-        </form>
+        {!allCached && (
+          <>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Manual Upload
+            </Typography>
+            <form onSubmit={handleUpload}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <input type="file" accept=".enc,.bin,.img" required disabled={uploading} />
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <input
+                    type="text"
+                    placeholder="Version (e.g. 2.0.1)"
+                    value={uploadVersion}
+                    onChange={e => setUploadVersion(e.target.value)}
+                    required
+                    style={{ flex: 1, padding: '4px 8px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="SHA-256 checksum"
+                    value={uploadChecksum}
+                    onChange={e => setUploadChecksum(e.target.value)}
+                    required
+                    style={{ flex: 2, padding: '4px 8px', fontFamily: 'monospace' }}
+                  />
+                  <select value={uploadType} onChange={e => setUploadType(e.target.value as 'from12x' | 'pre12x')}>
+                    <option value="from12x">From 1.2.x+</option>
+                    <option value="pre12x">Pre-1.2</option>
+                  </select>
+                </Box>
+                <Button type="submit" size="small" variant="contained" disabled={uploading}>
+                  {uploading ? 'Uploading...' : 'Upload Firmware'}
+                </Button>
+              </Box>
+            </form>
+          </>
+        )}
         {message && (
           <Typography
             variant="body2"
