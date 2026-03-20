@@ -588,6 +588,11 @@ class RadioManager {
     return false;
   }
 
+  /** Get the active config for a station, or null if unconfigured. */
+  getStationConfig(station: StationName): { ssid: string; wpaKey: string; internetAccess?: boolean } | null {
+    return this.activeConfig[station] ?? null;
+  }
+
   getTeamForStation(station: StationName): number | null {
     const { ssid } = this.activeConfig[station] ?? {};
     if (!ssid) return null;
