@@ -348,6 +348,7 @@ class RadioManager {
     jobs.push(this.configureRadio(config));
 
     await Promise.all(jobs);
+    this.setPendingCommit(false);
     this.notifyCommitComplete();
   }
 
