@@ -434,7 +434,20 @@ function receiveMessage(detail: Message) {
     return;
   }
 
-  console.error('Invalid status entry:', detail);
+  // Handle generic server responses (info/error messages from config operations etc.)
+  if (typeof detail === 'object' && detail !== null) {
+    const msg = detail as { info?: string; error?: string };
+    if (msg.info) {
+      events.dispatchEvent(new CustomEvent('serverResponse', { detail: { severity: 'info', message: msg.info } }));
+      return;
+    }
+    if (msg.error) {
+      events.dispatchEvent(new CustomEvent('serverResponse', { detail: { severity: 'error', message: msg.error } }));
+      return;
+    }
+  }
+
+  console.error('Unknown message:', detail);
 }
 
 export function useHistory() {
@@ -806,6 +819,31 @@ export function sendCastReceiverSwap(receiverId: string, swapped: boolean) {
 
 export function sendCastReceiverRegister(name: string, swapped: boolean) {
   ws?.send(JSON.stringify({ type: 'castReceiverRegister', name, swapped } satisfies CastReceiverRegister));
+}
+
+// ── Server Responses ─────────────────────────────────────────────────
+
+export interface ServerResponse {
+  severity: 'info' | 'error';
+  message: string;
+}
+
+/** Subscribe to server info/error responses. Returns the latest response (auto-clears after 5s). */
+export function useServerResponse(): ServerResponse | null {
+  const [response, setResponse] = useState<ServerResponse | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ServerResponse>).detail;
+      setResponse(detail);
+      // Auto-clear after 5 seconds
+      setTimeout(() => setResponse(prev => (prev === detail ? null : prev)), 5000);
+    };
+    events.addEventListener('serverResponse', handler);
+    return () => events.removeEventListener('serverResponse', handler);
+  }, []);
+
+  return response;
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

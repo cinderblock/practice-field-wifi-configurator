@@ -4,7 +4,9 @@ import { createTheme, CssBaseline, ThemeProvider, Grid, Box } from '@mui/materia
 import Backdrop from '@mui/material/Backdrop';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
-import { useHistory, useLatest, serverToBrowserTime } from '../hooks/useBackend.js';
+import Alert from '@mui/material/Alert';
+import Snackbar from '@mui/material/Snackbar';
+import { useHistory, useLatest, serverToBrowserTime, useServerResponse } from '../hooks/useBackend.js';
 import { StatusBar } from '../components/StatusBar';
 
 const EstimatedReconfigurationTime = 35; // seconds
@@ -64,6 +66,8 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [isConfiguring, reconfigStart]);
 
+  const serverResponse = useServerResponse();
+
   // Enable dark mode for the entire app (system default)
   const theme = createTheme({ colorSchemes: { dark: true } });
 
@@ -107,6 +111,11 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
               )}
             </Grid>
           </Backdrop>
+          <Snackbar open={serverResponse !== null} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+            <Alert severity={serverResponse?.severity ?? 'info'} variant="filled" sx={{ width: '100%' }}>
+              {serverResponse?.message}
+            </Alert>
+          </Snackbar>
         </ThemeProvider>
       </ErrorBoundary>
     </StrictMode>
