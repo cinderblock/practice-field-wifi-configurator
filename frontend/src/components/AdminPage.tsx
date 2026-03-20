@@ -524,11 +524,60 @@ function FirmwareSection() {
     }
   };
 
+  // Group entries by version
+  type FwEntry = (typeof entries)[number];
+  const versions = new Map<string, { pre12x?: FwEntry; from12x?: FwEntry }>();
+  for (const e of entries) {
+    const row = versions.get(e.version) ?? {};
+    if (e.upgradeFrom === 'pre12x') row.pre12x = e;
+    else row.from12x = e;
+    versions.set(e.version, row);
+  }
+
   const allCached = entries.length > 0 && entries.every(e => e.filePath);
   const anyDownloading = entries.some(e => e.downloading);
 
   const triggerDownload = () => {
     fetch('/api/firmware/download', { method: 'POST' });
+  };
+
+  const fwStatusCell = (entry?: FwEntry) => {
+    if (!entry) {
+      return (
+        <Typography variant="caption" color="text.disabled">
+          —
+        </Typography>
+      );
+    }
+    let label = 'missing';
+    let color: string = 'warning.main';
+    if (entry.filePath) {
+      label = 'cached';
+      color = 'success.main';
+    } else if (entry.downloading) {
+      color = 'info.main';
+      if (entry.downloadedBytes !== undefined && entry.totalBytes) {
+        label = `downloading ${Math.round((entry.downloadedBytes / entry.totalBytes) * 100)}%`;
+      } else if (entry.downloadedBytes !== undefined) {
+        label = `downloading ${formatBytes(entry.downloadedBytes)}`;
+      } else {
+        label = 'downloading...';
+      }
+    } else if (entry.downloadError) {
+      label = `failed: ${entry.downloadError}`;
+      color = 'error.main';
+    }
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box
+          component="span"
+          sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }}
+        />
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+      </Box>
+    );
   };
 
   return (
@@ -543,47 +592,26 @@ function FirmwareSection() {
           )}
         </Box>
 
-        {entries.length > 0 && (
-          <Box sx={{ mb: 2 }}>
-            {entries.map((entry, i) => {
-              let statusLabel = 'Missing';
-              let statusColor: 'success' | 'info' | 'warning' | 'error' = 'warning';
-              if (entry.filePath) {
-                statusLabel = 'Cached';
-                statusColor = 'success';
-              } else if (entry.downloading) {
-                statusColor = 'info';
-                if (entry.downloadedBytes !== undefined && entry.totalBytes) {
-                  statusLabel = `Downloading ${Math.round((entry.downloadedBytes / entry.totalBytes) * 100)}%`;
-                } else if (entry.downloadedBytes !== undefined) {
-                  statusLabel = `Downloading ${formatBytes(entry.downloadedBytes)}`;
-                } else {
-                  statusLabel = 'Downloading...';
-                }
-              } else if (entry.downloadError) {
-                statusLabel = 'Failed';
-                statusColor = 'error';
-              }
-
-              return (
-                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                  <Chip
-                    label={statusLabel}
-                    size="small"
-                    color={statusColor}
-                    variant={entry.filePath ? 'filled' : 'outlined'}
-                  />
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    v{entry.version} ({entry.upgradeFrom === 'from12x' ? '1.2.x+' : 'pre-1.2'})
-                  </Typography>
-                  {entry.downloadError && (
-                    <Typography variant="caption" color="error.main" sx={{ fontSize: '0.7rem' }}>
-                      {entry.downloadError}
-                    </Typography>
-                  )}
-                </Box>
-              );
-            })}
+        {versions.size > 0 && (
+          <Box
+            sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: '4px 16px', alignItems: 'center', mb: 2 }}
+          >
+            <Box />
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+              From 1.2.x+
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+              Pre-1.2
+            </Typography>
+            {[...versions].map(([ver, row]) => (
+              <Box key={ver} sx={{ display: 'contents' }}>
+                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                  v{ver}
+                </Typography>
+                {fwStatusCell(row.from12x)}
+                {fwStatusCell(row.pre12x)}
+              </Box>
+            ))}
           </Box>
         )}
 
