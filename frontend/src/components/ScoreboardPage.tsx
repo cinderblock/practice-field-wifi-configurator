@@ -78,7 +78,7 @@ export function ScoreboardPage() {
 
   if (!score) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', bgcolor: '#000' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', bgcolor: '#000' }}>
         <Typography variant="h4" color="text.secondary">
           Connecting...
         </Typography>
@@ -106,7 +106,7 @@ export function ScoreboardPage() {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100dvh',
         bgcolor: '#000',
         color: '#fff',
         userSelect: 'none',

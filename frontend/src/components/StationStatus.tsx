@@ -247,7 +247,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',
-          height: full ? 'calc(100vh - 4rem)' : '22em',
+          height: full ? 'calc(100dvh - 4rem)' : '22em',
           ...borderStyle,
         }}
       >
@@ -901,6 +901,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         <Dialog
           open={open}
           onClose={handleClose}
+          fullWidth
+          maxWidth="xs"
           slotProps={{
             transition: {
               onEntered: () => {

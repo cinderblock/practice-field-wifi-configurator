@@ -76,7 +76,7 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
       <ErrorBoundary>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
             <StatusBar />
             <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
           </Box>

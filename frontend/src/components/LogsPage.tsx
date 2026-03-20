@@ -344,7 +344,7 @@ export function LogsPage() {
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', px: 2, py: 1.5 }}>
+    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', px: 2, py: 1.5 }}>
       {/* ── Toolbar ──────────────────────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, flexShrink: 0, flexWrap: 'wrap' }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mr: 1 }}>
