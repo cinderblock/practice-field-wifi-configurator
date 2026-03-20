@@ -10,24 +10,6 @@ declare global {
   interface Window {
     __castReady?: boolean;
     __castSendSwap?: (swap: boolean) => void;
-    __castReceiverCtx?: { setInactivityTimeout?: (sec: number) => void };
-  }
-}
-
-/** Play a tiny silent audio blip to reset Cast inactivity timer. */
-function castKeepalive() {
-  try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.value = 0; // silent
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.01);
-    setTimeout(() => ctx.close(), 100);
-  } catch {
-    // AudioContext not available
   }
 }
 
@@ -67,14 +49,6 @@ export function ScoreboardPage() {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Keep Cast session alive by playing silent audio when scores change
-  const totalRef = (score?.red.total ?? 0) + (score?.blue.total ?? 0);
-  useEffect(() => {
-    if (totalRef > 0 && navigator.userAgent.includes('CrKey')) {
-      castKeepalive();
-    }
-  }, [totalRef]);
 
   if (!score) {
     return (

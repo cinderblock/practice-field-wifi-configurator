@@ -22,9 +22,7 @@
               }
             } catch (e) {}
           });
-          // Keep the session alive by resetting inactivity on score changes
-          window.__castReceiverCtx = ctx;
-          ctx.start({ maxInactivity: 1800 }); // 30 min idle timeout
+          ctx.start({ disableIdleTimeout: true }); // Non-media app — don't close when idle
         };
         document.head.appendChild(s);
       }
