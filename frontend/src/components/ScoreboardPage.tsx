@@ -10,6 +10,7 @@ declare global {
   interface Window {
     __castReady?: boolean;
     __castSendSwap?: (swap: boolean) => void;
+    __isCastReceiver?: boolean;
   }
 }
 
@@ -100,18 +101,20 @@ export function ScoreboardPage() {
         userSelect: 'none',
       }}
     >
-      {/* Controls — top right */}
-      <Box sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center' }}>
-        <Typography
-          onClick={toggleSwap}
-          sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
-        >
-          ⇄
-        </Typography>
-        {window.__castReady && (
-          <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
-        )}
-      </Box>
+      {/* Controls — top right (hidden on Chromecast receiver) */}
+      {!window.__isCastReceiver && (
+        <Box sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Typography
+            onClick={toggleSwap}
+            sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
+          >
+            ⇄
+          </Typography>
+          {window.__castReady && (
+            <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
+          )}
+        </Box>
+      )}
 
       {/* Main score display */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>

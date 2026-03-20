@@ -7,7 +7,8 @@
     <title>Scoreboard</title>
     <!-- Cast Receiver SDK: only load on Chromecast (keeps session alive + listens for swap messages) -->
     <script>
-      if (navigator.userAgent.includes('CrKey')) {
+      window.__isCastReceiver = navigator.userAgent.includes('CrKey');
+      if (window.__isCastReceiver) {
         var s = document.createElement('script');
         s.src = '//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
         s.onload = function () {
