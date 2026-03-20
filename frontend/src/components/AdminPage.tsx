@@ -285,10 +285,30 @@ function ScoringSection() {
           <Typography variant="h5">Scoring</Typography>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <Chip
-              label={score.mode === 'freePlay' ? `Free Play (${score.windowSeconds}s)` : 'Match'}
+              label={
+                score.mode === 'freePlay'
+                  ? `Free Play (${score.batchTimeoutSeconds}s batch / ${score.windowSeconds}s window)`
+                  : 'Match'
+              }
               size="small"
               color={score.mode === 'match' ? 'primary' : 'default'}
             />
+            {score.mode === 'freePlay' && (
+              <>
+                <Chip
+                  label={`Red: ${score.redBatchActive ? 'active' : 'idle'}`}
+                  size="small"
+                  variant="outlined"
+                  color={score.redBatchActive ? 'error' : 'default'}
+                />
+                <Chip
+                  label={`Blue: ${score.blueBatchActive ? 'active' : 'idle'}`}
+                  size="small"
+                  variant="outlined"
+                  color={score.blueBatchActive ? 'info' : 'default'}
+                />
+              </>
+            )}
             {hasScores && (
               <Button
                 size="small"

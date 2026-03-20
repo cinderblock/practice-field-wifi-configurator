@@ -950,6 +950,14 @@ export interface ScoringSourceStatus {
 
 export type ScoringMode = 'freePlay' | 'match';
 
+/** A completed scoring batch — a run of scores that timed out or was superseded */
+export interface ScoreBatch {
+  total: number;
+  elements: Record<string, ElementScore>;
+  startedAt: number;
+  endedAt: number;
+}
+
 /** The full score state broadcast to clients via WebSocket */
 export interface ScoreState {
   type: 'scoreState';
@@ -960,10 +968,18 @@ export interface ScoreState {
   autoRegisterLimit: number;
   /** Grace period (seconds) for attributing events to the previous match phase after a transition */
   phaseGraceSeconds: number;
+  /** Seconds of inactivity before a free play batch is considered done (per alliance) */
+  batchTimeoutSeconds: number;
+  /** Active batch scores (free play) or cumulative match scores */
   red: AllianceScore;
   blue: AllianceScore;
-  /** Recent peak scores in free play mode (up to 5, newest first) */
-  peaks?: { red: { total: number; timestamp: number }[]; blue: { total: number; timestamp: number }[] };
+  /** Whether each alliance's current batch is still active (false = timed out, desaturate) */
+  redBatchActive?: boolean;
+  blueBatchActive?: boolean;
+  /** Previous completed batches per alliance (free play only, newest first, up to 5) */
+  recentBatches?: { red: ScoreBatch[]; blue: ScoreBatch[] };
+  /** Sliding window scores as secondary display (free play only) */
+  slidingWindow?: { red: AllianceScore; blue: AllianceScore };
   /** Current match phase (match mode only) */
   matchPhase?: MatchPhase;
   /** Per-phase breakdown (match mode only) */

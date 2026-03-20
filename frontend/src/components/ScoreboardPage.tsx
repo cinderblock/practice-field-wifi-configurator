@@ -3,9 +3,9 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import { useScoreState } from '../hooks/useBackend';
+import type { ScoreBatch } from '../../../src/types';
 
 // Cast initialization happens in scores.html before this module loads.
-// Check window.__castReady to know if it succeeded.
 declare global {
   interface Window {
     __castReady?: boolean;
@@ -13,17 +13,10 @@ declare global {
   }
 }
 
-/**
- * Full-screen scoreboard designed for casting to a TV on the LAN.
- * Dark background, large numbers, auto-updating via WebSocket.
- * Access at /scores
- */
 function getInitialSwap(): boolean {
-  // URL param takes priority: ?swap=1 or ?swap=0
   const params = new URLSearchParams(window.location.search);
   const param = params.get('swap');
   if (param !== null) return param === '1' || param === 'true';
-  // Fall back to localStorage
   return localStorage.getItem('scoreboard-swap') === '1';
 }
 
@@ -44,7 +37,7 @@ export function ScoreboardPage() {
   const left: 'red' | 'blue' = swapped ? 'blue' : 'red';
   const right: 'red' | 'blue' = swapped ? 'red' : 'blue';
 
-  // Re-render every second for sliding window countdown
+  // Re-render every second for time-ago displays
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
@@ -61,7 +54,6 @@ export function ScoreboardPage() {
         })
         .catch(() => {});
     acquire();
-    // Re-acquire if page becomes visible again (wake lock releases on visibility change)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') acquire();
     };
@@ -84,6 +76,18 @@ export function ScoreboardPage() {
 
   const elements = Object.values(score.elements);
   const hasBreakdown = elements.length > 1;
+  const isFreePlay = score.mode === 'freePlay';
+
+  const leftActive = left === 'red' ? score.redBatchActive : score.blueBatchActive;
+  const rightActive = right === 'red' ? score.redBatchActive : score.blueBatchActive;
+
+  const leftBatches = score.recentBatches?.[left] ?? [];
+  const rightBatches = score.recentBatches?.[right] ?? [];
+  const hasRecentBatches = leftBatches.length > 0 || rightBatches.length > 0;
+
+  const leftWindow = score.slidingWindow?.[left];
+  const rightWindow = score.slidingWindow?.[right];
+  const hasWindow = isFreePlay && ((leftWindow?.total ?? 0) > 0 || (rightWindow?.total ?? 0) > 0);
 
   return (
     <Box
@@ -111,32 +115,31 @@ export function ScoreboardPage() {
 
       {/* Main score display */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <AllianceScore alliance={left} total={score[left].total} />
+        <AllianceScoreBox alliance={left} total={score[left].total} active={isFreePlay ? leftActive : true} />
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <Typography
             variant="h6"
-            sx={{ color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 4 }}
+            sx={{ color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 4, textAlign: 'center' }}
           >
-            {score.mode === 'match' ? (score.matchPhase ?? 'Match') : `Points in the last ${score.windowSeconds}s`}
+            {score.mode === 'match' ? (score.matchPhase ?? 'Match') : 'Free Play'}
           </Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
-            —
-          </Typography>
+          {isFreePlay && hasWindow && (
+            <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+              {leftWindow?.total ?? 0} / {rightWindow?.total ?? 0} in last {score.windowSeconds}s
+            </Typography>
+          )}
+          {!hasWindow && (
+            <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
+              —
+            </Typography>
+          )}
         </Box>
-        <AllianceScore alliance={right} total={score[right].total} />
+        <AllianceScoreBox alliance={right} total={score[right].total} active={isFreePlay ? rightActive : true} />
       </Box>
 
       {/* Element breakdown bar */}
       {hasBreakdown && (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 4,
-            pb: 3,
-            px: 4,
-          }}
-        >
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, pb: 3, px: 4 }}>
           {elements.map(el => {
             const leftEl = score[left].elements[el.id];
             const rightEl = score[right].elements[el.id];
@@ -160,15 +163,11 @@ export function ScoreboardPage() {
         </Box>
       )}
 
-      {/* Peaks (free play mode) */}
-      {score.peaks && (score.peaks[left].length > 0 || score.peaks[right].length > 0) && (
+      {/* Recent batches (free play) */}
+      {isFreePlay && hasRecentBatches && (
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
-          <PeakList peaks={score.peaks[left]} color={left === 'red' ? '#ef5350' : '#42a5f5'} label={`${left} peaks`} />
-          <PeakList
-            peaks={score.peaks[right]}
-            color={right === 'red' ? '#ef5350' : '#42a5f5'}
-            label={`${right} peaks`}
-          />
+          <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} />
+          <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} />
         </Box>
       )}
 
@@ -200,9 +199,10 @@ export function ScoreboardPage() {
   );
 }
 
-function AllianceScore({ alliance, total }: { alliance: 'red' | 'blue'; total: number }) {
+function AllianceScoreBox({ alliance, total, active }: { alliance: 'red' | 'blue'; total: number; active?: boolean }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
   const bgColor = alliance === 'red' ? 'rgba(239,83,80,0.08)' : 'rgba(66,165,245,0.08)';
+  const desaturated = active === false;
 
   return (
     <Box
@@ -214,6 +214,9 @@ function AllianceScore({ alliance, total }: { alliance: 'red' | 'blue'; total: n
         border: `3px solid ${color}`,
         backgroundColor: bgColor,
         minWidth: 200,
+        opacity: desaturated ? 0.3 : 1,
+        filter: desaturated ? 'saturate(0.3)' : 'none',
+        transition: 'opacity 2s ease, filter 2s ease',
       }}
     >
       <Typography
@@ -250,16 +253,8 @@ function formatTimeAgo(ts: number): string {
   return `${Math.round(s / 3600)}h ago`;
 }
 
-function PeakList({
-  peaks,
-  color,
-  label,
-}: {
-  peaks: { total: number; timestamp: number }[];
-  color: string;
-  label: string;
-}) {
-  if (peaks.length === 0) return null;
+function BatchList({ batches, color }: { batches: ScoreBatch[]; color: string }) {
+  if (batches.length === 0) return null;
   return (
     <Box>
       <Typography
@@ -271,15 +266,15 @@ function PeakList({
           textAlign: 'center',
         }}
       >
-        {label}
+        Previous
       </Typography>
-      {peaks.map((p, i) => (
+      {batches.map((b, i) => (
         <Box key={i} sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', opacity: 1 - i * 0.15 }}>
           <Typography sx={{ color, fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 700 }}>
-            {p.total}
+            {b.total}
           </Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem' }}>
-            {formatTimeAgo(p.timestamp)}
+            {formatTimeAgo(b.endedAt)}
           </Typography>
         </Box>
       ))}

@@ -243,11 +243,12 @@ export function handleScoringRequest(
           return;
         }
 
-        const { mode, windowSeconds, autoRegisterLimit, phaseGraceSeconds } = (data ?? {}) as {
+        const { mode, windowSeconds, autoRegisterLimit, phaseGraceSeconds, batchTimeoutSeconds } = (data ?? {}) as {
           mode?: ScoringMode;
           windowSeconds?: number;
           autoRegisterLimit?: number;
           phaseGraceSeconds?: number;
+          batchTimeoutSeconds?: number;
         };
 
         if (mode !== undefined) {
@@ -280,6 +281,14 @@ export function handleScoringRequest(
             return;
           }
           engine.setPhaseGraceSeconds(phaseGraceSeconds);
+        }
+
+        if (batchTimeoutSeconds !== undefined) {
+          if (typeof batchTimeoutSeconds !== 'number' || batchTimeoutSeconds < 1 || batchTimeoutSeconds > 600) {
+            json(res, 400, { error: 'batchTimeoutSeconds must be a number between 1 and 600' });
+            return;
+          }
+          engine.setBatchTimeoutSeconds(batchTimeoutSeconds);
         }
 
         json(res, 200, { ok: true, state: engine.getState() });

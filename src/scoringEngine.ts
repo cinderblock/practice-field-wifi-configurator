@@ -4,6 +4,7 @@ import {
   MatchState,
   ScoreEvent,
   ScoreState,
+  ScoreBatch,
   ScoringMode,
   ScoringElementConfig,
   ScoringSourceStatus,
@@ -14,12 +15,23 @@ import {
 
 const DEFAULT_WINDOW_SECONDS = 30;
 const DEFAULT_PHASE_GRACE_SECONDS = 5;
+const DEFAULT_BATCH_TIMEOUT_SECONDS = 100;
 
 function oppositeAlliance(alliance: Alliance): Alliance {
   return alliance === 'red' ? 'blue' : 'red';
 }
 
+function emptyAllianceScore(): AllianceScore {
+  return { total: 0, elements: {} };
+}
+
 let nextEventId = 1;
+
+interface ActiveBatch {
+  events: ProcessedScoreEvent[];
+  startedAt: number;
+  active: boolean; // false = timed out (desaturated on frontend)
+}
 
 export class ScoringEngine {
   private events: ProcessedScoreEvent[] = [];
@@ -28,6 +40,7 @@ export class ScoringEngine {
   private mode: ScoringMode = 'freePlay';
   private windowSeconds = DEFAULT_WINDOW_SECONDS;
   private phaseGraceSeconds = DEFAULT_PHASE_GRACE_SECONDS;
+  private batchTimeoutSeconds = DEFAULT_BATCH_TIMEOUT_SECONDS;
   private currentMatchPhase: MatchPhase = 'idle';
   /** The previous match phase and when it ended — used for grace period attribution */
   private previousPhase: { phase: MatchPhase; endedAt: number } | null = null;
@@ -35,16 +48,15 @@ export class ScoringEngine {
   private lastDedupTimestamp = new Map<string, number>();
   private windowTimer: NodeJS.Timeout | null = null;
   private windowTimerTarget: number | undefined;
-  /** Recent peak scores in free play mode — up to 5 per alliance, newest first */
-  private peaks: Record<Alliance, { total: number; timestamp: number }[]> = {
-    red: [],
-    blue: [],
+
+  // ── Batch tracking (free play) ──────────────────────────────────
+  private activeBatches: Record<Alliance, ActiveBatch> = {
+    red: { events: [], startedAt: 0, active: false },
+    blue: { events: [], startedAt: 0, active: false },
   };
-  /** High-water mark per alliance — peak is recorded when score drops below this */
-  private highWater: Record<Alliance, { total: number; timestamp: number; recorded: boolean }> = {
-    red: { total: 0, timestamp: 0, recorded: false },
-    blue: { total: 0, timestamp: 0, recorded: false },
-  };
+  private recentBatches: Record<Alliance, ScoreBatch[]> = { red: [], blue: [] };
+  private batchTimers: Record<Alliance, NodeJS.Timeout | null> = { red: null, blue: null };
+
   private autoRegisterLimit = 1;
   private suppressBroadcast = false;
   private listeners: ((state: ScoreState) => void)[] = [];
@@ -110,7 +122,6 @@ export class ScoringEngine {
     const awardedTo = elementConfig.awardToOpponent ? oppositeAlliance(event.alliance) : event.alliance;
 
     // During the grace period after a phase change, attribute events to the previous phase
-    // (e.g. a ball scored during auto that takes a few seconds to fall through the sensor)
     let effectivePhase = this.currentMatchPhase;
     if (
       this.mode === 'match' &&
@@ -118,7 +129,6 @@ export class ScoringEngine {
       now - this.previousPhase.endedAt < this.phaseGraceSeconds * 1000
     ) {
       effectivePhase = this.previousPhase.phase;
-      // Re-evaluate phase activity against the previous phase
       if (elementConfig.activePhases && elementConfig.activePhases.length > 0) {
         phaseInactive = !elementConfig.activePhases.includes(effectivePhase);
       }
@@ -135,7 +145,6 @@ export class ScoringEngine {
       timestamp: now,
       deviceTimestamp: event.timestamp,
       matchPhase: this.mode === 'match' ? effectivePhase : undefined,
-      // Mark as deduplicated if within dedup window OR if phase is inactive
       deduplicated: deduplicated || phaseInactive,
     };
 
@@ -146,8 +155,9 @@ export class ScoringEngine {
       this.lastDedupTimestamp.set(dedupKey, now);
     }
 
-    // In free play mode, ensure a timer fires when the oldest event expires
+    // In free play mode, handle batch tracking and sliding window
     if (this.mode === 'freePlay' && !processed.deduplicated) {
+      this.addToBatch(awardedTo, processed, now);
       this.ensureWindowTimer();
     }
 
@@ -201,6 +211,7 @@ export class ScoringEngine {
     this.mode = mode;
     if (mode === 'freePlay') {
       this.lastDedupTimestamp.clear();
+      this.resetBatches();
     }
     this.broadcast();
   }
@@ -217,15 +228,17 @@ export class ScoringEngine {
     this.broadcast();
   }
 
+  /** Set the batch inactivity timeout for free play mode. */
+  setBatchTimeoutSeconds(seconds: number): void {
+    this.batchTimeoutSeconds = Math.max(1, Math.min(600, seconds));
+    this.broadcast();
+  }
+
   /** Reset all scores and events. Sources and element config are preserved. */
   reset(): void {
     this.events = [];
     this.lastDedupTimestamp.clear();
-    this.peaks = { red: [], blue: [] };
-    this.highWater = {
-      red: { total: 0, timestamp: 0, recorded: false },
-      blue: { total: 0, timestamp: 0, recorded: false },
-    };
+    this.resetBatches();
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
       this.windowTimer = null;
@@ -240,6 +253,7 @@ export class ScoringEngine {
     this.sources.clear();
     this.elements.clear();
     this.lastDedupTimestamp.clear();
+    this.resetBatches();
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
       this.windowTimer = null;
@@ -263,6 +277,7 @@ export class ScoringEngine {
       this.mode = 'match';
       this.events = [];
       this.lastDedupTimestamp.clear();
+      this.resetBatches();
       this.broadcast();
       return;
     }
@@ -270,6 +285,7 @@ export class ScoringEngine {
     // When match ends and resets to idle, switch back to free play
     if (state.phase === 'idle' && prevPhase === 'postMatch') {
       this.mode = 'freePlay';
+      this.resetBatches();
       this.broadcast();
       return;
     }
@@ -291,46 +307,38 @@ export class ScoringEngine {
 
   /** Get the current score state. */
   getState(): ScoreState {
-    const red = this.calculateAllianceScore('red');
-    const blue = this.calculateAllianceScore('blue');
-
-    // Track peaks in free play mode — record when the score drops after reaching a high
-    if (this.mode === 'freePlay') {
-      const now = Date.now();
-      for (const alliance of ['red', 'blue'] as Alliance[]) {
-        const total = alliance === 'red' ? red.total : blue.total;
-        const hw = this.highWater[alliance];
-        if (total > hw.total) {
-          // Score is climbing — update the high-water mark
-          hw.total = total;
-          hw.timestamp = now;
-          hw.recorded = false;
-        } else if (total < hw.total && hw.total > 0 && !hw.recorded) {
-          // Score dropped for the first time after climbing — record the peak
-          const peakList = this.peaks[alliance];
-          if (!peakList[0] || peakList[0].total !== hw.total) {
-            peakList.unshift({ total: hw.total, timestamp: hw.timestamp });
-            if (peakList.length > 5) peakList.pop();
-          }
-          hw.recorded = true; // Don't record again until score climbs past this mark
-        }
-      }
-    }
-
     const state: ScoreState = {
       type: 'scoreState',
       mode: this.mode,
       windowSeconds: this.windowSeconds,
       autoRegisterLimit: this.autoRegisterLimit,
       phaseGraceSeconds: this.phaseGraceSeconds,
-      red,
-      blue,
-      peaks: this.mode === 'freePlay' ? { red: this.peaks.red, blue: this.peaks.blue } : undefined,
+      batchTimeoutSeconds: this.batchTimeoutSeconds,
+      red: emptyAllianceScore(),
+      blue: emptyAllianceScore(),
       sources: Object.fromEntries(this.sources),
       elements: Object.fromEntries(this.elements),
     };
 
-    if (this.mode === 'match') {
+    if (this.mode === 'freePlay') {
+      // Primary display: active batch scores
+      state.red = this.calculateBatchScore('red');
+      state.blue = this.calculateBatchScore('blue');
+      state.redBatchActive = this.activeBatches.red.active;
+      state.blueBatchActive = this.activeBatches.blue.active;
+      state.recentBatches = {
+        red: this.recentBatches.red,
+        blue: this.recentBatches.blue,
+      };
+      // Secondary display: sliding window
+      state.slidingWindow = {
+        red: this.calculateSlidingWindowScore('red'),
+        blue: this.calculateSlidingWindowScore('blue'),
+      };
+    } else {
+      // Match mode: cumulative scores
+      state.red = this.calculateMatchScore('red');
+      state.blue = this.calculateMatchScore('blue');
       state.matchPhase = this.currentMatchPhase;
       state.phaseBreakdown = this.calculatePhaseBreakdown();
     }
@@ -338,9 +346,101 @@ export class ScoringEngine {
     return state;
   }
 
-  // ── Private ───────────────────────────────────────────────────────
+  // ── Batch management (free play) ────────────────────────────────
 
-  private calculateAllianceScore(alliance: Alliance): AllianceScore {
+  /** Add an event to the active batch for the given alliance, starting a new batch if needed. */
+  private addToBatch(alliance: Alliance, event: ProcessedScoreEvent, now: number): void {
+    const batch = this.activeBatches[alliance];
+
+    // If the batch is inactive (timed out), archive it and start fresh
+    if (!batch.active && batch.events.length > 0) {
+      this.archiveBatch(alliance, now);
+    }
+
+    // Start a new batch if empty
+    if (batch.events.length === 0) {
+      batch.startedAt = now;
+    }
+
+    batch.events.push(event);
+    batch.active = true;
+
+    // Reset the inactivity timer for this alliance
+    this.resetBatchTimer(alliance);
+  }
+
+  /** Move the active batch to recentBatches. */
+  private archiveBatch(alliance: Alliance, now: number): void {
+    const batch = this.activeBatches[alliance];
+    if (batch.events.length === 0) return;
+
+    const score = this.calculateBatchScore(alliance);
+    if (score.total > 0) {
+      this.recentBatches[alliance].unshift({
+        total: score.total,
+        elements: score.elements,
+        startedAt: batch.startedAt,
+        endedAt: now,
+      });
+      // Keep only last 5
+      if (this.recentBatches[alliance].length > 5) {
+        this.recentBatches[alliance].pop();
+      }
+    }
+
+    // Clear the active batch
+    batch.events = [];
+    batch.startedAt = 0;
+    batch.active = false;
+  }
+
+  /** Reset/start the inactivity timer for an alliance's batch. */
+  private resetBatchTimer(alliance: Alliance): void {
+    if (this.batchTimers[alliance]) {
+      clearTimeout(this.batchTimers[alliance]!);
+    }
+    this.batchTimers[alliance] = setTimeout(() => {
+      this.batchTimers[alliance] = null;
+      this.activeBatches[alliance].active = false;
+      this.broadcast(); // Frontend will desaturate
+    }, this.batchTimeoutSeconds * 1000);
+  }
+
+  /** Clear all batch state. */
+  private resetBatches(): void {
+    for (const alliance of ['red', 'blue'] as Alliance[]) {
+      if (this.batchTimers[alliance]) {
+        clearTimeout(this.batchTimers[alliance]!);
+        this.batchTimers[alliance] = null;
+      }
+      this.activeBatches[alliance] = { events: [], startedAt: 0, active: false };
+    }
+    this.recentBatches = { red: [], blue: [] };
+  }
+
+  /** Calculate score for the active batch of an alliance. */
+  private calculateBatchScore(alliance: Alliance): AllianceScore {
+    const batch = this.activeBatches[alliance];
+    const elements: Record<string, ElementScore> = {};
+    let total = 0;
+
+    for (const event of batch.events) {
+      if (event.deduplicated) continue;
+      if (event.awardedTo !== alliance) continue;
+
+      const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
+      el.count += event.count;
+      el.points += event.count * event.pointValue;
+      el.lastEventTime = Math.max(el.lastEventTime, event.timestamp);
+      elements[event.element] = el;
+      total += event.count * event.pointValue;
+    }
+
+    return { total, elements };
+  }
+
+  /** Calculate sliding window score for secondary display. */
+  private calculateSlidingWindowScore(alliance: Alliance): AllianceScore {
     const now = Date.now();
     const windowMs = this.windowSeconds * 1000;
     const elements: Record<string, ElementScore> = {};
@@ -349,9 +449,27 @@ export class ScoringEngine {
     for (const event of this.events) {
       if (event.deduplicated) continue;
       if (event.awardedTo !== alliance) continue;
+      if (now - event.timestamp > windowMs) continue;
 
-      // In free play, only count events within the sliding window
-      if (this.mode === 'freePlay' && now - event.timestamp > windowMs) continue;
+      const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
+      el.count += event.count;
+      el.points += event.count * event.pointValue;
+      el.lastEventTime = Math.max(el.lastEventTime, event.timestamp);
+      elements[event.element] = el;
+      total += event.count * event.pointValue;
+    }
+
+    return { total, elements };
+  }
+
+  /** Calculate cumulative match score for an alliance. */
+  private calculateMatchScore(alliance: Alliance): AllianceScore {
+    const elements: Record<string, ElementScore> = {};
+    let total = 0;
+
+    for (const event of this.events) {
+      if (event.deduplicated) continue;
+      if (event.awardedTo !== alliance) continue;
 
       const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
       el.count += event.count;
@@ -381,12 +499,12 @@ export class ScoringEngine {
         if (event.deduplicated) continue;
         if (event.matchPhase !== phase) continue;
 
-        const elements = event.awardedTo === 'red' ? redElements : blueElements;
-        const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
+        const elems = event.awardedTo === 'red' ? redElements : blueElements;
+        const el = elems[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
         el.count += event.count;
         el.points += event.count * event.pointValue;
         el.lastEventTime = Math.max(el.lastEventTime, event.timestamp);
-        elements[event.element] = el;
+        elems[event.element] = el;
 
         if (event.awardedTo === 'red') redTotal += event.count * event.pointValue;
         else blueTotal += event.count * event.pointValue;
@@ -408,10 +526,8 @@ export class ScoringEngine {
     const now = Date.now();
     const windowMs = this.windowSeconds * 1000;
 
-    // Find the oldest non-deduplicated event still within the window
     const oldest = this.events.find(e => !e.deduplicated && now - e.timestamp < windowMs);
     if (!oldest) {
-      // No active events — prune everything and cancel timer
       this.pruneExpiredEvents();
       if (this.windowTimer) {
         clearTimeout(this.windowTimer);
@@ -421,9 +537,8 @@ export class ScoringEngine {
     }
 
     const expiresAt = oldest.timestamp + windowMs;
-    const delay = expiresAt - now + 50; // +50ms buffer
+    const delay = expiresAt - now + 50;
 
-    // Don't reschedule if existing timer will fire sooner
     if (this.windowTimer && this.windowTimerTarget !== undefined && this.windowTimerTarget <= expiresAt) {
       return;
     }
@@ -436,7 +551,6 @@ export class ScoringEngine {
         this.windowTimerTarget = undefined;
         this.pruneExpiredEvents();
         this.broadcast();
-        // Reschedule for the next expiry
         this.ensureWindowTimer();
       },
       Math.max(0, delay),
