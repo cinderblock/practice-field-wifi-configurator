@@ -26,6 +26,7 @@ import {
   sendAdminStationEStop,
   sendAdminStationDisable,
   sendAdminClearEStop,
+  sendStopCast,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -309,6 +310,14 @@ function ScoringSection() {
                 />
               </>
             )}
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={sendStopCast}
+              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+            >
+              Stop Cast
+            </Button>
             {hasScores && (
               <Button
                 size="small"

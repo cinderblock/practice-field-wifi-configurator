@@ -22,6 +22,7 @@ import {
   isApplyConfig,
   isRunTeamChecks,
   isFirmwareUpdateRequest,
+  isStopCast,
   RoutePreferenceState,
   PendingCommitState,
   ServerInfo,
@@ -275,6 +276,8 @@ export function setupWebSocket(
         onRunTeamChecks?.(data.station);
       } else if (isFirmwareUpdateRequest(data)) {
         onFirmwareUpdate?.(data.wpaKey, data.wpaKey24, !!data.skipReconfigure);
+      } else if (isStopCast(data)) {
+        broadcast(data);
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

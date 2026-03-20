@@ -9,13 +9,18 @@ declare namespace cast {
       setOptions(options: { receiverApplicationId: string; autoJoinPolicy: unknown }): void;
       addEventListener(type: string, listener: (event: { sessionState: string }) => void): void;
       getCurrentSession(): CastSession | null;
+      getCastState(): string;
+      endCurrentSession(stopCasting: boolean): void;
     }
     class CastSession {
       getSessionId(): string;
+      sendMessage(namespace: string, message: string): Promise<void>;
     }
     class CastReceiverContext {
       static getInstance(): CastReceiverContext;
-      start(): void;
+      start(options?: { disableIdleTimeout?: boolean; customNamespaces?: Record<string, string> }): void;
+      stop(): void;
+      addCustomMessageListener(namespace: string, listener: (event: { data: unknown }) => void): void;
     }
     enum CastContextEventType {
       SESSION_STATE_CHANGED = 'SESSION_STATE_CHANGED',

@@ -22,6 +22,7 @@ import {
   isRobotTestState,
   isFirmwareUpdateProgress,
   isScoreState,
+  isStopCast,
   RoutePreferenceState,
   RobotTestState,
   ScoreState,
@@ -397,6 +398,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isStopCast(detail)) {
+    handleStopCast();
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -729,6 +735,23 @@ export function useScoreState(): ScoreState | null {
   }, []);
 
   return state;
+}
+
+// ── Cast Control ─────────────────────────────────────────────────────
+
+function handleStopCast() {
+  // On receiver (Chromecast): stop the Cast app
+  try {
+    if (window.__isCastReceiver && typeof cast !== 'undefined' && cast.framework) {
+      cast.framework.CastReceiverContext.getInstance().stop();
+    }
+  } catch {
+    // Not a receiver
+  }
+}
+
+export function sendStopCast() {
+  ws?.send(JSON.stringify({ type: 'stopCast' }));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

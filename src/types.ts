@@ -994,3 +994,12 @@ export function isScoreState(msg: unknown): msg is ScoreState {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as ScoreState).type === 'scoreState';
 }
+
+export interface StopCast {
+  type: 'stopCast';
+}
+
+export function isStopCast(msg: unknown): msg is StopCast {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StopCast).type === 'stopCast';
+}
