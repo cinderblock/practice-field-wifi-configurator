@@ -50,6 +50,28 @@ export function ScoreboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Prevent screen from sleeping (TV screensaver)
+  useEffect(() => {
+    let wakeLock: WakeLockSentinel | null = null;
+    const acquire = () =>
+      navigator.wakeLock
+        ?.request('screen')
+        .then(wl => {
+          wakeLock = wl;
+        })
+        .catch(() => {});
+    acquire();
+    // Re-acquire if page becomes visible again (wake lock releases on visibility change)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') acquire();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      wakeLock?.release();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   if (!score) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', bgcolor: '#000' }}>

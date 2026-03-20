@@ -23,6 +23,11 @@
             } catch (e) {}
           });
           ctx.start({ disableIdleTimeout: true }); // Non-media app — don't close when idle
+
+          // Request a screen wake lock to prevent the TV's screensaver
+          if (navigator.wakeLock) {
+            navigator.wakeLock.request('screen').catch(function () {});
+          }
         };
         document.head.appendChild(s);
       }
