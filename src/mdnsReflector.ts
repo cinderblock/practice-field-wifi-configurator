@@ -362,7 +362,12 @@ export class MdnsReflector {
         this.joinedTeams.set(team, ip);
         console.log(`mDNS: joined multicast on VLAN for team ${team} (${ip})`);
       } catch (err) {
-        console.error(`mDNS: failed to join multicast for team ${team} (${ip}):`, err);
+        const code = err && typeof err === 'object' && 'code' in err ? (err as { code: string }).code : '';
+        if (code === 'ENODEV') {
+          console.warn(`mDNS: VLAN interface not found for team ${team} (${ip}) — skipping`);
+        } else {
+          console.error(`mDNS: failed to join multicast for team ${team} (${ip}):`, err);
+        }
       }
     }
   }
