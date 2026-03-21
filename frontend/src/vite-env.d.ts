@@ -15,6 +15,7 @@ declare namespace cast {
     class CastSession {
       getSessionId(): string;
       sendMessage(namespace: string, message: string): Promise<void>;
+      getCastDevice(): { friendlyName: string };
     }
     class CastReceiverContext {
       static getInstance(): CastReceiverContext;

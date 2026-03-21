@@ -43,7 +43,8 @@ export function ScoreboardPage() {
     if (window.__isCastReceiver) {
       // Small delay to ensure WebSocket is connected
       const timer = setTimeout(() => {
-        sendCastReceiverRegister(document.title || 'Cast Display', swapped);
+        const name = localStorage.getItem('scoreboard-device-name') || document.title || 'Cast Display';
+        sendCastReceiverRegister(name, swapped);
       }, 1000);
       return () => clearTimeout(timer);
     }

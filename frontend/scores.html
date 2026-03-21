@@ -17,6 +17,9 @@
           ctx.addCustomMessageListener(NAMESPACE, function (event) {
             try {
               var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+              if (data && data.deviceName) {
+                localStorage.setItem('scoreboard-device-name', data.deviceName);
+              }
               if (data && data.swap !== undefined) {
                 localStorage.setItem('scoreboard-swap', data.swap ? '1' : '0');
                 window.location.reload();
@@ -53,7 +56,9 @@
               var swap = localStorage.getItem('scoreboard-swap') === '1';
               var session = ctx.getCurrentSession();
               if (session) {
-                session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap }));
+                var deviceName = '';
+                try { deviceName = session.getCastDevice().friendlyName; } catch (e) {}
+                session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap, deviceName: deviceName }));
               }
             }
           });
