@@ -193,36 +193,23 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   const handleApplyAllStagedChanges = () => {
-    // Apply all staged changes across all stations
-    // Only stations with staged changes (stagedChange !== null) will be processed
     Object.entries(stagedChanges).forEach(([stationName, stagedChange]) => {
       if (stagedChange) {
-        // Apply the staged change
         sendNewConfig(stationName as StationName, stagedChange.ssid, stagedChange.wpaKey, false);
-
-        // Auto-save the setting
-        saveSetting(stagedChange.ssid, stagedChange.wpaKey);
-
-        // Clear the staged change
+        // Auto-save non-empty configs
+        if (stagedChange.ssid.trim() && stagedChange.wpaKey.trim()) {
+          saveSetting(stagedChange.ssid, stagedChange.wpaKey);
+        }
         applyStagedChange(stationName as StationName);
       }
-      // Stations without staged changes (stagedChange === null) are skipped
     });
   };
 
   const handleClearStation = () => {
-    console.log('Clearing station:', station, 'Current SSID:', stationSsid);
-
     // Only clear if the station is actually configured
     if (stationSsid || hasStagedChange(station)) {
-      // Stage the clear — don't force a radio reconfig. The next "Save" or
-      // explicit "Apply" from the header will commit all pending changes.
-      sendNewConfig(station, '', '', true);
-
-      // Clear any staged changes for this station
-      applyStagedChange(station);
-    } else {
-      console.log('Station is already cleared, no action needed');
+      // Stage the clear locally — the "Apply" button will send it to the backend
+      stageChange(station, '', '');
     }
   };
 
