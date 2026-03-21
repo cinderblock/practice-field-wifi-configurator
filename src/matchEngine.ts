@@ -1,5 +1,5 @@
 import dgram from 'dgram';
-import { makeDSPacket, Control, UdpSendPort } from './fmsServer.js';
+import { makeDSPacket, Control, UdpSendPort, type OutboundTag } from './fmsServer.js';
 import {
   MatchPhase,
   MatchConfig,
@@ -463,6 +463,30 @@ export class MatchEngine {
         state.mode = mode;
       }
     }
+  }
+
+  /** Send a raw control packet to an arbitrary IP. Used for duplicate DS blocking. */
+  sendRawControlPacket(ip: string, station: StationName, tags: OutboundTag[] = []) {
+    const seq = (this.sequenceNumbers.get(station) ?? 0) + 1;
+    this.sequenceNumbers.set(station, seq);
+
+    const control = new Control(false, false, 'teleOp'); // disabled, not e-stopped
+
+    const packet = makeDSPacket({
+      sequence: seq & 0xffff,
+      control,
+      allianceStation: station,
+      tournamentLevel: 'Practice',
+      matchNumber: 0,
+      playNumber: 0,
+      matchTime: new Date(),
+      remainingTime: 0,
+      tags,
+    });
+
+    this.udpSocket.send(packet, 0, packet.length, UdpSendPort, ip, err => {
+      if (err) appError(`Failed to send control packet to ${ip}: ${err.message}`);
+    });
   }
 
   private disableAll() {

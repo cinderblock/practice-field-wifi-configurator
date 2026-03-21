@@ -407,6 +407,27 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // Track blocked (duplicate) DS IPs per station. Multiple DSes can be blocked
     // simultaneously (e.g. someone opens 3 Driver Stations). Map: station → ip → vlanInterface
     const blockedDsRules = new Map<StationName, Map<string, string>>();
+    let blockedDsControlTimer: NodeJS.Timeout | null = null;
+
+    /** Send periodic disabled+game data packets to all blocked DSes so they show the warning. */
+    function startBlockedDsControlLoop() {
+      if (blockedDsControlTimer) return;
+      blockedDsControlTimer = setInterval(() => {
+        let anyBlocked = false;
+        for (const [station, blocks] of blockedDsRules) {
+          for (const ip of blocks.keys()) {
+            anyBlocked = true;
+            matchEngine.sendRawControlPacket(ip, station, [
+              { type: 'gameData', data: 'Multiple DSes Detected. Close Others.' },
+            ]);
+          }
+        }
+        if (!anyBlocked) {
+          clearInterval(blockedDsControlTimer!);
+          blockedDsControlTimer = null;
+        }
+      }, 500);
+    }
 
     /** Block a duplicate DS from forwarding packets to the robot's VLAN. */
     async function blockDuplicateDS(station: StationName, dsIp: string) {
@@ -429,6 +450,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       stationBlocks.set(dsIp, vlanInterface);
       console.warn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${vlanInterface})`);
       matchEngine.setBlockedDS(station, [...stationBlocks!.keys()]);
+      startBlockedDsControlLoop();
     }
 
     /** Remove the FORWARD DROP rule for one blocked DS. */

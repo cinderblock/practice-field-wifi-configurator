@@ -438,6 +438,9 @@ export class Control {
 
 type TournamentLevel = 'Match Test' | 'Practice' | 'Qualification' | 'Playoff';
 
+/** Tags sent from FMS to DS (different from DS→FMS metrics tags). */
+export type OutboundTag = { type: 'gameData'; data: string };
+
 type DsPacket = {
   sequence: number;
   control: Control;
@@ -447,7 +450,7 @@ type DsPacket = {
   playNumber: number;
   matchTime: Date;
   remainingTime: number;
-  tags: Tags;
+  tags: OutboundTag[];
 };
 
 function allianceStationFromName(station: StationName): number {
@@ -470,9 +473,20 @@ function dateToBuffer(date: Date): Buffer {
   return buff.buffer;
 }
 
-function makeTagsBuffers(tags: Tags): Buffer[] {
-  // TODO: implement
-  return [];
+function makeTagsBuffers(tags: OutboundTag[]): Buffer[] {
+  const buffers: Buffer[] = [];
+  for (const tag of tags) {
+    if (tag.type === 'gameData') {
+      const data = Buffer.from(tag.data, 'utf-8');
+      // Format: [size] [tag_id=0x07] [data...]
+      // size includes the tag_id byte
+      const header = Buffer.alloc(2);
+      header[0] = data.length + 1; // size = tag_id + data
+      header[1] = 0x07; // Game Data tag ID
+      buffers.push(header, data);
+    }
+  }
+  return buffers;
 }
 
 export function makeDSPacket(data: DsPacket): Buffer {
