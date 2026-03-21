@@ -19,6 +19,7 @@ import TableHead from '@mui/material/TableHead';
 import { StationName, SavedWiFiSetting } from '../../../src/types';
 import {
   useLatest,
+  useMatchState,
   sendNewConfig,
   sendInternetToggle,
   useUpdateCallback,
@@ -35,7 +36,7 @@ import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
 import { describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
-import { Box, FormControlLabel, Switch, Tooltip } from '@mui/material';
+import { Alert, Box, FormControlLabel, Switch, Tooltip } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -112,6 +113,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
   const latest = useLatest();
+  const matchState = useMatchState();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const { stagedChanges, hasStagedChange, stageChange, applyStagedChange } = useStagedChanges();
 
@@ -244,6 +246,17 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     <>
       {full && <MatchPanel station={station} />}
       <RoutePreferenceBanner station={station} />
+      {matchState?.connectedStations[station]?.blockedDsIps &&
+        matchState.connectedStations[station]!.blockedDsIps!.length > 0 && (
+          <Alert
+            severity="error"
+            sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
+          >
+            MULTIPLE DRIVER STATIONS DETECTED — {matchState.connectedStations[station]!.blockedDsIps!.join(', ')}{' '}
+            blocked. Close the extra Driver Station
+            {matchState.connectedStations[station]!.blockedDsIps!.length > 1 ? 's' : ''}.
+          </Alert>
+        )}
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',

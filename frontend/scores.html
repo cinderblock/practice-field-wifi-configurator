@@ -57,7 +57,9 @@
               var session = ctx.getCurrentSession();
               if (session) {
                 var deviceName = '';
-                try { deviceName = session.getCastDevice().friendlyName; } catch (e) {}
+                try {
+                  deviceName = session.getCastDevice().friendlyName;
+                } catch (e) {}
                 session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap, deviceName: deviceName }));
               }
             }
