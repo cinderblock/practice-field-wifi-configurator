@@ -43,7 +43,6 @@ import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ClearIcon from '@mui/icons-material/Clear';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
@@ -192,19 +191,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     removeSetting(setting.ssid, setting.wpaKey);
   };
 
-  const handleApplyAllStagedChanges = () => {
-    Object.entries(stagedChanges).forEach(([stationName, stagedChange]) => {
-      if (stagedChange) {
-        sendNewConfig(stationName as StationName, stagedChange.ssid, stagedChange.wpaKey, false);
-        // Auto-save non-empty configs
-        if (stagedChange.ssid.trim() && stagedChange.wpaKey.trim()) {
-          saveSetting(stagedChange.ssid, stagedChange.wpaKey);
-        }
-        applyStagedChange(stationName as StationName);
-      }
-    });
-  };
-
   const handleClearStation = () => {
     // Only clear if the station is actually configured
     if (stationSsid || hasStagedChange(station)) {
@@ -268,29 +254,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
-              {/** APPLY ALL STAGED CHANGES BUTTON */}
-              {Object.values(stagedChanges).some(change => change !== null) && (
-                <Tooltip
-                  title={`Apply all staged changes (${
-                    Object.values(stagedChanges).filter(change => change !== null).length
-                  } stations)`}
-                >
-                  <IconButton
-                    onClick={handleApplyAllStagedChanges}
-                    size="small"
-                    sx={{
-                      color: '#e65100',
-                      backgroundColor: '#fff3e0',
-                      '&:hover': {
-                        backgroundColor: '#ffb74d',
-                        color: '#bf360c',
-                      },
-                    }}
-                  >
-                    <PlayArrowIcon />
-                  </IconButton>
-                </Tooltip>
-              )}
               {/** CLEAR BUTTON */}
               {(stationSsid || hasStagedChange(station)) && (
                 <Tooltip title="Clear station configuration">
