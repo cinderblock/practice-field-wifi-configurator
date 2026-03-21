@@ -115,10 +115,42 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       radioManager.setFirmwareMode(detectFirmwareMode(status.version));
     }
 
-    // Re-apply config after full restart to rebuild network rules.
-    // Skip for graceful reload — rules are still in the kernel.
-    if (!KeepNetwork && VlanInterface && Object.keys(radioManager.getTeamMappings()).length > 0) {
-      await radioManager.commitConfiguration();
+    // Re-apply config to rebuild network rules if needed.
+    const teamMappings = radioManager.getTeamMappings();
+    if (VlanInterface && Object.keys(teamMappings).length > 0) {
+      if (KeepNetwork) {
+        // Graceful reload — verify VLANs actually exist and have IPs.
+        // If a commit was staged but never applied before the restart,
+        // the VLANs may be missing even though active-config.json has teams.
+        let vlansOk = true;
+        try {
+          const interfaces = await (net ?? createBackend()).listInterfaces();
+          const ifaceIps = new Set<string>();
+          for (const iface of interfaces) {
+            for (const addr of iface.addresses) {
+              if (addr.family === 'inet') ifaceIps.add(addr.address);
+            }
+          }
+          for (const team of Object.keys(teamMappings).map(Number)) {
+            const high = Math.floor(team / 100);
+            const low = team % 100;
+            const expectedIp = `10.${high}.${low}.${VlanHostOctet}`;
+            if (!ifaceIps.has(expectedIp)) {
+              console.warn(`VLAN IP ${expectedIp} missing for team ${team} — will re-apply config`);
+              vlansOk = false;
+              break;
+            }
+          }
+        } catch {
+          vlansOk = false;
+        }
+        if (!vlansOk) {
+          await radioManager.commitConfiguration();
+        }
+      } else {
+        // Full restart — always re-apply
+        await radioManager.commitConfiguration();
+      }
     }
   })().catch(err => {
     console.error('Background radio connection failed:', err);
