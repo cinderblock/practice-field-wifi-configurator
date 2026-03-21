@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StationName } from '../../../src/types';
+import { StationName, StationNameList } from '../../../src/types';
 
 const STORAGE_KEY = 'staged-wifi-changes';
 
@@ -43,6 +43,21 @@ function saveToStorage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(globalStagedChanges));
   } catch (error) {
     console.error('Error saving staged changes:', error);
+  }
+}
+
+/** Clear all staged changes. Called by useBackend when a radio commit completes. */
+export function clearAllStagedChanges() {
+  let changed = false;
+  for (const station of StationNameList) {
+    if (globalStagedChanges[station]) {
+      globalStagedChanges[station] = null;
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveToStorage();
+    notifyListeners();
   }
 }
 

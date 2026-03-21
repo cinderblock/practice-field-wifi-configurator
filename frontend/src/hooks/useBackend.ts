@@ -43,6 +43,7 @@ import {
   StatusEntry,
 } from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
+import { clearAllStagedChanges } from './useStagedChanges';
 
 let ws: WebSocket | null = null;
 let wsConnected = false;
@@ -315,8 +316,13 @@ function handleRoutePreferenceState(state: RoutePreferenceState) {
 }
 
 function handlePendingCommitState(state: PendingCommitState) {
+  const wasPending = currentPendingCommit;
   currentPendingCommit = state.pending;
   events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state.pending }));
+  // When commit completes (pending → not pending), clear all staged changes
+  if (wasPending && !state.pending) {
+    clearAllStagedChanges();
+  }
 }
 
 function handleTeamCheckResults(results: TeamCheckResults) {
