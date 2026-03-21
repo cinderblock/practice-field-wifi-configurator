@@ -17,8 +17,8 @@ export async function startSyslogServer(address = '0.0.0.0') {
   });
 }
 
-export async function runSyslogServer() {
-  return startSyslogServer().catch(err => {
+export async function runSyslogServer(address?: string) {
+  return startSyslogServer(address).catch(err => {
     if ('code' in err && 'address' in err && err.code == 'EADDRNOTAVAIL') {
       console.log(`Bind to ${err.address} to enable Syslog server`);
       return;

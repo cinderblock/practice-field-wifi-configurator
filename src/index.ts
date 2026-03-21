@@ -320,7 +320,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   }
 
   if (StartSyslog) {
-    runSyslogServer().then(syslogServer => {
+    runSyslogServer('10.0.100.5').then(syslogServer => {
       if (!syslogServer) return;
 
       syslogServer.on('message', msg => {
