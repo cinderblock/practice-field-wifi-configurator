@@ -79,7 +79,15 @@ export function ScoreboardPage() {
 
   if (!score) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', bgcolor: '#000' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: window.__isCastReceiver ? '100vh' : '100dvh',
+          bgcolor: '#000',
+        }}
+      >
         <Typography variant="h4" color="text.secondary">
           Connecting...
         </Typography>
@@ -107,7 +115,7 @@ export function ScoreboardPage() {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100dvh',
+        height: window.__isCastReceiver ? '100vh' : '100dvh',
         bgcolor: '#000',
         color: '#fff',
         userSelect: 'none',
