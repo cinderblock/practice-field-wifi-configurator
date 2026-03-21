@@ -2,6 +2,8 @@ import dgram from 'node:dgram';
 import type { StationName, CheckResult, TeamCheckResults, DiscoveredHost } from './types.js';
 
 const FETCH_TIMEOUT = 500;
+/** roboRIO's NI SysAPI is slower than the radio — give it more time. */
+const RIO_FETCH_TIMEOUT = 2000;
 
 // ── Help URLs ───────────────────────────────────────────────────────
 
@@ -47,9 +49,9 @@ function expectedIP(team: number): string {
   return `${teamSubnet(team)}.2`;
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
@@ -363,14 +365,18 @@ async function findRoboRIO(team: number, extraIps: string[]): Promise<{ ip: stri
 
   for (const ip of ipsToTry) {
     try {
-      const res = await fetchWithTimeout(`http://${ip}/nisysapi/server`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'text/xml',
+      const res = await fetchWithTimeout(
+        `http://${ip}/nisysapi/server`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'text/xml',
+          },
+          body: 'Function=SearchForItemsAndProperties&Version=00010001&response_encoding=UTF-8&Plugins=nisyscfg&FilterMode=00000002',
         },
-        body: 'Function=SearchForItemsAndProperties&Version=00010001&response_encoding=UTF-8&Plugins=nisyscfg&FilterMode=00000002',
-      });
+        RIO_FETCH_TIMEOUT,
+      );
       if (!res.ok) continue;
       const xml = await res.text();
       if (!xml.includes('NISysAPI_Results')) continue;
@@ -546,11 +552,15 @@ export async function checkTeamConsistency(dhcpTeam: number): Promise<CheckResul
   // Try to get team from roboRIO hostname
   const rioIp = expectedIP(dhcpTeam);
   try {
-    const res = await fetchWithTimeout(`http://${rioIp}/nisysapi/server`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/xml' },
-      body: 'Function=SearchForItemsAndProperties&Version=00010001&response_encoding=UTF-8&Plugins=nisyscfg&FilterMode=00000002',
-    });
+    const res = await fetchWithTimeout(
+      `http://${rioIp}/nisysapi/server`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/xml' },
+        body: 'Function=SearchForItemsAndProperties&Version=00010001&response_encoding=UTF-8&Plugins=nisyscfg&FilterMode=00000002',
+      },
+      RIO_FETCH_TIMEOUT,
+    );
     if (res.ok) {
       const xml = await res.text();
       const bags = parseNISysAPIResponse(xml);
