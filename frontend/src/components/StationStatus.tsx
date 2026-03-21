@@ -242,7 +242,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const modalStyle = {
     minHeight: '5em',
-    minWidth: '30em',
+    minWidth: isMobile ? undefined : '30em',
+    maxWidth: '100%',
   };
 
   return (
@@ -940,7 +941,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           }}
         >
           <form
-            style={borderStyle}
+            style={{
+              ...borderStyle,
+              ...(isMobile ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}),
+            }}
             onSubmit={e => {
               e.preventDefault();
               // Empty SSID = clear: stage it (consistent with the X button).
@@ -956,7 +960,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             }}
           >
             <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
-            <DialogContent>
+            <DialogContent sx={isMobile ? { flex: 1, overflow: 'auto' } : {}}>
               <TextField
                 label="SSID"
                 value={ssid}
@@ -1057,91 +1061,75 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   <Table size="small" sx={{ tableLayout: 'fixed' }}>
                     <TableBody>
                       {recentSettings.map(setting => (
-                        <TableRow
+                        <Tooltip
                           key={`${setting.ssid}-${setting.createdAt}`}
-                          hover
-                          onClick={() => handleApplySetting(setting)}
-                          sx={{
-                            cursor: 'pointer',
-                            position: 'relative',
-                            '&:hover': {
-                              backgroundColor: 'action.hover',
-                              '& .delete-button': {
-                                opacity: 1,
-                              },
-                            },
-                          }}
+                          title={`Last used: ${formatAge(setting.lastUsedAt)} · Added: ${formatAge(setting.createdAt)}`}
+                          placement="left"
+                          arrow
                         >
-                          <TableCell
+                          <TableRow
+                            hover
+                            onClick={() => handleApplySetting(setting)}
                             sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.75rem',
-                              padding: '4px 8px',
-                              width: '25%',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {setting.ssid}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.75rem',
-                              padding: '4px 8px',
-                              width: '25%',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {showPassphrases ? setting.wpaKey : '••••••••'}
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              fontSize: '0.75rem',
-                              padding: '4px 8px',
-                              width: '25%',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            <TimeDisplay timestamp={setting.lastUsedAt} />
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              fontSize: '0.75rem',
-                              padding: '4px 8px',
-                              width: '25%',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            <TimeDisplay timestamp={setting.createdAt} />
-                          </TableCell>
-                          {/* Floating delete button */}
-                          <IconButton
-                            className="delete-button"
-                            size="small"
-                            onClick={e => handleRemoveSetting(e, setting)}
-                            sx={{
-                              position: 'absolute',
-                              right: 4,
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              opacity: 0,
-                              transition: 'opacity 0.2s',
-                              backgroundColor: 'background.paper',
-                              boxShadow: 1,
-                              zIndex: 1,
+                              cursor: 'pointer',
+                              position: 'relative',
                               '&:hover': {
-                                backgroundColor: 'error.light',
-                                color: 'error.contrastText',
+                                backgroundColor: 'action.hover',
+                                '& .delete-button': {
+                                  opacity: 1,
+                                },
                               },
                             }}
                           >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
-                        </TableRow>
+                            <TableCell
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.75rem',
+                                padding: '4px 8px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {setting.ssid}
+                            </TableCell>
+                            <TableCell
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.75rem',
+                                padding: '4px 8px',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {showPassphrases ? setting.wpaKey : '••••••••'}
+                            </TableCell>
+                            {/* Floating delete button */}
+                            <IconButton
+                              className="delete-button"
+                              size="small"
+                              onClick={e => handleRemoveSetting(e, setting)}
+                              sx={{
+                                position: 'absolute',
+                                right: 4,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                opacity: 0,
+                                transition: 'opacity 0.2s',
+                                backgroundColor: 'background.paper',
+                                boxShadow: 1,
+                                zIndex: 1,
+                                '&:hover': {
+                                  backgroundColor: 'error.light',
+                                  color: 'error.contrastText',
+                                },
+                              }}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </TableRow>
+                        </Tooltip>
                       ))}
                     </TableBody>
                   </Table>
