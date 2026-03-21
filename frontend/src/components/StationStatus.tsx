@@ -237,7 +237,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',
-          height: full ? 'calc(100dvh - 4rem)' : '22em',
+          height: full ? undefined : '22em',
           ...borderStyle,
         }}
       >
@@ -868,245 +868,241 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </Typography>
           )}
         </CardContent>
+      </Card>
 
-        {full && (
-          <StationNetworkCard
-            station={station}
-            stats={networkStats?.stations[station]}
-            scan={subnetScan?.stations[station]}
-            mdns={mdnsActivity?.stations[station]}
-            dsInfo={matchState?.connectedStations[station]}
-          />
-        )}
+      {full && (
+        <StationNetworkCard
+          station={station}
+          stats={networkStats?.stations[station]}
+          scan={subnetScan?.stations[station]}
+          mdns={mdnsActivity?.stations[station]}
+          dsInfo={matchState?.connectedStations[station]}
+        />
+      )}
 
-        <Dialog
-          open={open}
-          onClose={handleClose}
-          fullScreen={isMobile}
-          fullWidth={!isMobile}
-          maxWidth={isMobile ? undefined : 'sm'}
-          slotProps={{
-            transition: {
-              onEntered: () => {
-                ssidInputRef.current?.focus();
-                ssidInputRef.current?.select();
-              },
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        fullScreen={isMobile}
+        fullWidth={!isMobile}
+        maxWidth={isMobile ? undefined : 'sm'}
+        slotProps={{
+          transition: {
+            onEntered: () => {
+              ssidInputRef.current?.focus();
+              ssidInputRef.current?.select();
             },
+          },
+        }}
+      >
+        <form
+          style={{
+            ...borderStyle,
+            ...(isMobile ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}),
+          }}
+          onSubmit={e => {
+            e.preventDefault();
+            // Empty SSID = clear: stage it (consistent with the X button).
+            // Non-empty SSID = save: commit immediately.
+            if (isSaveEnabled) handleSave(isSSIDEmpty);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && e.shiftKey) {
+              // Shift+Enter: Stage
+              if (isSaveEnabled) handleSave(true);
+              e.preventDefault(); // Prevent form submit
+            }
           }}
         >
-          <form
-            style={{
-              ...borderStyle,
-              ...(isMobile ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}),
-            }}
-            onSubmit={e => {
-              e.preventDefault();
-              // Empty SSID = clear: stage it (consistent with the X button).
-              // Non-empty SSID = save: commit immediately.
-              if (isSaveEnabled) handleSave(isSSIDEmpty);
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && e.shiftKey) {
-                // Shift+Enter: Stage
-                if (isSaveEnabled) handleSave(true);
-                e.preventDefault(); // Prevent form submit
+          <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
+          <DialogContent sx={isMobile ? { flex: 1, overflow: 'auto' } : {}}>
+            <TextField
+              label="SSID"
+              value={ssid}
+              onChange={e => setSsid(e.target.value)}
+              fullWidth
+              style={modalStyle}
+              margin="normal"
+              inputRef={ssidInputRef} // Attach the ref here
+              helperText={
+                isSSIDEmpty
+                  ? 'Your robot\'s broadcast name without the "FRC-" prefix.\ne.g. FRC-123-Comp → 123-Comp\nCase-sensitive.'
+                  : !ssidRegex.test(ssid)
+                    ? 'SSID must be alphanumeric and up to 14 characters.'
+                    : !ssidFormatRegex.test(ssid)
+                      ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
+                      : ''
               }
-            }}
-          >
-            <DialogTitle>Configure {pretty} Wi-Fi</DialogTitle>
-            <DialogContent sx={isMobile ? { flex: 1, overflow: 'auto' } : {}}>
-              <TextField
-                label="SSID"
-                value={ssid}
-                onChange={e => setSsid(e.target.value)}
-                fullWidth
-                style={modalStyle}
-                margin="normal"
-                inputRef={ssidInputRef} // Attach the ref here
-                helperText={
-                  isSSIDEmpty
-                    ? 'Your robot\'s broadcast name without the "FRC-" prefix.\ne.g. FRC-123-Comp → 123-Comp\nCase-sensitive.'
-                    : !ssidRegex.test(ssid)
-                      ? 'SSID must be alphanumeric and up to 14 characters.'
-                      : !ssidFormatRegex.test(ssid)
-                        ? 'SSID must start with 1-6 digits and optionally include a hyphen and more characters.'
-                        : ''
-                }
-                error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
-                slotProps={{ formHelperText: { sx: { whiteSpace: 'pre-line' } } }}
-              />
-              <TextField
-                label="Passphrase"
-                value={passphrase}
-                onChange={e => setPassphrase(e.target.value)}
-                fullWidth
-                style={modalStyle}
-                disabled={isSSIDEmpty}
-                margin="normal"
-                helperText={
-                  !isSSIDEmpty && !passphraseRegex.test(passphrase)
-                    ? 'Passphrase must be alphanumeric and between 8-16 characters.'
-                    : ''
-                }
-                error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
-              />
+              error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
+              slotProps={{ formHelperText: { sx: { whiteSpace: 'pre-line' } } }}
+            />
+            <TextField
+              label="Passphrase"
+              value={passphrase}
+              onChange={e => setPassphrase(e.target.value)}
+              fullWidth
+              style={modalStyle}
+              disabled={isSSIDEmpty}
+              margin="normal"
+              helperText={
+                !isSSIDEmpty && !passphraseRegex.test(passphrase)
+                  ? 'Passphrase must be alphanumeric and between 8-16 characters.'
+                  : ''
+              }
+              error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
+            />
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={internetAccess}
-                    onChange={e => setInternetAccess(e.target.checked)}
-                    disabled={isSSIDEmpty}
-                  />
-                }
-                label="Internet access"
-                sx={{ mt: 1 }}
-              />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={internetAccess}
+                  onChange={e => setInternetAccess(e.target.checked)}
+                  disabled={isSSIDEmpty}
+                />
+              }
+              label="Internet access"
+              sx={{ mt: 1 }}
+            />
 
-              {recentSettings.length > 0 && (
-                <Box
-                  sx={{
-                    marginTop: 2,
-                    padding: 2,
-                    backgroundColor: 'background.paper',
-                    border: 1,
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                  }}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-                      Recent Configurations
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Tooltip title={showPassphrases ? 'Hide passphrases' : 'Show passphrases'}>
-                        <IconButton
-                          size="small"
-                          onClick={() => setShowPassphrases(!showPassphrases)}
-                          sx={{
-                            color: 'text.secondary',
-                            '&:hover': {
-                              color: 'text.primary',
-                            },
-                          }}
-                        >
-                          {showPassphrases ? (
-                            <VisibilityOffIcon fontSize="small" />
-                          ) : (
-                            <VisibilityIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Clear all recent configurations">
-                        <IconButton
-                          size="small"
-                          onClick={clearSettings}
-                          sx={{
-                            color: 'text.secondary',
-                            '&:hover': {
-                              color: 'error.main',
-                            },
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
+            {recentSettings.length > 0 && (
+              <Box
+                sx={{
+                  marginTop: 2,
+                  padding: 2,
+                  backgroundColor: 'background.paper',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 1 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+                    Recent Configurations
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <Tooltip title={showPassphrases ? 'Hide passphrases' : 'Show passphrases'}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setShowPassphrases(!showPassphrases)}
+                        sx={{
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'text.primary',
+                          },
+                        }}
+                      >
+                        {showPassphrases ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Clear all recent configurations">
+                      <IconButton
+                        size="small"
+                        onClick={clearSettings}
+                        sx={{
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'error.main',
+                          },
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
-                  <Table size="small" sx={{ tableLayout: 'fixed' }}>
-                    <TableBody>
-                      {recentSettings.map(setting => (
-                        <Tooltip
-                          key={`${setting.ssid}-${setting.createdAt}`}
-                          title={`Last used: ${formatAge(setting.lastUsedAt)} · Added: ${formatAge(setting.createdAt)}`}
-                          placement="left"
-                          arrow
+                </Box>
+                <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                  <TableBody>
+                    {recentSettings.map(setting => (
+                      <Tooltip
+                        key={`${setting.ssid}-${setting.createdAt}`}
+                        title={`Last used: ${formatAge(setting.lastUsedAt)} · Added: ${formatAge(setting.createdAt)}`}
+                        placement="left"
+                        arrow
+                      >
+                        <TableRow
+                          hover
+                          onClick={() => handleApplySetting(setting)}
+                          sx={{
+                            cursor: 'pointer',
+                            position: 'relative',
+                            '&:hover': {
+                              backgroundColor: 'action.hover',
+                              '& .delete-button': {
+                                opacity: 1,
+                              },
+                            },
+                          }}
                         >
-                          <TableRow
-                            hover
-                            onClick={() => handleApplySetting(setting)}
+                          <TableCell
                             sx={{
-                              cursor: 'pointer',
-                              position: 'relative',
+                              fontFamily: 'monospace',
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {setting.ssid}
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {showPassphrases ? setting.wpaKey : '••••••••'}
+                          </TableCell>
+                          {/* Floating delete button */}
+                          <IconButton
+                            className="delete-button"
+                            size="small"
+                            onClick={e => handleRemoveSetting(e, setting)}
+                            sx={{
+                              position: 'absolute',
+                              right: 4,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              opacity: 0,
+                              transition: 'opacity 0.2s',
+                              backgroundColor: 'background.paper',
+                              boxShadow: 1,
+                              zIndex: 1,
                               '&:hover': {
-                                backgroundColor: 'action.hover',
-                                '& .delete-button': {
-                                  opacity: 1,
-                                },
+                                backgroundColor: 'error.light',
+                                color: 'error.contrastText',
                               },
                             }}
                           >
-                            <TableCell
-                              sx={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.75rem',
-                                padding: '4px 8px',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {setting.ssid}
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.75rem',
-                                padding: '4px 8px',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                            >
-                              {showPassphrases ? setting.wpaKey : '••••••••'}
-                            </TableCell>
-                            {/* Floating delete button */}
-                            <IconButton
-                              className="delete-button"
-                              size="small"
-                              onClick={e => handleRemoveSetting(e, setting)}
-                              sx={{
-                                position: 'absolute',
-                                right: 4,
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                opacity: 0,
-                                transition: 'opacity 0.2s',
-                                backgroundColor: 'background.paper',
-                                boxShadow: 1,
-                                zIndex: 1,
-                                '&:hover': {
-                                  backgroundColor: 'error.light',
-                                  color: 'error.contrastText',
-                                },
-                              }}
-                            >
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </TableRow>
-                        </Tooltip>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Box>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleClose} color="secondary">
-                Cancel
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </TableRow>
+                      </Tooltip>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleClose} color="secondary">
+              Cancel
+            </Button>
+            {!isSSIDEmpty && (
+              <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
+                Stage
               </Button>
-              {!isSSIDEmpty && (
-                <Button onClick={() => isSaveEnabled && handleSave(true)} color="secondary" disabled={!isSaveEnabled}>
-                  Stage
-                </Button>
-              )}
-              <Button type="submit" color="primary" disabled={!isSaveEnabled}>
-                {isSSIDEmpty ? 'Clear' : 'Save'}
-              </Button>
-            </DialogActions>
-          </form>
-        </Dialog>
-      </Card>
+            )}
+            <Button type="submit" color="primary" disabled={!isSaveEnabled}>
+              {isSSIDEmpty ? 'Clear' : 'Save'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </>
   );
 }
