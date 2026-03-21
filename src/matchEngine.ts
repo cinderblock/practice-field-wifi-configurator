@@ -299,6 +299,28 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Called when a DS reports disable or e-stop in its UDP heartbeat.
+   *  The team always has the right to disable/e-stop their robot. */
+  dsReportedStatus(station: StationName, dsEnabled: boolean, dsEStop: boolean) {
+    const state = this.stationStates.get(station);
+    if (!state) return;
+    let changed = false;
+    if (dsEStop && !state.eStop) {
+      state.eStop = true;
+      state.enabled = false;
+      console.log(`DS e-stop reported: ${station}`);
+      changed = true;
+    } else if (!dsEnabled && state.enabled) {
+      state.enabled = false;
+      console.log(`DS disable reported: ${station}`);
+      changed = true;
+    }
+    if (changed) {
+      this.sendDSPacket(station);
+      this.broadcast();
+    }
+  }
+
   clearEStop(station?: StationName) {
     if (station) {
       const state = this.stationStates.get(station)!;

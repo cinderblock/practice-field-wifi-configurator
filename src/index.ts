@@ -614,6 +614,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // Route telemetry to stations via WebSocket
         telemetryManager.processFmsEvent(msg);
 
+        // Respect DS disable/e-stop from UDP heartbeats.
+        // The team must always be able to disable their robot.
+        if ('BatteryVoltage' in msg.data) {
+          const udp = msg.data as import('./fmsServer.js').UdpMessage;
+          const station = radioManager.getStationForTeam(udp.teamNumber);
+          if (station) {
+            matchEngine.dsReportedStatus(station, udp.status.enabled, udp.status.EStop);
+          }
+        }
+
         // Auto-discover DS addresses for the match engine.
         // Match on any message carrying teamNumber — TCP 0x18 and UDP both do.
         if ('teamNumber' in msg.data) {
