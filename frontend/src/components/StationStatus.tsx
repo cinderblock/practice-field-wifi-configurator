@@ -10,7 +10,6 @@ import TextField from '@mui/material/TextField';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import SettingsIcon from '@mui/icons-material/Settings';
-import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -295,12 +294,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   </IconButton>
                 </Tooltip>
               )}
-              {/** SCORES LINK */}
-              <Tooltip title="Scoreboard">
-                <IconButton component="a" href="/scores" target="_blank" size="small" sx={{ color: 'text.secondary' }}>
-                  <ScoreboardIcon />
-                </IconButton>
-              </Tooltip>
               {/** CHART TOGGLE BUTTON - only show if station is configured */}
               {stationSsid && (
                 <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
