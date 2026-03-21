@@ -518,7 +518,9 @@ export class MatchEngine {
     const seq = (this.sequenceNumbers.get(station) ?? 0) + 1;
     this.sequenceNumbers.set(station, seq);
 
-    const control = new Control(state.eStop, state.enabled, state.mode);
+    // Never send the e-stop bit to the DS — always use disable.
+    // E-stop is a backend-only state that prevents re-enabling.
+    const control = new Control(false, state.enabled && !state.eStop, state.mode);
 
     const packet = makeDSPacket({
       sequence: seq & 0xffff,

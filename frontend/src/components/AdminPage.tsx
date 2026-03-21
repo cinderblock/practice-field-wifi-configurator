@@ -7,6 +7,7 @@ import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import Table from '@mui/material/Table';
@@ -117,20 +118,28 @@ function StationControlCard({ station }: { station: StationName }) {
                 Clear E-Stop
               </Button>
             ) : (
-              <>
+              <Button
+                size="small"
+                variant={stationState?.enabled ? 'contained' : 'outlined'}
+                color="warning"
+                onClick={() => sendAdminStationDisable(station)}
+                disabled={!stationState?.enabled}
+              >
+                Disable
+              </Button>
+            )}
+            {!stationState?.eStop && (
+              <Tooltip title="Emergency stop — use only for safety" arrow>
                 <Button
                   size="small"
                   variant="outlined"
-                  color="warning"
-                  onClick={() => sendAdminStationDisable(station)}
-                  disabled={!stationState?.enabled}
+                  color="error"
+                  onClick={() => sendAdminStationEStop(station)}
+                  sx={{ minWidth: 0, px: 1, fontSize: '0.7rem' }}
                 >
-                  Disable
+                  E-STOP
                 </Button>
-                <Button size="small" variant="contained" color="error" onClick={() => sendAdminStationEStop(station)}>
-                  E-Stop
-                </Button>
-              </>
+              </Tooltip>
             )}
           </Box>
         </Box>
