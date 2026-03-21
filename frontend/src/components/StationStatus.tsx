@@ -37,7 +37,7 @@ import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
 import { describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
-import { Alert, Box, FormControlLabel, Switch, Tooltip } from '@mui/material';
+import { Alert, Box, FormControlLabel, Switch, Tooltip, useMediaQuery, useTheme } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { CopyToClipboard } from './CopyToClipboard';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -113,6 +113,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const [chartMode, setChartMode] = useState(full ?? false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const latest = useLatest();
   const matchState = useMatchState();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
@@ -925,8 +927,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         <Dialog
           open={open}
           onClose={handleClose}
-          fullWidth
-          maxWidth="xs"
+          fullScreen={isMobile}
+          fullWidth={!isMobile}
+          maxWidth={isMobile ? undefined : 'xs'}
           slotProps={{
             transition: {
               onEntered: () => {
