@@ -40,7 +40,7 @@ const PULSE_STYLES = {
   },
 } as const;
 
-function StationNetworkCard({
+export function StationNetworkCard({
   station,
   stats,
   scan,

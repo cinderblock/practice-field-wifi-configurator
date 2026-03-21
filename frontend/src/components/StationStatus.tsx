@@ -32,6 +32,7 @@ import {
   sendRoutePreference,
 } from '../hooks/useBackend';
 import { MatchPanel } from './MatchPanel';
+import { StationNetworkCard } from './NetworkPage';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
 import { useStagedChanges } from '../hooks/useStagedChanges';
 import { TimeDisplay } from './TimeDisplay';
@@ -910,6 +911,16 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             </Typography>
           )}
         </CardContent>
+
+        {full && (
+          <StationNetworkCard
+            station={station}
+            stats={networkStats?.stations[station]}
+            scan={subnetScan?.stations[station]}
+            mdns={mdnsActivity?.stations[station]}
+            dsInfo={matchState?.connectedStations[station]}
+          />
+        )}
 
         <Dialog
           open={open}
