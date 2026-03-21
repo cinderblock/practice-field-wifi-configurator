@@ -223,16 +223,21 @@ export function setupWebSocket(
         if (matchEngine.isMatchActive()) {
           ws.send(JSON.stringify({ error: 'Cannot reconfigure stations during an active match' }));
         } else {
-          // Skip reconfiguration if the submitted config matches the current active config
           const current = radioManager.getStationConfig(data.station);
-          if (
-            current &&
-            current.ssid === data.ssid &&
-            current.wpaKey === data.wpaKey &&
-            !!current.internetAccess === !!data.internetAccess
-          ) {
+          const radioUnchanged = current && current.ssid === data.ssid && current.wpaKey === data.wpaKey;
+          const internetChanged = current && !!current.internetAccess !== !!data.internetAccess;
+
+          if (radioUnchanged && !internetChanged) {
+            // Nothing changed at all
             ws.send(JSON.stringify({ info: 'No changes detected — configuration already active' }));
+          } else if (radioUnchanged && internetChanged) {
+            // Only internet access changed — toggle it without reconfiguring the radio
+            radioManager.toggleInternetAccess(data.station, !!data.internetAccess).catch(err => {
+              appError('Error toggling internet access: ' + err.message);
+              ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
+            });
           } else {
+            // SSID or WPA changed — full radio reconfiguration
             radioManager.configure(data.station, data).catch(err => {
               appError('Error configuring station: ' + err.message);
               ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));

@@ -420,6 +420,8 @@ class RadioManager {
       return;
     }
 
+    if (!!config.internetAccess === enabled) return; // No change
+
     config.internetAccess = enabled;
 
     if (!this.radioManagementInterface) {
