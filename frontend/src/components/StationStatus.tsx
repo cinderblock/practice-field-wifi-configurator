@@ -887,7 +887,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
           onClose={handleClose}
           fullScreen={isMobile}
           fullWidth={!isMobile}
-          maxWidth={isMobile ? undefined : 'xs'}
+          maxWidth={isMobile ? undefined : 'sm'}
           slotProps={{
             transition: {
               onEntered: () => {
