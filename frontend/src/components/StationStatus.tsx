@@ -249,7 +249,11 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               {hasStagedChange(station) && (
                 <>
                   <span style={{ userSelect: 'none' }}> → </span>
-                  <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
+                  {stagedChanges[station]?.ssid ? (
+                    <SSIDDisplay ssid={stagedChanges[station]?.ssid} hashedWpaKey={stagedChanges[station]?.wpaKey} />
+                  ) : (
+                    <Chip label="(clear)" size="small" variant="outlined" color="warning" sx={{ height: 20 }} />
+                  )}
                 </>
               )}
             </Box>

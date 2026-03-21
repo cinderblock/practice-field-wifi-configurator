@@ -7,7 +7,15 @@ import Button from '@mui/material/Button';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
-import { usePendingCommit, sendApplyConfig, useServerStartTime, serverToBrowserTime } from '../hooks/useBackend';
+import {
+  usePendingCommit,
+  sendApplyConfig,
+  sendNewConfig,
+  useServerStartTime,
+  serverToBrowserTime,
+} from '../hooks/useBackend';
+import { useStagedChanges } from '../hooks/useStagedChanges';
+import type { StationName } from '../../../src/types';
 
 type DotColor = 'success.main' | 'error.main' | 'warning.main' | 'text.disabled';
 
@@ -87,7 +95,22 @@ export function StatusBar() {
   const internet = getInternetIndicator(connectivity);
   const pfms = getPfmsIndicator(connectivity);
   const pendingCommit = usePendingCommit();
+  const { stagedChanges, applyStagedChange } = useStagedChanges();
+  const hasStagedChanges = Object.values(stagedChanges).some(c => c !== null);
+  const showApply = pendingCommit || hasStagedChanges;
   const serverStartTime = useServerStartTime();
+
+  const handleApply = () => {
+    // Send all staged changes to the backend first
+    for (const [station, change] of Object.entries(stagedChanges)) {
+      if (change) {
+        sendNewConfig(station as StationName, change.ssid, change.wpaKey, false);
+        applyStagedChange(station as StationName);
+      }
+    }
+    // Also apply any backend-pending config
+    if (pendingCommit) sendApplyConfig();
+  };
 
   return (
     <Box
@@ -98,7 +121,7 @@ export function StatusBar() {
         justifyContent: 'center',
         height: 24,
         px: 1,
-        backgroundColor: pendingCommit ? 'warning.dark' : 'background.paper',
+        backgroundColor: showApply ? 'warning.dark' : 'background.paper',
         borderBottom: 1,
         borderColor: 'divider',
         transition: 'background-color 0.3s',
@@ -107,16 +130,13 @@ export function StatusBar() {
       <StatusDot color={internet.color} label="Internet" tooltip={internet.tooltip} />
       <StatusDot color={pfms.color} label="PFMS" tooltip={pfms.tooltip} />
       {serverStartTime != null && <UptimeDisplay serverStartTime={serverStartTime} />}
-      {pendingCommit && (
-        <Tooltip
-          title="Configuration changes are saved but not yet applied to the radio. Click to apply now, or they will be applied with the next Save."
-          arrow
-        >
+      {showApply && (
+        <Tooltip title="Configuration changes are staged but not yet applied to the radio. Click to apply now." arrow>
           <Button
             size="small"
             variant="contained"
             color="warning"
-            onClick={sendApplyConfig}
+            onClick={handleApply}
             sx={{
               ml: 1,
               py: 0,
