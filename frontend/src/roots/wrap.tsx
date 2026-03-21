@@ -9,7 +9,7 @@ import Snackbar from '@mui/material/Snackbar';
 import { useHistory, useLatest, serverToBrowserTime, useServerResponse } from '../hooks/useBackend.js';
 import { StatusBar } from '../components/StatusBar';
 
-const EstimatedReconfigurationTime = 35; // seconds
+const EstimatedReconfigurationTime = 40; // seconds
 
 export function WrapAll({ children }: { children: React.ReactNode }) {
   const latest = useLatest();
