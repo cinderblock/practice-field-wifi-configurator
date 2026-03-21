@@ -80,6 +80,7 @@ export class RobotTestMonitor {
     private readonly onFirmwareProgress?: (progress: FirmwareUpdateProgress) => void,
     private readonly firmwareStore?: FirmwareStore,
     private readonly dryRun = false,
+    private readonly hasClients?: () => boolean,
   ) {}
 
   async start(): Promise<void> {
@@ -446,10 +447,10 @@ export class RobotTestMonitor {
       this.checking = false;
       this.broadcast();
 
-      // Schedule re-check
+      // Schedule re-check (only if someone is watching)
       this.stopChecking();
       this.checkTimer = setTimeout(() => {
-        if (this.linkUp && this.teamNumber) this.runChecks();
+        if (this.linkUp && this.teamNumber && (!this.hasClients || this.hasClients())) this.runChecks();
       }, CHECK_INTERVAL_MS);
     }
   }

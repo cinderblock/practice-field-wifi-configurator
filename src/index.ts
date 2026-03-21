@@ -265,6 +265,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       progress => broadcast(progress),
       firmwareStore,
       !!process.env.DRY_RUN,
+      () => wss.clients.size > 0,
     );
     await robotTestMonitor.start();
   }
