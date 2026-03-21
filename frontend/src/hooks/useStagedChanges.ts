@@ -67,7 +67,7 @@ export function useStagedChanges() {
   // Subscribe to global state changes
   useEffect(() => {
     const listener = (changes: Record<StationName, StagedChange | null>) => {
-      setStagedChanges(changes);
+      setStagedChanges({ ...changes });
     };
 
     globalListeners.add(listener);
