@@ -921,7 +921,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 inputRef={ssidInputRef} // Attach the ref here
                 helperText={
                   isSSIDEmpty
-                    ? 'Your robot\'s broadcast name without the "FRC-" prefix (e.g. FRC-123-Comp → 123-Comp). Case-sensitive.'
+                    ? 'Your robot\'s broadcast name without the "FRC-" prefix.\ne.g. FRC-123-Comp → 123-Comp\nCase-sensitive.'
                     : !ssidRegex.test(ssid)
                       ? 'SSID must be alphanumeric and up to 14 characters.'
                       : !ssidFormatRegex.test(ssid)
@@ -929,6 +929,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                         : ''
                 }
                 error={!isSSIDEmpty && (!ssidRegex.test(ssid) || !ssidFormatRegex.test(ssid))}
+                slotProps={{ formHelperText: { sx: { whiteSpace: 'pre-line' } } }}
               />
               <TextField
                 label="Passphrase"
