@@ -23,6 +23,7 @@ import { SubnetScanner } from './subnetScanner.js';
 import { MdnsReflector } from './mdnsReflector.js';
 import { TeamChecker } from './teamChecker.js';
 import { RobotTestMonitor } from './robotTestMonitor.js';
+import { RobotPacketCapture } from './robotPacketCapture.js';
 import { FirmwareStore } from './firmwareStore.js';
 import { handleFirmwareRequest } from './firmwareApi.js';
 import { ScoringEngine } from './scoringEngine.js';
@@ -71,7 +72,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {
-    await checkRequiredTools(['iptables', 'arping', 'fping', 'dnsmasq', 'conntrack']);
+    await checkRequiredTools(['iptables', 'arping', 'fping', 'dnsmasq', 'conntrack', 'tcpdump']);
     net = process.env.DRY_RUN ? createDryRunBackend() : createBackend();
     // pFMS serves multiple roles on this interface:
     const expectedIps = [
@@ -194,6 +195,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         console.error('Firmware update failed:', err.message);
       });
     },
+    (teamNumber, wpaKey6, wpaKey24, ssidSuffix) => {
+      if (!robotTestMonitor) return;
+      robotTestMonitor.configureTeamRadio(teamNumber, wpaKey6, wpaKey24, ssidSuffix).catch(err => {
+        console.error('Radio configuration failed:', err.message);
+      });
+    },
   );
   setBroadcast(broadcast);
 
@@ -298,8 +305,21 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       firmwareStore,
       !!process.env.DRY_RUN,
       () => wss.clients.size > 0,
+      progress => broadcast(progress),
     );
     await robotTestMonitor.start();
+  }
+
+  // Passive robot packet capture — sniff robot→DS UDP to extract battery voltage
+  // and robot status without taking FMS control of the Driver Station.
+  let robotPacketCapture: RobotPacketCapture | undefined;
+  if (VlanInterface && !process.env.DRY_RUN) {
+    robotPacketCapture = new RobotPacketCapture(
+      VlanInterface,
+      () => radioManager.getTeamMappings(),
+      update => broadcast(update),
+    );
+    robotPacketCapture.start();
   }
 
   wss.on('connection', ws => {
@@ -759,6 +779,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   if (net) {
     const fullCleanup = () => {
       robotTestMonitor?.stop();
+      robotPacketCapture?.stop();
       stopAllDHCP();
       console.log('Cleaning up network rules...');
       const flushRouteTables = Promise.all(
@@ -778,6 +799,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // the iptables flush and restores routing preferences from the kernel.
     const gracefulExit = () => {
       robotTestMonitor?.stop();
+      robotPacketCapture?.stop();
       stopAllDHCP();
       console.log('Graceful exit: network rules preserved.');
       process.exit(0);
