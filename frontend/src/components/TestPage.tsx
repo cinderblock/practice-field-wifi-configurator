@@ -25,6 +25,8 @@ import {
   useFirmwareUpdateProgress,
   useFirmwareStore,
   sendFirmwareUpdateRequest,
+  useRadioConfigureProgress,
+  sendRadioConfigureRequest,
 } from '../hooks/useBackend';
 import { StatusIcon } from './TeamChecksPanel';
 
@@ -409,8 +411,149 @@ export function TestPage() {
         </Step>
       </Stepper>
 
+      {state.linkUp && <RadioConfigureSection teamNumber={state.teamNumber} />}
+
       <FirmwareStatus />
     </Container>
+  );
+}
+
+function RadioConfigureSection({ teamNumber }: { teamNumber?: number }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [team, setTeam] = useState('');
+  const [wpaKey6, setWpaKey6] = useState('');
+  const [wpaKey24, setWpaKey24] = useState('');
+  const [ssidSuffix, setSsidSuffix] = useState('');
+  const progress = useRadioConfigureProgress();
+  const configuring = progress && progress.step !== 'complete' && progress.step !== 'error';
+
+  // Pre-fill team number from DHCP when available
+  const openDialog = () => {
+    if (teamNumber && !team) setTeam(String(teamNumber));
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = () => {
+    const teamNum = parseInt(team, 10);
+    if (!teamNum || teamNum < 1 || teamNum > 25599) return;
+    if (!wpaKey6 || wpaKey6.length < 8) return;
+    sendRadioConfigureRequest(teamNum, wpaKey6, wpaKey24 || undefined, ssidSuffix || undefined);
+    setDialogOpen(false);
+  };
+
+  const teamNum = parseInt(team, 10);
+  const teamValid = teamNum > 0 && teamNum <= 25599;
+  const keyValid = wpaKey6.length >= 8;
+
+  return (
+    <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
+        Radio Configuration
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontSize: '0.8rem' }}>
+        Program a radio connected to this interface with a team number and WPA key.
+      </Typography>
+
+      {progress && (
+        <Box sx={{ mb: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+              {progress.message}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+              {Math.round(progress.elapsedMs / 1000)}s
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant={configuring ? 'determinate' : undefined}
+            value={progress.progress}
+            color={progress.step === 'error' ? 'error' : progress.step === 'complete' ? 'success' : 'primary'}
+            sx={{ height: 6, borderRadius: 3 }}
+          />
+          {progress.step === 'error' && (
+            <Alert severity="error" sx={{ mt: 1, py: 0, fontSize: '0.8rem' }}>
+              {progress.error}
+            </Alert>
+          )}
+          {progress.step === 'complete' && (
+            <Alert severity="success" sx={{ mt: 1, py: 0, fontSize: '0.8rem' }}>
+              {progress.message}
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      <Button
+        size="small"
+        variant="outlined"
+        disabled={!!configuring}
+        onClick={openDialog}
+        sx={{ textTransform: 'none', fontSize: '0.8rem' }}
+      >
+        Configure Radio
+      </Button>
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            handleSubmit();
+          }}
+        >
+          <DialogTitle>Configure Team Radio</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Program the radio with a team number and WPA keys. The radio will reboot during configuration (1-2
+              minutes).
+            </Typography>
+            <TextField
+              label="Team Number"
+              value={team}
+              onChange={e => setTeam(e.target.value.replace(/\D/g, ''))}
+              fullWidth
+              required
+              autoFocus
+              error={!!team && !teamValid}
+              helperText={team && !teamValid ? 'Enter a valid team number (1-25599)' : undefined}
+              margin="dense"
+              slotProps={{ htmlInput: { inputMode: 'numeric' } }}
+            />
+            <TextField
+              label="6 GHz WPA Passphrase"
+              value={wpaKey6}
+              onChange={e => setWpaKey6(e.target.value)}
+              fullWidth
+              required
+              error={!!wpaKey6 && !keyValid}
+              helperText={wpaKey6 && !keyValid ? 'Minimum 8 characters' : undefined}
+              margin="dense"
+            />
+            <TextField
+              label="2.4 GHz WPA Passphrase (optional)"
+              value={wpaKey24}
+              onChange={e => setWpaKey24(e.target.value)}
+              fullWidth
+              helperText="Leave blank to use the same key as 6 GHz"
+              margin="dense"
+            />
+            <TextField
+              label="SSID Suffix (optional)"
+              value={ssidSuffix}
+              onChange={e => setSsidSuffix(e.target.value)}
+              fullWidth
+              helperText={`SSID will be "${teamValid ? team : '####'}${ssidSuffix ? '_' + ssidSuffix : ''}"`}
+              margin="dense"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={!teamValid || !keyValid}>
+              Configure Radio
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+    </Box>
   );
 }
 

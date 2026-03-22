@@ -21,6 +21,7 @@ import {
   isServerInfo,
   isRobotTestState,
   isFirmwareUpdateProgress,
+  isRadioConfigureProgress,
   isScoreState,
   isStopCast,
   isCastReceiverList,
@@ -34,6 +35,8 @@ import {
   ScoreState,
   FirmwareUpdateProgress,
   FirmwareUpdateRequest,
+  RadioConfigureRequest,
+  RadioConfigureProgress,
   PendingCommitState,
   ServerInfo,
   RoutePreferenceMsg,
@@ -405,6 +408,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isRadioConfigureProgress(detail)) {
+    handleRadioConfigureProgress(detail);
+    return;
+  }
+
   if (typeof detail === 'object' && detail !== null && (detail as { type: string }).type === 'firmwareStoreUpdate') {
     handleFirmwareStoreUpdate((detail as unknown as { entries: FirmwareEntry[] }).entries);
     return;
@@ -742,6 +750,40 @@ export function useFirmwareUpdateProgress(): FirmwareUpdateProgress | null {
   }, []);
 
   return progress;
+}
+
+// ── Radio Configure Progress ─────────────────────────────────────────
+
+let currentRadioConfigureProgress: RadioConfigureProgress | null = null;
+
+function handleRadioConfigureProgress(progress: RadioConfigureProgress) {
+  currentRadioConfigureProgress = progress;
+  events.dispatchEvent(new CustomEvent('radioConfigureProgress', { detail: progress }));
+}
+
+export function useRadioConfigureProgress(): RadioConfigureProgress | null {
+  const [progress, setProgress] = useState<RadioConfigureProgress | null>(currentRadioConfigureProgress);
+
+  useEffect(() => {
+    setProgress(currentRadioConfigureProgress);
+    const handler = (e: Event) => setProgress((e as CustomEvent<RadioConfigureProgress>).detail);
+    events.addEventListener('radioConfigureProgress', handler);
+    return () => events.removeEventListener('radioConfigureProgress', handler);
+  }, []);
+
+  return progress;
+}
+
+export function sendRadioConfigureRequest(teamNumber: number, wpaKey6: string, wpaKey24?: string, ssidSuffix?: string) {
+  ws?.send(
+    JSON.stringify({
+      type: 'radioConfigureRequest',
+      teamNumber,
+      wpaKey6,
+      wpaKey24,
+      ssidSuffix,
+    } satisfies RadioConfigureRequest),
+  );
 }
 
 // ── Firmware Store State ─────────────────────────────────────────────

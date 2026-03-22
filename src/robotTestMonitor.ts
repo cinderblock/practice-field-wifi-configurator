@@ -1,6 +1,12 @@
 import { spawn, execFile as execFileCb, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { RobotTestState, RobotTestPhase, CheckResult, FirmwareUpdateProgress } from './types.js';
+import type {
+  RobotTestState,
+  RobotTestPhase,
+  CheckResult,
+  FirmwareUpdateProgress,
+  RadioConfigureProgress,
+} from './types.js';
 import { checkRadio, checkRoboRIO, checkFactoryDefault } from './teamChecker.js';
 import { updateRadioFirmware } from './firmwareUpdater.js';
 import type { FirmwareStore } from './firmwareStore.js';
@@ -69,9 +75,12 @@ export class RobotTestMonitor {
   private dhcpProc: ChildProcess | null = null;
   private checking = false;
   private firmwareUpdating = false;
+  private radioConfiguring = false;
   private factoryProbeTimer: NodeJS.Timeout | null = null;
   /** True if the interface is a VLAN sub-interface (link state mirrors parent, not meaningful). */
   private skipLinkDetection = false;
+  /** IP where the factory-default radio was last seen (set by probeFactoryDefault). */
+  private factoryRadioIp: string | null = null;
 
   constructor(
     private readonly interfaceName: string,
@@ -81,6 +90,7 @@ export class RobotTestMonitor {
     private readonly firmwareStore?: FirmwareStore,
     private readonly dryRun = false,
     private readonly hasClients?: () => boolean,
+    private readonly onRadioConfigureProgress?: (progress: RadioConfigureProgress) => void,
   ) {}
 
   async start(): Promise<void> {
@@ -357,6 +367,7 @@ export class RobotTestMonitor {
         signal: AbortSignal.timeout(500),
       });
       if (res.ok) {
+        this.factoryRadioIp = '192.168.69.1';
         const data = (await res.json()) as { teamNumber?: number; version?: string };
         if (!this.teamNumber) {
           // No DHCP yet — radio is there but we can't reach it via team IP
@@ -377,6 +388,7 @@ export class RobotTestMonitor {
       }
     } catch {
       // Not reachable — no factory-IP radio
+      this.factoryRadioIp = null;
     }
 
     // Merge: remove old factory check, add new one if present
@@ -508,9 +520,139 @@ export class RobotTestMonitor {
     }
   }
 
+  // ── Radio configuration (TEAM_ROBOT_RADIO mode) ─────────────────
+
+  /** Configure a radio in TEAM_ROBOT_RADIO mode directly from the test interface. */
+  async configureTeamRadio(teamNumber: number, wpaKey6: string, wpaKey24?: string, ssidSuffix?: string): Promise<void> {
+    if (this.radioConfiguring) throw new Error('Radio configuration already in progress');
+    if (this.firmwareUpdating) throw new Error('Firmware update in progress — wait for it to finish');
+    if (!this.linkUp && !this.skipLinkDetection) throw new Error('Link is down — plug in a cable first');
+    if (teamNumber < 1 || teamNumber > 25599 || !Number.isInteger(teamNumber))
+      throw new Error('Invalid team number (must be 1-25599)');
+    if (wpaKey6.length < 8) throw new Error('WPA passphrase must be at least 8 characters');
+    if (wpaKey24 && wpaKey24.length < 8) throw new Error('2.4 GHz WPA passphrase must be at least 8 characters');
+
+    this.radioConfiguring = true;
+    this.stopChecking();
+    this.stopFactoryProbe();
+
+    const startTime = Date.now();
+    const sendProgress = (p: Omit<RadioConfigureProgress, 'type' | 'elapsedMs'>) => {
+      this.onRadioConfigureProgress?.({ type: 'radioConfigureProgress', elapsedMs: Date.now() - startTime, ...p });
+    };
+
+    try {
+      // Determine which IP to reach the radio at
+      const radioIp = this.factoryRadioIp ?? (this.teamNumber ? `${teamSubnetStr(this.teamNumber)}.1` : null);
+      if (!radioIp) {
+        throw new Error('No radio detected — connect a radio to the test interface first');
+      }
+
+      sendProgress({ step: 'sending', message: `Sending configuration to radio at ${radioIp}...`, progress: 10 });
+
+      const configBody = {
+        mode: 'TEAM_ROBOT_RADIO',
+        teamNumber,
+        ssidSuffix: ssidSuffix ?? '',
+        wpaKey6,
+        wpaKey24: wpaKey24 || wpaKey6,
+        channel: 0,
+      };
+
+      let configRes: Response;
+      try {
+        configRes = await fetch(`http://${radioIp}/configuration`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(configBody),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch (err) {
+        throw new Error(`Failed to reach radio at ${radioIp}: ${err instanceof Error ? err.message : err}`);
+      }
+
+      if (!configRes.ok) {
+        const body = await configRes.text();
+        throw new Error(`Radio rejected configuration (HTTP ${configRes.status}): ${body}`);
+      }
+
+      // Wait for the radio to reboot. Poll 192.168.69.1 — the radio keeps both the
+      // factory IP and the team IP alive, and we already have a route via 192.168.69.8/24.
+      sendProgress({ step: 'waiting_reboot', message: 'Waiting for radio to reboot...', progress: 30 });
+
+      const deadline = Date.now() + 120_000; // 2 minute timeout
+
+      // Give the radio a moment to start rebooting before polling
+      await new Promise(r => setTimeout(r, 5_000));
+
+      let radioVersion: string | undefined;
+      let rebooted = false;
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch('http://192.168.69.1/status', { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            const data = (await res.json()) as { teamNumber?: number; version?: string };
+            // Wait until the radio reports the new team number (not just that it's back up)
+            if (data.teamNumber === teamNumber) {
+              radioVersion = data.version;
+              rebooted = true;
+              break;
+            }
+          }
+        } catch {
+          // Not ready yet
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
+      if (!rebooted) {
+        throw new Error(`Radio did not come back with team ${teamNumber} within 2 minutes`);
+      }
+
+      sendProgress({
+        step: 'complete',
+        message: `Radio configured for team ${teamNumber}${radioVersion ? ` (firmware ${radioVersion})` : ''}`,
+        progress: 100,
+      });
+
+      // Reset DHCP state so we pick up the newly configured radio
+      this.killDhcp();
+      this.teamNumber = undefined;
+      this.leasedIp = undefined;
+      this.leasedPrefix = 24;
+      this.routerIp = undefined;
+      this.checks = [];
+      this.factoryRadioIp = null;
+      this.phase = this.skipLinkDetection ? 'link_up' : this.linkUp ? 'link_up' : 'link_down';
+      this.broadcast();
+      this.startFactoryProbe();
+      if (this.linkUp || this.skipLinkDetection) {
+        this.startDhcp();
+      }
+    } catch (err) {
+      sendProgress({
+        step: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        progress: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Restart probes and checks so the tester recovers
+      this.startFactoryProbe();
+      if (this.teamNumber) this.runChecks();
+      throw err;
+    } finally {
+      this.radioConfiguring = false;
+    }
+  }
+
   // ── Broadcast ─────────────────────────────────────────────────────
 
   private broadcast(): void {
     this.onStateChange(this.getState());
   }
+}
+
+/** Format a team number as a subnet prefix: 10.TE.AM */
+function teamSubnetStr(team: number): string {
+  return `10.${Math.floor(team / 100)}.${team % 100}`;
 }

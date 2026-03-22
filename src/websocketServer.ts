@@ -25,6 +25,7 @@ import {
   isStopCast,
   isCastReceiverRegister,
   isCastReceiverSwap,
+  isRadioConfigureRequest,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -60,6 +61,13 @@ export type FirmwareUpdateCallback = (
   skipReconfigure: boolean,
 ) => void;
 
+export type RadioConfigureCallback = (
+  teamNumber: number,
+  wpaKey6: string,
+  wpaKey24: string | undefined,
+  ssidSuffix: string | undefined,
+) => void;
+
 export function setupWebSocket(
   radioManager: RadioManager,
   matchEngine: MatchEngine,
@@ -68,6 +76,7 @@ export function setupWebSocket(
   onRunTeamChecks?: RunTeamChecksCallback,
   httpHandlers?: HttpRequestHandler[],
   onFirmwareUpdate?: FirmwareUpdateCallback,
+  onRadioConfigure?: RadioConfigureCallback,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -309,6 +318,8 @@ export function setupWebSocket(
         onRunTeamChecks?.(data.station);
       } else if (isFirmwareUpdateRequest(data)) {
         onFirmwareUpdate?.(data.wpaKey, data.wpaKey24, !!data.skipReconfigure);
+      } else if (isRadioConfigureRequest(data)) {
+        onRadioConfigure?.(data.teamNumber, data.wpaKey6, data.wpaKey24, data.ssidSuffix);
       } else if (isStopCast(data)) {
         if (data.receiverId) {
           // Stop a specific receiver

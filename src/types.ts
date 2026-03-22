@@ -858,6 +858,44 @@ export function isFirmwareUpdateRequest(msg: unknown): msg is FirmwareUpdateRequ
   return (msg as FirmwareUpdateRequest).type === 'firmwareUpdateRequest';
 }
 
+// ── Radio Configure (Team Robot Radio mode) ─────────────────────────
+
+/** Request to configure a radio in TEAM_ROBOT_RADIO mode from the test interface. */
+export interface RadioConfigureRequest {
+  type: 'radioConfigureRequest';
+  teamNumber: number;
+  /** WPA passphrase for the 6 GHz band. */
+  wpaKey6: string;
+  /** WPA passphrase for the 2.4 GHz band. Defaults to wpaKey6 if omitted. */
+  wpaKey24?: string;
+  /** SSID suffix appended after the team number (e.g. "1234_Suffix"). */
+  ssidSuffix?: string;
+}
+
+export function isRadioConfigureRequest(msg: unknown): msg is RadioConfigureRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RadioConfigureRequest;
+  return m.type === 'radioConfigureRequest' && typeof m.teamNumber === 'number' && typeof m.wpaKey6 === 'string';
+}
+
+export type RadioConfigureStep = 'sending' | 'waiting_reboot' | 'complete' | 'error';
+
+export interface RadioConfigureProgress {
+  type: 'radioConfigureProgress';
+  step: RadioConfigureStep;
+  message: string;
+  /** 0-100 overall progress estimate */
+  progress: number;
+  /** Milliseconds since the configure started */
+  elapsedMs: number;
+  error?: string;
+}
+
+export function isRadioConfigureProgress(msg: unknown): msg is RadioConfigureProgress {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as RadioConfigureProgress).type === 'radioConfigureProgress';
+}
+
 // ── Scoring System ──────────────────────────────────────────────────
 
 /** Configuration for a single scoring element (e.g. "speaker", "amp", "foul") */

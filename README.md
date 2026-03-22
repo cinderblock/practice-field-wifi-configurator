@@ -241,6 +241,15 @@ A CSA diagnostic tool at `/test` for checking individual robot network configura
 
 Results stream live to the frontend and re-check every 10 seconds while the cable is plugged in.
 
+#### Radio Configuration
+
+The test page can also **program a radio** in `TEAM_ROBOT_RADIO` mode — setting its team number, SSID, and WPA keys directly from the test interface. This is useful for configuring factory-default radios or re-programming existing ones without needing to be on the field management VLAN.
+
+1. Connect the radio to the test interface (directly via Ethernet cable)
+2. The test page will detect the radio at its factory default IP (`192.168.69.1`) or via DHCP
+3. Click **Configure Radio** and enter the team number, WPA passphrase, and optional SSID suffix
+4. The radio will reboot and come back on the team subnet — the tester will automatically pick it up via DHCP
+
 #### Setting Up the Test Interface
 
 The test interface needs to be a dedicated network path to the robot — either:
