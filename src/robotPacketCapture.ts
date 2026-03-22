@@ -13,6 +13,7 @@ export class RobotPacketCapture {
   private proc: ChildProcess | null = null;
   private buf = Buffer.alloc(0);
   private headerParsed = false;
+  private debuggedTeams = new Set<number>();
 
   constructor(
     private readonly interfaceName: string,
@@ -27,7 +28,7 @@ export class RobotPacketCapture {
     // Capture on all VLAN sub-interfaces by listening on the parent
     const proc = spawn(
       'tcpdump',
-      ['-i', this.interfaceName, '-U', '-w', '-', '--immediate-mode', '-p', 'udp', 'src', 'port', '1150'],
+      ['-i', this.interfaceName, '-U', '-w', '-', '--immediate-mode', '-p', 'udp', 'dst', 'port', '1150'],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
 
@@ -101,15 +102,21 @@ export class RobotPacketCapture {
     }
   }
 
-  /** Parse a single captured packet (Ethernet + IP + UDP + payload). */
+  /** Parse a single captured packet (Ethernet + [VLAN] + IP + UDP + payload). */
   private parsePacket(data: Buffer): void {
     // Ethernet header: 14 bytes (dst[6] + src[6] + etherType[2])
     if (data.length < 14) return;
-    const etherType = data.readUInt16BE(12);
-    if (etherType !== 0x0800) return; // Not IPv4
+    let etherType = data.readUInt16BE(12);
+    let ipOffset = 14;
 
-    // IP header starts at offset 14
-    const ipOffset = 14;
+    // Skip 802.1Q VLAN tag if present (4 extra bytes)
+    if (etherType === 0x8100) {
+      if (data.length < 18) return;
+      etherType = data.readUInt16BE(16);
+      ipOffset = 18;
+    }
+
+    if (etherType !== 0x0800) return; // Not IPv4
     if (data.length < ipOffset + 20) return;
     const ipHeaderLen = (data[ipOffset] & 0x0f) * 4;
     if (data.length < ipOffset + ipHeaderLen + 8) return; // Need at least UDP header
@@ -121,14 +128,18 @@ export class RobotPacketCapture {
     const payloadOffset = ipOffset + ipHeaderLen + 8;
     if (data.length < payloadOffset + 6) return; // Need at least 6 bytes of robot payload
 
-    // Robot→DS payload format:
-    // Bytes 0-1: Sequence number
-    // Byte 2: Comm version
-    // Byte 3: Status (brownout:7, watchdog:6, ds.teleOp:5, ds.auto:4, ds.disable:3, robot.teleOp:2, robot.auto:1, robot.disable:0)
-    // Byte 4: Battery voltage integer part
-    // Byte 5: Battery voltage fractional part (÷256)
+    // Robot→DS payload format (from frcture.readthedocs.io):
+    // Bytes 0-1: Sequence number (uint16 BE)
+    // Byte 2: Comm version (0x01)
+    // Byte 3: Status (bit7=eStop, bit4=brownout, bit3=codeStart, bit2=enabled, bits1-0=mode)
+    // Byte 4: Trace (bit5=robotCode, bit4=isRoboRIO, bit3=test, bit2=auto, bit1=teleop, bit0=disabled)
+    // Bytes 5-6: Battery voltage (byte5=integer volts, byte6=fraction, voltage = byte5 + byte6/256)
+    // Byte 7: Request date flag
+    // Bytes 8+: Tags (variable)
+    if (data.length < payloadOffset + 7) return; // Need at least through battery bytes
     const statusByte = data[payloadOffset + 3];
-    const batteryVoltage = data[payloadOffset + 4] + data[payloadOffset + 5] / 256;
+    const traceByte = data[payloadOffset + 4];
+    const batteryVoltage = data[payloadOffset + 5] + data[payloadOffset + 6] / 256;
 
     // Extract team number from source IP (10.TE.AM.x)
     const team = teamFromIp(srcIp);
@@ -141,13 +152,15 @@ export class RobotPacketCapture {
     const station = mappings[team];
     if (!station) return;
 
-    // Status byte bits (robot→DS):
-    //   7: brownout, 6: watchdog
-    //   5: ds.teleOp, 4: ds.auto, 3: ds.disable
-    //   2: robot.teleOp, 1: robot.auto, 0: robot.disable
-    const brownout = Boolean(statusByte & 0x80);
-    const robotDisable = Boolean(statusByte & 0x01);
-    const robotAuto = Boolean(statusByte & 0x02);
+    // Status byte: bit7=eStop, bit4=brownout, bit3=codeStart, bit2=enabled, bits1-0=mode (0=teleop,1=test,2=auto)
+    const eStop = Boolean(statusByte & 0x80);
+    const brownout = Boolean(statusByte & 0x10);
+    const enabled = Boolean(statusByte & 0x04);
+    const modeNum = statusByte & 0x03;
+    const mode: 'teleOp' | 'test' | 'auto' = modeNum === 2 ? 'auto' : modeNum === 1 ? 'test' : 'teleOp';
+
+    // Trace byte: bit5=robotCode, bit4=isRoboRIO
+    const hasRobotCode = Boolean(traceByte & 0x20);
 
     const update: TelemetryUpdate = {
       type: 'telemetry',
@@ -156,14 +169,22 @@ export class RobotPacketCapture {
       batteryVoltage,
       brownout,
       dsStatus: {
-        eStop: false, // Not available in robot→DS packet
-        robotComms: true, // If we're seeing packets, robot comms are up
-        radioPing: true,
-        rioPing: true,
-        enabled: !robotDisable,
-        mode: robotAuto ? 'auto' : 'teleOp',
+        eStop,
+        robotComms: hasRobotCode,
+        radioPing: true, // If we see the packet, radio is up
+        rioPing: true, // Packet came from the RIO
+        enabled,
+        mode,
       },
     };
+
+    // Log first packet per team to verify parsing
+    if (!this.debuggedTeams.has(team)) {
+      this.debuggedTeams.add(team);
+      console.log(
+        `RobotPacketCapture: team ${team} → ${batteryVoltage.toFixed(2)}V ${enabled ? 'enabled' : 'disabled'} ${mode}${hasRobotCode ? '' : ' (no code)'}`,
+      );
+    }
 
     this.onTelemetry(update);
   }
