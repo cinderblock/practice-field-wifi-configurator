@@ -447,20 +447,26 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       return `10.${high}.${low}.${VlanHostOctet}`;
     }
 
-    /** Check if an IP is on a configured team's VLAN subnet (10.TE.AM.x/24).
-     *  Devices on robot networks (roboRIO, coprocessors) should not be treated
-     *  as Driver Stations. Only checks against currently configured teams. */
-    function isTeamSubnetAddress(ip: string): boolean {
-      const parts = ip.split('.');
-      if (parts.length !== 4) return false;
-      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`;
-      const mappings = radioManager.getTeamMappings();
-      for (const team of Object.keys(mappings).map(Number)) {
-        const high = Math.floor(team / 100);
-        const low = team % 100;
-        if (prefix === `10.${high}.${low}`) return true;
+    /** Check if an IP routes through a team VLAN interface. Uses `ip route get`
+     *  to ask the kernel — if the route goes via eno1.red* or eno1.blue*, the
+     *  source is a robot-network device, not a Driver Station. */
+    const teamVlanRouteCache = new Map<string, boolean>();
+    async function isTeamSubnetAddress(ip: string): Promise<boolean> {
+      const cached = teamVlanRouteCache.get(ip);
+      if (cached !== undefined) return cached;
+      try {
+        const { stdout } = await execFile('ip', ['route', 'get', ip]);
+        // e.g. "10.1.15.202 dev eno1.blue2 src 10.1.15.254 ..."
+        const match = stdout.match(/dev\s+(\S+)/);
+        const iface = match?.[1] ?? '';
+        const isTeamVlan = /\.(red|blue)\d/.test(iface);
+        teamVlanRouteCache.set(ip, isTeamVlan);
+        // Expire cache after 60s (team config may change)
+        setTimeout(() => teamVlanRouteCache.delete(ip), 60_000);
+        return isTeamVlan;
+      } catch {
+        return false;
       }
-      return false;
     }
 
     // Track which DS IPs have active TCP connections (refcounted by fmsServer).
@@ -556,10 +562,21 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
      * false if this DS was blocked as a duplicate.
      */
     function trySetDSAddress(station: StationName, dsIp: string): boolean {
-      // TODO: Re-enable duplicate DS blocking once we properly filter out
-      // robot-network devices (roboRIO, coprocessors) that connect to the FMS
-      // TCP port. Currently disabled because team subnet IPs (10.TE.AM.x)
-      // trigger false-positive duplicate detection.
+      const accepted = acceptedDsForStation.get(station);
+      // Same IP as current — always accept (idempotent)
+      if (!accepted || accepted === dsIp) {
+        acceptedDsForStation.set(station, dsIp);
+        matchEngine.setDSAddress(station, dsIp);
+        return true;
+      }
+      // Different IP, but current DS still has an active TCP connection — block this one
+      if (connectedDsIps.has(accepted)) {
+        blockDuplicateDS(station, dsIp).catch(err => {
+          console.error(`Failed to block duplicate DS for ${station}:`, err);
+        });
+        return false;
+      }
+      // Current DS is gone — accept the new one
       acceptedDsForStation.set(station, dsIp);
       matchEngine.setDSAddress(station, dsIp);
       return true;
@@ -710,17 +727,34 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           // TCP remoteAddress may be IPv6-mapped (::ffff:10.x.x.x) — normalize to plain IPv4
           const address = msg.address.replace(/^::ffff:/, '');
 
-          // Ignore connections from team subnets (10.TE.AM.x) — these are devices on
-          // the robot network (roboRIO, coprocessors), not Driver Stations.
-          // Only guest-network IPs should be treated as DSes.
-          if (isTeamSubnetAddress(address)) return;
+          // Ignore connections from team subnets — these are devices on the robot
+          // network (roboRIO, coprocessors), not Driver Stations.
+          isTeamSubnetAddress(address)
+            .then(isRobotNetwork => {
+              if (isRobotNetwork) return;
 
-          if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
-            // Same team on multiple stations — use the kernel neighbor (ARP) table
-            // to determine which VLAN interface (and thus station) the packet came from.
-            resolveStationByNeighbor(address, VlanInterface)
-              .then(station => {
-                station ??= radioManager.getStationForTeam(teamNumber);
+              if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
+                // Same team on multiple stations — use the kernel neighbor (ARP) table
+                // to determine which VLAN interface (and thus station) the packet came from.
+                resolveStationByNeighbor(address, VlanInterface)
+                  .then(station => {
+                    station ??= radioManager.getStationForTeam(teamNumber);
+                    if (station) {
+                      if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
+                      addDnatRule(station, address);
+                      if (!checksTriggered.has(station)) {
+                        checksTriggered.add(station);
+                        checksRetryCount.delete(station);
+                        setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
+                      }
+                    }
+                  })
+                  .catch(err => {
+                    console.error('DS address discovery failed:', err);
+                  });
+              } else {
+                // Common case: unique team numbers — direct lookup, no subprocess needed
+                const station = radioManager.getStationForTeam(teamNumber);
                 if (station) {
                   if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
                   addDnatRule(station, address);
@@ -730,23 +764,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
                     setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
                   }
                 }
-              })
-              .catch(err => {
-                console.error('DS address discovery failed:', err);
-              });
-          } else {
-            // Common case: unique team numbers — direct lookup, no subprocess needed
-            const station = radioManager.getStationForTeam(teamNumber);
-            if (station) {
-              if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
-              addDnatRule(station, address);
-              if (!checksTriggered.has(station)) {
-                checksTriggered.add(station);
-                checksRetryCount.delete(station);
-                setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
               }
-            }
-          }
+            })
+            .catch(err => console.error('DS processing error:', err));
         }
       });
 
