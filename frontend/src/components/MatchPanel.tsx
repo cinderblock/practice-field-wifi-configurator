@@ -86,18 +86,20 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
   }, [config.autoDuration, config.teleopDuration, config.endgameDuration, config.pauseDuration]);
 
   const handleChange = (field: keyof MatchConfig, value: number) => {
-    const updated: MatchConfig = {
-      autoDuration: auto,
-      teleopDuration: teleop,
-      endgameDuration: endgame,
-      pauseDuration: pause,
-      [field]: value,
-    };
+    // Update local state immediately for responsive UI
     if (field === 'autoDuration') setAuto(value);
     if (field === 'teleopDuration') setTeleop(value);
     if (field === 'endgameDuration') setEndgame(value);
     if (field === 'pauseDuration') setPause(value);
-    sendUpdateMatchConfig(updated);
+  };
+
+  const sendConfig = () => {
+    sendUpdateMatchConfig({
+      autoDuration: auto,
+      teleopDuration: teleop,
+      endgameDuration: endgame,
+      pauseDuration: pause,
+    });
   };
 
   return (
@@ -110,6 +112,7 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
           fullWidth
           value={auto}
           onChange={e => handleChange('autoDuration', clampDuration(Number(e.target.value)))}
+          onBlur={sendConfig}
           slotProps={{ htmlInput: { min: 0, max: MAX_PERIOD } }}
         />
       </Grid>
@@ -121,6 +124,7 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
           fullWidth
           value={teleop}
           onChange={e => handleChange('teleopDuration', clampDuration(Number(e.target.value)))}
+          onBlur={sendConfig}
           slotProps={{ htmlInput: { min: 0, max: MAX_PERIOD } }}
         />
       </Grid>
@@ -132,6 +136,7 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
           fullWidth
           value={endgame}
           onChange={e => handleChange('endgameDuration', clampDuration(Number(e.target.value)))}
+          onBlur={sendConfig}
           slotProps={{ htmlInput: { min: 0, max: MAX_PERIOD } }}
         />
       </Grid>
@@ -143,6 +148,7 @@ function TimingConfigEditor({ config }: { config: MatchConfig }) {
           fullWidth
           value={pause}
           onChange={e => handleChange('pauseDuration', clampDuration(Number(e.target.value)))}
+          onBlur={sendConfig}
           slotProps={{ htmlInput: { min: 0, max: 10 } }}
         />
       </Grid>
