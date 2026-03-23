@@ -215,8 +215,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       broadcast(results);
 
       // Re-trigger team checks when new devices appear on stations that had error results.
-      // This handles the case where the radio is up but the RIO isn't yet — when the RIO
-      // comes online, the subnet scanner will detect it and we re-run checks automatically.
       for (const station of StationNameList) {
         const team = radioManager.getTeamForStation(station);
         if (!team) continue;
@@ -700,11 +698,33 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       // Track which stations have already had checks triggered this session,
       // so we don't re-run on every DS UDP heartbeat.
       const checksTriggered = new Set<StationName>();
+      // Track radio link state per station — trigger checks when a robot links
+      const wasLinked = new Map<StationName, boolean>();
+
+      radioManager.addStatusListener(entry => {
+        if (!entry.radioUpdate) return;
+        for (const station of StationNameList) {
+          const details = entry.radioUpdate.stationStatuses[station];
+          const linked = details?.isLinked ?? false;
+          const prev = wasLinked.get(station) ?? false;
+          wasLinked.set(station, linked);
+          if (linked && !prev && !checksTriggered.has(station)) {
+            const team = radioManager.getTeamForStation(station);
+            if (team) {
+              checksTriggered.add(station);
+              checksRetryCount.delete(station);
+              // Small delay — let the robot finish connecting
+              setTimeout(() => triggerTeamChecks(station, team), 3000);
+            }
+          }
+        }
+      });
 
       radioManager.addConfigChangeListener(() => {
         for (const station of StationNameList) {
           if (radioManager.getTeamForStation(station) === null) {
             checksTriggered.delete(station);
+            wasLinked.delete(station);
           }
         }
       });
@@ -745,11 +765,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
                     if (station) {
                       if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
                       addDnatRule(station, address);
-                      if (!checksTriggered.has(station)) {
-                        checksTriggered.add(station);
-                        checksRetryCount.delete(station);
-                        setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
-                      }
                     }
                   })
                   .catch(err => {
@@ -761,11 +776,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
                 if (station) {
                   if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
                   addDnatRule(station, address);
-                  if (!checksTriggered.has(station)) {
-                    checksTriggered.add(station);
-                    checksRetryCount.delete(station);
-                    setTimeout(() => triggerTeamChecks(station, teamNumber), 2000);
-                  }
                 }
               }
             })
