@@ -173,7 +173,11 @@ export function setupWebSocket(
 
   // Broadcast pending commit state changes to all clients
   radioManager.addPendingCommitListener(pending => {
-    broadcast({ type: 'pendingCommitState', pending } satisfies PendingCommitState);
+    broadcast({
+      type: 'pendingCommitState',
+      pending,
+      stagedChanges: pending ? radioManager.getStagedChanges() : undefined,
+    } satisfies PendingCommitState);
   });
 
   wss.on('connection', (ws: WebSocket, req) => {
@@ -193,7 +197,11 @@ export function setupWebSocket(
 
     // Send initial pending commit state
     ws.send(
-      JSON.stringify({ type: 'pendingCommitState', pending: radioManager.pendingCommit } satisfies PendingCommitState),
+      JSON.stringify({
+        type: 'pendingCommitState',
+        pending: radioManager.pendingCommit,
+        stagedChanges: radioManager.pendingCommit ? radioManager.getStagedChanges() : undefined,
+      } satisfies PendingCommitState),
     );
 
     // Send server info (start time for uptime display)

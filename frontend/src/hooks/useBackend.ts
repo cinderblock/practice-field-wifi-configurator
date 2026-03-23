@@ -46,7 +46,6 @@ import {
   StatusEntry,
 } from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
-import { clearAllStagedChanges } from './useStagedChanges';
 
 let ws: WebSocket | null = null;
 let wsConnected = false;
@@ -223,6 +222,7 @@ let currentSubnetScan: SubnetScanResults | null = null;
 let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
+let currentStagedChanges: Record<string, { ssid: string; wpaKey: string } | null> = {};
 let currentServerInfo: ServerInfo | null = null;
 const currentTeamCheckResults = new Map<StationName, TeamCheckResults>();
 
@@ -319,13 +319,9 @@ function handleRoutePreferenceState(state: RoutePreferenceState) {
 }
 
 function handlePendingCommitState(state: PendingCommitState) {
-  const wasPending = currentPendingCommit;
   currentPendingCommit = state.pending;
-  events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state.pending }));
-  // When commit completes (pending → not pending), clear all staged changes
-  if (wasPending && !state.pending) {
-    clearAllStagedChanges();
-  }
+  currentStagedChanges = state.stagedChanges ?? {};
+  events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state }));
 }
 
 function handleTeamCheckResults(results: TeamCheckResults) {
@@ -674,12 +670,25 @@ export function usePendingCommit(): boolean {
   const [pending, setPending] = useState(currentPendingCommit);
 
   useEffect(() => {
-    const handler = (e: Event) => setPending((e as CustomEvent).detail);
+    const handler = (e: Event) => setPending((e as CustomEvent<PendingCommitState>).detail.pending);
     events.addEventListener('pendingCommitState', handler);
     return () => events.removeEventListener('pendingCommitState', handler);
   }, []);
 
   return pending;
+}
+
+/** Get the backend's staged changes (not yet committed). */
+export function useBackendStagedChanges(): Record<string, { ssid: string; wpaKey: string } | null> {
+  const [staged, setStaged] = useState(currentStagedChanges);
+
+  useEffect(() => {
+    const handler = (e: Event) => setStaged((e as CustomEvent<PendingCommitState>).detail.stagedChanges ?? {});
+    events.addEventListener('pendingCommitState', handler);
+    return () => events.removeEventListener('pendingCommitState', handler);
+  }, []);
+
+  return staged;
 }
 
 export function sendApplyConfig() {

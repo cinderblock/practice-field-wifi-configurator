@@ -34,7 +34,7 @@ import {
 import { MatchPanel } from './MatchPanel';
 import { StationNetworkCard } from './NetworkPage';
 import { useSavedWiFiSettings } from '../hooks/useSavedWiFiSettings';
-import { useStagedChanges } from '../hooks/useStagedChanges';
+import { useBackendStagedChanges } from '../hooks/useBackend';
 import { TimeDisplay } from './TimeDisplay';
 import { describeIp, formatAge, formatBytes, prettyStationName } from '../../../src/utils';
 import { Alert, Box, FormControlLabel, Switch, Tooltip, useMediaQuery, useTheme } from '@mui/material';
@@ -117,7 +117,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const latest = useLatest();
   const matchState = useMatchState();
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
-  const { stagedChanges, hasStagedChange, stageChange, applyStagedChange } = useStagedChanges();
+  const stagedChanges = useBackendStagedChanges();
+  const hasStagedChange = (s: StationName) => s in stagedChanges;
 
   // Always register the chart data collection handler, even if charts aren't visible
   // This ensures chart data is collected from page load, not just when charts are first shown
@@ -160,17 +161,12 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   const handleSave = (stage: boolean) => {
-    if (stage) {
-      // Stage locally only — don't send to backend until "Apply"
-      stageChange(station, ssid, passphrase);
-    } else {
-      // Apply immediately
-      sendNewConfig(station, ssid, passphrase, false);
-      applyStagedChange(station);
-      // Auto-save the setting if it's valid and not empty
-      if (ssid.trim() && passphrase.trim()) {
-        saveSetting(ssid, passphrase);
-      }
+    // Always send to backend — stage=true stores in pendingChanges without committing
+    sendNewConfig(station, ssid, passphrase, stage);
+
+    // Auto-save to recent settings if valid
+    if (ssid.trim() && passphrase.trim()) {
+      saveSetting(ssid, passphrase);
     }
 
     setOpen(false);
@@ -189,8 +185,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleClearStation = () => {
     // Only clear if the station is actually configured
     if (stationSsid || hasStagedChange(station)) {
-      // Stage the clear locally — the "Apply" button will send it to the backend
-      stageChange(station, '', '');
+      // Stage the clear on the backend — committed when user clicks Apply
+      sendNewConfig(station, '', '', true);
     }
   };
 

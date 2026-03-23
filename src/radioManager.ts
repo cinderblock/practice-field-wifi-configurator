@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { configureNetwork, setInternetAccess } from './networkManager.js';
 import { appError } from './appLogger.js';
 import {
@@ -35,6 +35,9 @@ class RadioManager {
   private commitCompleteListeners: (() => void)[] = [];
   private activeConfig = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
   private readonly activeConfigPath = process.env.ACTIVE_CONFIG_FILE ?? 'active-config.json';
+  /** Staged changes — written on stage, merged into activeConfig on commit. */
+  private stagedChanges = {} as Record<StationName, { ssid: string; wpaKey: string; internetAccess?: boolean } | null>;
+  private readonly stagedConfigPath = process.env.STAGED_CONFIG_FILE ?? 'staged-config.json';
   private lastBroadcastEntry: StatusEntry | null = null;
   private lastBroadcastTime: number = 0;
   private readonly maxBroadcastInterval = 15000;
@@ -48,6 +51,7 @@ class RadioManager {
     private firmwareMode?: string,
   ) {
     this.loadActiveConfig();
+    this.loadStagedConfig();
     this.startPolling();
     if (this.radioManagementInterface) {
       console.log('Radio management interface:', this.radioManagementInterface);
@@ -57,6 +61,48 @@ class RadioManager {
   setFirmwareMode(mode: string): void {
     this.firmwareMode = mode;
     console.log(`Firmware mode updated: ${mode}`);
+  }
+
+  private saveStagedConfig(): void {
+    try {
+      // Only write if there are staged changes; delete the file if empty
+      const hasStaged = Object.values(this.stagedChanges).some(v => v !== undefined);
+      if (hasStaged) {
+        writeFileSync(this.stagedConfigPath, JSON.stringify(this.stagedChanges, null, 2));
+      } else if (existsSync(this.stagedConfigPath)) {
+        rmSync(this.stagedConfigPath);
+      }
+    } catch (err) {
+      console.error('Failed to persist staged config:', err);
+    }
+  }
+
+  private loadStagedConfig(): void {
+    if (!existsSync(this.stagedConfigPath)) return;
+    try {
+      const raw = JSON.parse(readFileSync(this.stagedConfigPath, 'utf8'));
+      const validStations = new Set<string>(StationNameList);
+      for (const [station, config] of Object.entries(raw)) {
+        if (!validStations.has(station)) continue;
+        if (config === null) {
+          // Staged clear
+          this.stagedChanges[station as StationName] = null;
+        } else if (config && typeof config === 'object' && typeof (config as any).ssid === 'string') {
+          this.stagedChanges[station as StationName] = config as {
+            ssid: string;
+            wpaKey: string;
+            internetAccess?: boolean;
+          };
+        }
+      }
+      const stations = Object.keys(this.stagedChanges).filter(s => this.stagedChanges[s as StationName] !== undefined);
+      if (stations.length) {
+        console.log(`Restored staged changes for: ${stations.join(', ')}`);
+        this.setPendingCommit(true);
+      }
+    } catch (err) {
+      console.error('Failed to restore staged config:', err);
+    }
   }
 
   private saveActiveConfig(): void {
@@ -237,16 +283,18 @@ class RadioManager {
 
     const config = ssid ? { ssid, wpaKey, internetAccess } : null;
 
-    // console.log('Configuring station:', stationId, config);
-
-    if (config) this.activeConfig[stationId] = config;
-    else delete this.activeConfig[stationId];
-    this.saveActiveConfig();
-    this.notifyConfigChange();
-
     if (stage) {
+      // Stage: store in stagedChanges, don't touch activeConfig
+      // null means "clear this station" when committed
+      this.stagedChanges[stationId] = config ?? null;
+      this.saveStagedConfig();
       this.setPendingCommit(true);
     } else {
+      // Immediate: apply to activeConfig and commit
+      if (config) this.activeConfig[stationId] = config;
+      else delete this.activeConfig[stationId];
+      this.saveActiveConfig();
+      this.notifyConfigChange();
       await this.commitConfiguration();
     }
   }
@@ -304,10 +352,37 @@ class RadioManager {
       this.setPendingCommit(true);
       return Promise.resolve();
     }
+    // Merge staged changes into activeConfig before committing
+    this.applyStagedChanges();
     // Serialize concurrent calls — each queues after the previous one so
     // previousStations in networkManager is never read mid-update.
     this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
     return this.commitQueue;
+  }
+
+  /** Merge stagedChanges into activeConfig and clear them. */
+  private applyStagedChanges(): void {
+    let changed = false;
+    for (const station of StationNameList) {
+      const staged = this.stagedChanges[station];
+      if (staged === undefined) continue; // No staged change for this station
+      if (staged === null) {
+        // Staged clear
+        if (this.activeConfig[station]) {
+          delete this.activeConfig[station];
+          changed = true;
+        }
+      } else {
+        this.activeConfig[station] = staged;
+        changed = true;
+      }
+      delete this.stagedChanges[station];
+    }
+    if (changed) {
+      this.saveActiveConfig();
+      this.saveStagedConfig();
+      this.notifyConfigChange();
+    }
   }
 
   private async doCommitConfiguration(): Promise<void> {
@@ -594,6 +669,21 @@ class RadioManager {
   /** Get the active config for a station, or null if unconfigured. */
   getStationConfig(station: StationName): { ssid: string; wpaKey: string; internetAccess?: boolean } | null {
     return this.activeConfig[station] ?? null;
+  }
+
+  /** Get staged (not yet committed) config for a station. null = staged clear, undefined = no staged change. */
+  getStagedConfig(station: StationName): { ssid: string; wpaKey: string; internetAccess?: boolean } | null | undefined {
+    return this.stagedChanges[station];
+  }
+
+  /** Get all staged changes. */
+  getStagedChanges(): Record<string, { ssid: string; wpaKey: string; internetAccess?: boolean } | null> {
+    const result: Record<string, { ssid: string; wpaKey: string; internetAccess?: boolean } | null> = {};
+    for (const station of StationNameList) {
+      const staged = this.stagedChanges[station];
+      if (staged !== undefined) result[station] = staged;
+    }
+    return result;
   }
 
   getTeamForStation(station: StationName): number | null {

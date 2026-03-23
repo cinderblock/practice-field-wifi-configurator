@@ -7,15 +7,7 @@ import Button from '@mui/material/Button';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
-import {
-  usePendingCommit,
-  sendApplyConfig,
-  sendNewConfig,
-  useServerStartTime,
-  serverToBrowserTime,
-} from '../hooks/useBackend';
-import { useStagedChanges } from '../hooks/useStagedChanges';
-import type { StationName } from '../../../src/types';
+import { usePendingCommit, sendApplyConfig, useServerStartTime, serverToBrowserTime } from '../hooks/useBackend';
 
 type DotColor = 'success.main' | 'error.main' | 'warning.main' | 'text.disabled';
 
@@ -95,21 +87,12 @@ export function StatusBar() {
   const internet = getInternetIndicator(connectivity);
   const pfms = getPfmsIndicator(connectivity);
   const pendingCommit = usePendingCommit();
-  const { stagedChanges, applyStagedChange } = useStagedChanges();
-  const hasStagedChanges = Object.values(stagedChanges).some(c => c !== null);
-  const showApply = pendingCommit || hasStagedChanges;
+  const showApply = pendingCommit;
   const serverStartTime = useServerStartTime();
 
   const handleApply = () => {
-    // Send all staged changes to the backend first
-    for (const [station, change] of Object.entries(stagedChanges)) {
-      if (change) {
-        sendNewConfig(station as StationName, change.ssid, change.wpaKey, false);
-        applyStagedChange(station as StationName);
-      }
-    }
-    // Also apply any backend-pending config
-    if (pendingCommit) sendApplyConfig();
+    // Backend already has staged changes — just commit them
+    sendApplyConfig();
   };
 
   return (

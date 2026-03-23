@@ -665,6 +665,8 @@ export function isRoutePreferenceState(msg: unknown): msg is RoutePreferenceStat
 export type PendingCommitState = {
   type: 'pendingCommitState';
   pending: boolean;
+  /** Staged changes per station. null = staged clear, absent = no staged change. */
+  stagedChanges?: Record<string, { ssid: string; wpaKey: string } | null>;
 };
 
 export function isPendingCommitState(msg: unknown): msg is PendingCommitState {
