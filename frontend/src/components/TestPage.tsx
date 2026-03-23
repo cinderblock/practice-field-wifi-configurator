@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -429,6 +429,7 @@ function RadioConfigureSection({ teamNumber }: { teamNumber?: number }) {
   const [wpaKey6, setWpaKey6] = useState('');
   const [wpaKey24, setWpaKey24] = useState('');
   const [ssidSuffix, setSsidSuffix] = useState('');
+  const suffixRef = useRef<HTMLInputElement>(null);
   const progress = useRadioConfigureProgress();
   const configuring = progress && progress.step !== 'complete' && progress.step !== 'error';
 
@@ -511,18 +512,42 @@ function RadioConfigureSection({ teamNumber }: { teamNumber?: number }) {
               Program the radio with a team number and WPA keys. The radio will reboot during configuration (1-2
               minutes).
             </Typography>
-            <TextField
-              label="Team Number"
-              value={team}
-              onChange={e => setTeam(e.target.value.replace(/\D/g, ''))}
-              fullWidth
-              required
-              autoFocus
-              error={!!team && !teamValid}
-              helperText={team && !teamValid ? 'Enter a valid team number (1-25599)' : undefined}
-              margin="dense"
-              slotProps={{ htmlInput: { inputMode: 'numeric' } }}
-            />
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+              <TextField
+                label="Team Number"
+                value={team}
+                onChange={e => {
+                  const raw = e.target.value;
+                  const digits = raw.replace(/\D/g, '');
+                  setTeam(digits);
+                  // If non-numeric was typed, jump to suffix field with those chars
+                  if (digits !== raw) {
+                    const nonDigits = raw.replace(/^\d*-?/, '');
+                    if (nonDigits) {
+                      setSsidSuffix(prev => prev + nonDigits);
+                    }
+                    suffixRef.current?.focus();
+                  }
+                }}
+                required
+                autoFocus
+                error={!!team && !teamValid}
+                helperText={team && !teamValid ? '1-25599' : undefined}
+                margin="dense"
+                sx={{ flex: '0 0 120px' }}
+                slotProps={{ htmlInput: { inputMode: 'numeric' } }}
+              />
+              <Typography sx={{ mt: 2.5, color: 'text.secondary', fontSize: '1.2rem', flexShrink: 0 }}>–</Typography>
+              <TextField
+                label="Suffix (optional)"
+                value={ssidSuffix}
+                onChange={e => setSsidSuffix(e.target.value)}
+                inputRef={suffixRef}
+                margin="dense"
+                sx={{ flex: 1 }}
+                helperText={`SSID: ${teamValid ? team : '####'}${ssidSuffix ? '-' + ssidSuffix : ''}`}
+              />
+            </Box>
             <TextField
               label="6 GHz WPA Passphrase"
               value={wpaKey6}
@@ -539,14 +564,6 @@ function RadioConfigureSection({ teamNumber }: { teamNumber?: number }) {
               onChange={e => setWpaKey24(e.target.value)}
               fullWidth
               helperText="Leave blank to use the same key as 6 GHz"
-              margin="dense"
-            />
-            <TextField
-              label="SSID Suffix (optional)"
-              value={ssidSuffix}
-              onChange={e => setSsidSuffix(e.target.value)}
-              fullWidth
-              helperText={`SSID will be "${teamValid ? team : '####'}${ssidSuffix ? '_' + ssidSuffix : ''}"`}
               margin="dense"
             />
           </DialogContent>
