@@ -214,7 +214,12 @@ export function TestPage() {
   const teamSubnet = state.teamNumber ? `10.${Math.floor(state.teamNumber / 100)}.${state.teamNumber % 100}` : null;
   const radioTeam = radioChecks.find(c => c.name === 'Radio Team')?.actual;
   const rioTeam = rioChecks.find(c => c.name === 'roboRIO Team')?.actual;
-  const allTeamsMatch = radioTeam && rioTeam && radioTeam === rioTeam && radioTeam === String(state.teamNumber);
+  const dhcpTeamStr = String(state.teamNumber);
+  // Only report mismatch when we have sources that actively disagree.
+  // Missing sources (radio/RIO unreachable) should not trigger a mismatch.
+  const teamsToCompare = [dhcpTeamStr, radioTeam, rioTeam].filter(Boolean) as string[];
+  const allTeamsMatch = teamsToCompare.length >= 2 && teamsToCompare.every(t => t === dhcpTeamStr);
+  const hasMismatch = teamsToCompare.length >= 2 && !allTeamsMatch;
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -383,9 +388,9 @@ export function TestPage() {
               <Box
                 sx={{ display: 'flex', alignItems: 'center', gap: 0.75, pt: 1, borderTop: 1, borderColor: 'divider' }}
               >
-                <StatusIcon status={allTeamsMatch ? 'pass' : 'fail'} />
+                <StatusIcon status={hasMismatch ? 'fail' : 'pass'} />
                 <Typography variant="caption">
-                  {allTeamsMatch ? (
+                  {!hasMismatch ? (
                     <>
                       Team <strong>{state.teamNumber}</strong> — consistent across all devices
                     </>

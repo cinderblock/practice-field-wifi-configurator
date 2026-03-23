@@ -1,9 +1,9 @@
 import dgram from 'node:dgram';
 import type { StationName, CheckResult, TeamCheckResults, DiscoveredHost } from './types.js';
 
-const FETCH_TIMEOUT = 500;
+const FETCH_TIMEOUT = 1500;
 /** roboRIO's NI SysAPI is slower than the radio — give it more time. */
-const RIO_FETCH_TIMEOUT = 2000;
+const RIO_FETCH_TIMEOUT = 3000;
 
 // ── Help URLs ───────────────────────────────────────────────────────
 
