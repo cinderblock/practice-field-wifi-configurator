@@ -398,17 +398,33 @@ export class MatchEngine {
     // Phase expired — move to next
     switch (this.phase) {
       case 'countdown':
-        this.phase = 'auto';
-        this.remainingTime = this.config.autoDuration;
-        this.enableParticipating('auto');
-        console.log('Autonomous period started');
+        if (this.config.autoDuration > 0) {
+          this.phase = 'auto';
+          this.remainingTime = this.config.autoDuration;
+          this.enableParticipating('auto');
+          console.log('Autonomous period started');
+        } else {
+          // Skip auto — go straight to teleop
+          this.phase = 'teleop';
+          this.remainingTime = this.config.teleopDuration;
+          this.enableParticipating('teleOp');
+          console.log('Teleop period started (auto skipped)');
+        }
         break;
 
       case 'auto':
-        this.phase = 'autoPause';
-        this.remainingTime = this.config.pauseDuration;
-        this.disableAll();
-        console.log('Auto-to-teleop pause');
+        if (this.config.pauseDuration > 0) {
+          this.phase = 'autoPause';
+          this.remainingTime = this.config.pauseDuration;
+          this.disableAll();
+          console.log('Auto-to-teleop pause');
+        } else {
+          // Skip pause — go straight to teleop
+          this.phase = 'teleop';
+          this.remainingTime = this.config.teleopDuration;
+          this.enableParticipating('teleOp');
+          console.log('Teleop period started (pause skipped)');
+        }
         break;
 
       case 'autoPause':
