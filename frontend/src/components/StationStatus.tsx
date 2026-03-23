@@ -107,8 +107,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const [open, setOpen] = useState(false);
   const [ssid, setSsid] = useState('');
   const [passphrase, setPassphrase] = useState('');
-  const [showPassphrases, setShowPassphrases] = useState(false);
   const [internetAccess, setInternetAccess] = useState(false);
+  const [showPassphrases, setShowPassphrases] = useState(false);
   const [chartMode, setChartMode] = useState(full ?? false);
   const ssidInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -165,11 +165,11 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       stageChange(station, ssid, passphrase);
     } else {
       // Apply immediately
-      sendNewConfig(station, ssid, passphrase, false, internetAccess);
+      sendNewConfig(station, ssid, passphrase, false);
       applyStagedChange(station);
       // Auto-save the setting if it's valid and not empty
       if (ssid.trim() && passphrase.trim()) {
-        saveSetting(ssid, passphrase, internetAccess);
+        saveSetting(ssid, passphrase);
       }
     }
 
@@ -179,7 +179,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const handleApplySetting = (setting: SavedWiFiSetting) => {
     setSsid(setting.ssid);
     setPassphrase(setting.wpaKey);
-    setInternetAccess(setting.internetAccess ?? false);
   };
 
   const handleRemoveSetting = (e: React.MouseEvent, setting: SavedWiFiSetting) => {
@@ -946,18 +945,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   : ''
               }
               error={!isSSIDEmpty && !passphraseRegex.test(passphrase)}
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={internetAccess}
-                  onChange={e => setInternetAccess(e.target.checked)}
-                  disabled={isSSIDEmpty}
-                />
-              }
-              label="Internet access"
-              sx={{ mt: 1 }}
             />
 
             {recentSettings.length > 0 && (
