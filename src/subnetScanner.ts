@@ -203,6 +203,9 @@ export class SubnetScanner {
     }
     if (subnetToStation.size === 0) return;
 
+    // Our FMS IP — filter it out of guest host lists
+    const selfIp = '10.0.100.5';
+
     let stdout: string;
     try {
       ({ stdout } = await execFile('conntrack', ['-L'], { timeout: 5_000 }));
@@ -241,11 +244,13 @@ export class SubnetScanner {
       // Filter out internet IPs — robots can make outbound connections that show up
       // in conntrack, but we only care about local guest network hosts.
       if (srcStation && !dstStation && SubnetScanner.isPrivateIp(dst)) {
-        // src is in team subnet → dst is the guest
+        // src is in team subnet → dst is the guest (skip our own IPs)
+        if (dst === selfIp) continue;
         if (!activeGuests.has(srcStation)) activeGuests.set(srcStation, new Set());
         activeGuests.get(srcStation)!.add(dst);
       } else if (dstStation && !srcStation && SubnetScanner.isPrivateIp(src)) {
-        // dst is in team subnet → src is the guest
+        // dst is in team subnet → src is the guest (skip our own IPs)
+        if (src === selfIp) continue;
         if (!activeGuests.has(dstStation)) activeGuests.set(dstStation, new Set());
         activeGuests.get(dstStation)!.add(src);
       }
