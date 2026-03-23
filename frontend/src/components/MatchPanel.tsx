@@ -215,6 +215,9 @@ export function MatchPanel({ station }: { station?: StationName }) {
   // Don't render the master panel at all if nothing is happening
   if (!station && !anyJoined && !isActive && !isPostMatch) return null;
 
+  // Don't render per-station panel if no team is configured and no match is active
+  if (station && !myState?.teamNumber && !isActive && !isPostMatch) return null;
+
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
