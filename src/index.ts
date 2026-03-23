@@ -238,10 +238,13 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   subnetScanner.start(10_000);
 
   // Team checker — runs automated checks when a DS connects
-  const teamChecker = new TeamChecker(s => {
-    const scan = subnetScanner.getResults();
-    return scan.stations[s]?.hosts.filter(h => h.alive) ?? [];
-  });
+  const teamChecker = new TeamChecker(
+    s => {
+      const scan = subnetScanner.getResults();
+      return scan.stations[s]?.hosts.filter(h => h.alive) ?? [];
+    },
+    VlanInterface ? VlanHostOctet : undefined,
+  );
   const latestCheckResults = new Map<StationName, TeamCheckResults>();
   // Snapshot of alive IPs when checks last ran, so we can re-trigger when new devices appear
   const checksAliveSnapshot = new Map<StationName, Set<string>>();

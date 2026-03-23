@@ -606,18 +606,26 @@ export async function checkTeamConsistency(dhcpTeam: number): Promise<CheckResul
 type HostLookup = (station: StationName) => DiscoveredHost[];
 
 export class TeamChecker {
-  constructor(private readonly getAliveHosts: HostLookup) {}
+  constructor(
+    private readonly getAliveHosts: HostLookup,
+    private readonly vlanHostOctet?: number,
+  ) {}
 
   async runChecks(station: StationName, team: number): Promise<TeamCheckResults> {
     const hosts = this.getAliveHosts(station);
     const extraIps = hosts.filter(h => h.alive && !h.ip.endsWith('.1') && !h.ip.endsWith('.254')).map(h => h.ip);
-    const [radioChecks, rioChecks] = await Promise.all([checkRadio(team), checkRoboRIO(team, extraIps)]);
+    const sourceIp = this.vlanHostOctet ? `${teamSubnet(team)}.${this.vlanHostOctet}` : undefined;
+    const [radioChecks, rioChecks, mdnsChecks] = await Promise.all([
+      checkRadio(team),
+      checkRoboRIO(team, extraIps),
+      checkMdns('roboRIO mDNS', `roboRIO-${team}-FRC.local`, expectedIP(team), sourceIp),
+    ]);
     return {
       type: 'teamCheckResults',
       station,
       team,
       timestamp: Date.now(),
-      checks: [...radioChecks, ...rioChecks],
+      checks: [...radioChecks, ...rioChecks, ...mdnsChecks],
     };
   }
 }
