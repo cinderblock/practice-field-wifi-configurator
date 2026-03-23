@@ -160,21 +160,17 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   };
 
   const handleSave = (stage: boolean) => {
-    sendNewConfig(station, ssid, passphrase, stage, internetAccess);
-
     if (stage) {
-      // Track staged change locally
-      if (ssid.trim() && passphrase.trim()) {
-        stageChange(station, ssid, passphrase);
-      }
+      // Stage locally only — don't send to backend until "Apply"
+      stageChange(station, ssid, passphrase);
     } else {
-      // Clear any staged change when applying directly
+      // Apply immediately
+      sendNewConfig(station, ssid, passphrase, false, internetAccess);
       applyStagedChange(station);
-    }
-
-    // Auto-save the setting if it's valid and not empty
-    if (ssid.trim() && passphrase.trim()) {
-      saveSetting(ssid, passphrase, internetAccess);
+      // Auto-save the setting if it's valid and not empty
+      if (ssid.trim() && passphrase.trim()) {
+        saveSetting(ssid, passphrase, internetAccess);
+      }
     }
 
     setOpen(false);
