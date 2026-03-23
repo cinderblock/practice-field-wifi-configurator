@@ -447,6 +447,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       return `10.${high}.${low}.${VlanHostOctet}`;
     }
 
+    /** Check if an IP is on a configured team's VLAN subnet (10.TE.AM.x/24).
+     *  Devices on robot networks (roboRIO, coprocessors) should not be treated
+     *  as Driver Stations. Only checks against currently configured teams. */
+    function isTeamSubnetAddress(ip: string): boolean {
+      const parts = ip.split('.');
+      if (parts.length !== 4) return false;
+      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`;
+      const mappings = radioManager.getTeamMappings();
+      for (const team of Object.keys(mappings).map(Number)) {
+        const high = Math.floor(team / 100);
+        const low = team % 100;
+        if (prefix === `10.${high}.${low}`) return true;
+      }
+      return false;
+    }
+
     // Track which DS IPs have active TCP connections (refcounted by fmsServer).
     // Used to prevent DNAT thrashing when two DSes compete for the same station.
     const connectedDsIps = new Set<string>();
@@ -540,21 +556,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
      * false if this DS was blocked as a duplicate.
      */
     function trySetDSAddress(station: StationName, dsIp: string): boolean {
-      const accepted = acceptedDsForStation.get(station);
-      // Same IP as current — always accept (idempotent)
-      if (!accepted || accepted === dsIp) {
-        acceptedDsForStation.set(station, dsIp);
-        matchEngine.setDSAddress(station, dsIp);
-        return true;
-      }
-      // Different IP, but current DS still has an active TCP connection — block this one
-      if (connectedDsIps.has(accepted)) {
-        blockDuplicateDS(station, dsIp).catch(err => {
-          console.error(`Failed to block duplicate DS for ${station}:`, err);
-        });
-        return false;
-      }
-      // Current DS is gone — accept the new one
+      // TODO: Re-enable duplicate DS blocking once we properly filter out
+      // robot-network devices (roboRIO, coprocessors) that connect to the FMS
+      // TCP port. Currently disabled because team subnet IPs (10.TE.AM.x)
+      // trigger false-positive duplicate detection.
       acceptedDsForStation.set(station, dsIp);
       matchEngine.setDSAddress(station, dsIp);
       return true;
@@ -704,6 +709,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           const { teamNumber } = msg.data;
           // TCP remoteAddress may be IPv6-mapped (::ffff:10.x.x.x) — normalize to plain IPv4
           const address = msg.address.replace(/^::ffff:/, '');
+
+          // Ignore connections from team subnets (10.TE.AM.x) — these are devices on
+          // the robot network (roboRIO, coprocessors), not Driver Stations.
+          // Only guest-network IPs should be treated as DSes.
+          if (isTeamSubnetAddress(address)) return;
 
           if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
             // Same team on multiple stations — use the kernel neighbor (ARP) table
