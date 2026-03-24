@@ -1,0 +1,196 @@
+# Robot Network Tester
+
+The robot network tester (`/test`) is a CSA diagnostic tool for verifying individual robot network configurations. It runs on a dedicated network interface, detects connected radios and roboRIOs, and checks their configuration against FRC requirements. It can also program radios and update firmware.
+
+## Setup
+
+Set the `TEST_INTERFACE` environment variable to a dedicated network interface:
+
+```sh
+TEST_INTERFACE=eth1       # Dedicated NIC (USB Ethernet adapter, etc.)
+TEST_INTERFACE=eno1.10    # VLAN sub-interface on the trunk
+```
+
+The interface should **not** be managed by NetworkManager or have any existing IP configuration — the tester manages it entirely.
+
+### Dedicated NIC vs VLAN
+
+- **Dedicated NIC** — a separate physical port. Plug the robot's radio directly into it via Ethernet cable. The tester monitors carrier state to detect when a robot is plugged in/unplugged.
+- **VLAN sub-interface** — useful when the robot is connected through the field AP. The VLAN ID must match the station (10=red1, 20=red2, ..., 60=blue3). Link detection is skipped (VLAN link state mirrors the parent and is meaningless), so the tester treats the link as always up and relies on DHCP timeouts and device reachability to detect connections.
+
+## State Machine
+
+The tester progresses through these phases:
+
+```
+disabled ─► link_down ─► link_up ─► dhcp_requesting ─► ready ─► checking ─► complete
+                ▲            │                              │         │          │
+                └────────────┘ (cable unplugged)            │         └──────────┘
+                                                            │         (re-check every 1.5s)
+                                                            │
+                                                    (VLAN: all devices
+                                                     unreachable → reset
+                                                     to dhcp_requesting)
+```
+
+| Phase             | Description                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| `disabled`        | `TEST_INTERFACE` not set                                                                           |
+| `link_down`       | Polling carrier state at 5 Hz, waiting for a cable                                                 |
+| `link_up`         | Cable detected. Adds `192.168.69.8/24` secondary IP for factory radio detection, starts DHCP       |
+| `dhcp_requesting` | Running `dhcpcd --oneshot` to obtain a lease. Retries on failure. Rejects link-local (169.254.x.x) |
+| `ready`           | DHCP lease obtained. Team number derived from IP (`10.TE.AM.x` → team TE×100+AM)                   |
+| `checking`        | Running diagnostic checks against the radio and roboRIO                                            |
+| `complete`        | Checks finished. Re-checks every 1.5 seconds while clients are connected                           |
+
+### VLAN Reset
+
+On a VLAN interface, if both the radio and roboRIO are unreachable and no factory-default radio is detected, the tester assumes the robot disconnected. It releases the DHCP lease, clears team state, and returns to `link_up` to await the next robot.
+
+## Diagnostic Checks
+
+When a team number is detected via DHCP, the tester runs three groups of checks in parallel every 1.5 seconds:
+
+### Radio Checks
+
+Fetches `GET http://10.TE.AM.1/status` and verifies:
+
+| Check                | What it verifies                         | Pass condition                                                |
+| -------------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| **Radio Firmware**   | Firmware version string                  | Version starts with `2.0.1` (2026 season)                     |
+| **Radio SystemCore** | SystemCore mode                          | `systemcoreEnabled` is `false` (skipped if firmware outdated) |
+| **Radio Team**       | Team number reported by radio            | Matches DHCP-derived team number                              |
+| **Radio mDNS**       | `radio.local` resolves via multicast DNS | Resolves to `10.TE.AM.1`                                      |
+
+### roboRIO Checks
+
+Probes the NI SysAPI endpoint at `http://10.TE.AM.2/nisysapi/server` (POST request). Parses the XML response to extract system properties:
+
+| Check                | What it verifies                                    | Pass condition                   |
+| -------------------- | --------------------------------------------------- | -------------------------------- |
+| **roboRIO Hostname** | `TAG_HOSTNAME` (101F000) property                   | Matches `roboRIO-TEAM-FRC`       |
+| **roboRIO IP**       | `TAG_IP_ADDRESS` (D107000) from eth0 bag            | Equals `10.TE.AM.2`              |
+| **roboRIO Image**    | `TAG_IMAGE_VERSION` (D15C000) property              | Contains `2026`                  |
+| **roboRIO Team**     | Team number extracted from hostname                 | Matches DHCP-derived team number |
+| **roboRIO mDNS**     | `roboRIO-TEAM-FRC.local` resolves via multicast DNS | Resolves to `10.TE.AM.2`         |
+
+The roboRIO probe has a longer timeout (3s vs 1.5s) because the NI SysAPI is slower than the radio's HTTP server.
+
+### Factory Default Check
+
+Probes `http://192.168.69.1/status` in parallel with the team-IP checks. If the radio responds at the factory IP but **not** at the team IP, the radio hasn't been configured — this produces a **fail** result prompting configuration. If both respond, it's normal (the radio always keeps the factory IP alive as a recovery fallback).
+
+## Factory Default Radio Detection
+
+A background probe runs every 2 seconds, fetching `http://192.168.69.1/status`. This works because the tester adds `192.168.69.8/24` as a secondary IP on the test interface at link-up, giving it a route to the `192.168.69.0/24` subnet.
+
+When a factory-default radio is detected:
+
+- If no DHCP lease exists yet: shows a "Radio Detected" check result with the radio's firmware version and (if present) team number
+- If a configured team number is already detected: the full `checkFactoryDefault()` in the periodic check cycle handles it
+- If the radio has a team number but isn't providing DHCP: shows a warning suggesting a network path issue
+
+The factory probe also triggers an immediate DHCP retry if the tester is waiting for a lease — this helps when the radio is slow to start its DHCP server after being plugged in.
+
+## Radio Configuration
+
+The test page can program a radio in `TEAM_ROBOT_RADIO` mode without being on the field management VLAN.
+
+### Flow
+
+1. **Detection** — The tester detects the radio via factory probe (`192.168.69.1`) or DHCP (team IP)
+2. **User input** — User clicks "Configure Radio" and enters:
+   - Team number (1–25599)
+   - 6 GHz WPA passphrase (minimum 8 characters)
+   - Optional: 2.4 GHz WPA passphrase (defaults to the 6 GHz key)
+   - Optional: SSID suffix (e.g., team number 1234 with suffix "Bot" → SSID `1234_Bot`)
+3. **Send** — POST to `http://<radioIp>/configuration` with:
+   ```json
+   {
+     "mode": "TEAM_ROBOT_RADIO",
+     "teamNumber": 1234,
+     "ssidSuffix": "Bot",
+     "wpaKey6": "password123",
+     "wpaKey24": "password123",
+     "channel": 0
+   }
+   ```
+4. **Reboot wait** — The radio reboots. The tester polls `http://192.168.69.1/status` every 2 seconds (up to 2 minutes), waiting until the radio reports the new team number.
+5. **Reset** — On success, the tester kills DHCP, clears all team state, restarts the factory probe and DHCP to pick up the newly configured radio.
+
+### Mutual Exclusion
+
+Radio configuration is mutually exclusive with firmware updates — only one can run at a time. Both stop the periodic health checks and factory probe during their operation and restart them afterward.
+
+### Error Recovery
+
+If configuration fails at any point, the tester:
+
+- Sends an error progress message to the frontend
+- Restarts the factory probe
+- Restarts health checks (if a team number was detected before the configure attempt)
+- Clears the `radioConfiguring` flag
+
+## Firmware Updates
+
+When the radio firmware check fails, the tester can update firmware in-place.
+
+### Flow
+
+1. **Verify** — Confirm radio is reachable, verify WPA key matches current config (SHA-256 hash comparison)
+2. **Get firmware** — Retrieve binary from the firmware store (auto-downloads in background when outdated firmware is first detected)
+3. **Upload** — POST firmware binary to `http://10.TE.AM.1/api/upgrade`
+4. **Wait** — Poll for radio to reboot and come back online
+5. **Reconfigure** — Re-apply team configuration (unless "skip reconfigure" was checked)
+6. **Verify** — Confirm radio comes back with correct firmware and config
+
+## WebSocket Messages
+
+### Server → Client
+
+| Message type             | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| `robotTestState`         | Full tester state: phase, link status, team number, IP, checks array |
+| `firmwareUpdateProgress` | Firmware update step, message, progress percentage, elapsed time     |
+| `radioConfigureProgress` | Radio configure step, message, progress percentage, elapsed time     |
+
+### Client → Server
+
+| Message type            | Description                                                              |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `firmwareUpdateRequest` | Start firmware update (includes WPA key, optional skip-reconfigure flag) |
+| `radioConfigureRequest` | Start radio configuration (team number, WPA keys, optional SSID suffix)  |
+
+## Architecture
+
+```
+TestPage.tsx (React)
+    │
+    │ WebSocket
+    ▼
+websocketServer.ts ──► robotTestMonitor.ts (state machine)
+                           │
+                           ├─► teamChecker.ts (diagnostic checks)
+                           │     ├─ checkRadio()        → GET 10.TE.AM.1/status
+                           │     ├─ checkRoboRIO()      → POST 10.TE.AM.2/nisysapi/server
+                           │     ├─ checkFactoryDefault()→ GET 192.168.69.1/status
+                           │     └─ checkMdns()         → raw mDNS multicast query
+                           │
+                           ├─► firmwareUpdater.ts (firmware update flow)
+                           │     └─ POST 10.TE.AM.1/api/upgrade
+                           │
+                           └─► configureTeamRadio() (radio programming)
+                                 └─ POST <radioIp>/configuration
+```
+
+### Key Files
+
+| File                                   | Purpose                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `src/robotTestMonitor.ts`              | Core state machine: link detection, DHCP, factory probe, check scheduling, firmware update, radio configure |
+| `src/teamChecker.ts`                   | Standalone check functions: radio status, roboRIO NI SysAPI, factory default detection, mDNS resolution     |
+| `src/firmwareUpdater.ts`               | Firmware update flow: verify, upload, reboot wait, reconfigure                                              |
+| `src/firmwareStore.ts`                 | Firmware binary storage and background download                                                             |
+| `src/types.ts`                         | Type definitions: `RobotTestState`, `CheckResult`, `FirmwareUpdateProgress`, `RadioConfigureProgress`       |
+| `frontend/src/components/TestPage.tsx` | React UI: stepper, check results, firmware update dialog, radio configure dialog                            |
+| `frontend/src/hooks/useBackend.ts`     | WebSocket hooks: `useRobotTestState()`, `useFirmwareUpdateProgress()`, `useRadioConfigureProgress()`        |

@@ -264,6 +264,8 @@ The test interface needs to be a dedicated network path to the robot — either:
 
 The interface should **not** be managed by NetworkManager or have any existing IP configuration — the robot tester manages it entirely via `dhcpcd`.
 
+See [ROBOT-TESTER.md](ROBOT-TESTER.md) for full documentation of the tester's state machine, diagnostic checks, radio configuration, and firmware update flows.
+
 See [TECHNICAL.md](TECHNICAL.md) for details on the startup sequence, configuration flow, match state machine, and dry-run mode.
 
 ## Project Structure
