@@ -200,10 +200,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
 
   const pretty = prettyStationName(station);
 
-  const borderStyle = {
-    borderLeft: `0.5em solid ${station.startsWith('red') ? 'red' : 'blue'}`,
-  };
-
   const modalStyle = {
     minHeight: '5em',
     minWidth: isMobile ? undefined : '30em',
@@ -229,7 +225,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
         style={{
           marginBottom: full ? undefined : '1rem',
           height: full ? undefined : '22em',
-          ...borderStyle,
         }}
       >
         <CardContent sx={full ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}>
@@ -888,7 +883,6 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       >
         <form
           style={{
-            ...borderStyle,
             ...(isMobile ? { display: 'flex', flexDirection: 'column', height: '100%' } : {}),
           }}
           onSubmit={e => {
@@ -917,7 +911,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               inputRef={ssidInputRef} // Attach the ref here
               helperText={
                 isSSIDEmpty
-                  ? 'Your robot\'s broadcast name without the "FRC-" prefix.\ne.g. FRC-123-Comp → 123-Comp\nCase-sensitive.'
+                  ? "Your robot's broadcast SSID.\ne.g. 123-Comp\nCase-sensitive."
                   : !ssidRegex.test(ssid)
                     ? 'SSID must be alphanumeric and up to 14 characters.'
                     : !ssidFormatRegex.test(ssid)

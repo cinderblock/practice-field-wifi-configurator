@@ -2,17 +2,28 @@ import { createRoot } from 'react-dom/client';
 import { ControlPage } from '../components/ControlPage';
 import { WrapAll } from './wrap';
 
-// Extract the SSID from the URL path: /control/<ssid>
+// Extract the team number from the URL path: /control/<teamNumber>
 const pathParts = window.location.pathname.split('/');
-const ssid = decodeURIComponent(pathParts[2] ?? '');
+const raw = decodeURIComponent(pathParts[2] ?? '');
 
-if (!ssid) {
-  // No SSID in the URL — redirect to home
+// Parse team number (digits only)
+const teamNumber = parseInt(raw, 10);
+
+if (!raw) {
+  // Nothing in URL — redirect to home
   window.location.href = '/';
+} else if (isNaN(teamNumber) || teamNumber <= 0) {
+  // Old URL format like /control/1234-Comp — extract digits and redirect
+  const digits = raw.match(/^(\d+)/);
+  if (digits) {
+    window.location.href = `/control/${digits[1]}`;
+  } else {
+    window.location.href = '/';
+  }
 } else {
   createRoot(document.getElementById('root')!).render(
     <WrapAll>
-      <ControlPage ssid={ssid} />
+      <ControlPage teamNumber={teamNumber} />
     </WrapAll>,
   );
 }

@@ -4,7 +4,6 @@ import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Container from '@mui/material/Container';
-import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
@@ -30,16 +29,14 @@ import { TeamChecksModal } from './TeamChecksModal';
 import { StationNetworkCard } from './NetworkPage';
 import { StationName, StationNameList, SavedTeamConfig } from '../../../src/types';
 import { createHash } from './cryptoUtils';
-import { StationChart, GroupedChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
-import { TeamChecksPanel } from './TeamChecksPanel';
+import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { CopyToClipboard } from './CopyToClipboard';
 import IconButton from '@mui/material/IconButton';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import Switch from '@mui/material/Switch';
-import FormControlLabel from '@mui/material/FormControlLabel';
+import AddIcon from '@mui/icons-material/Add';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -55,34 +52,37 @@ function formatNumberWithThinSpace(num: number | undefined): string {
 }
 
 /**
- * Find the physical station for a given SSID from radio status data.
+ * Find ALL physical stations assigned to SSIDs belonging to a given team number.
+ * Returns a Map of ssid → stationName.
  */
-function useStationForSsid(ssid: string): StationName | null {
+function useStationsForTeam(teamNumber: number): Map<string, StationName> {
   const latest = useLatest();
   const stagedChanges = useBackendStagedChanges();
 
   return useMemo(() => {
+    const result = new Map<string, StationName>();
     const stationStatuses = latest?.radioUpdate?.stationStatuses;
 
-    // Check active radio status
-    if (stationStatuses) {
-      for (const station of StationNameList) {
-        if (stationStatuses[station]?.ssid === ssid) {
-          return station;
+    for (const station of StationNameList) {
+      // Check active radio status
+      const ssid = stationStatuses?.[station]?.ssid;
+      if (ssid) {
+        const num = parseInt(ssid.split('-', 2)[0]);
+        if (num === teamNumber) {
+          result.set(ssid, station);
+        }
+      }
+      // Check staged changes (may override or add)
+      const staged = stagedChanges[station];
+      if (staged?.ssid) {
+        const num = parseInt(staged.ssid.split('-', 2)[0]);
+        if (num === teamNumber && !result.has(staged.ssid)) {
+          result.set(staged.ssid, station);
         }
       }
     }
-
-    // Check staged changes
-    for (const station of StationNameList) {
-      const staged = stagedChanges[station];
-      if (staged && staged.ssid === ssid) {
-        return station;
-      }
-    }
-
-    return null;
-  }, [latest, stagedChanges, ssid]);
+    return result;
+  }, [latest, stagedChanges, teamNumber]);
 }
 
 /**
@@ -108,242 +108,302 @@ function useFindAvailableStation(): StationName | null {
 
 /**
  * The main control page component.
- * URL: /control/<ssid>
+ * URL: /control/<teamNumber>
  *
- * This page replaces the old /red1, /blue2, etc. station pages.
- * Users see their team config and can join matches by choosing an alliance.
+ * Shows a robot management dashboard for a single team:
+ * - List of saved robot configs for this team
+ * - Add new robot form
+ * - Active robot status and match controls
  */
-export function ControlPage({ ssid }: { ssid: string }) {
-  // Parse team number from SSID
-  const teamNumber = parseInt(ssid.split('-', 2)[0]);
-  const suffix = ssid.includes('-') ? ssid.split('-').slice(1).join('-') : undefined;
-  const displayName = isNaN(teamNumber) ? ssid : suffix ? `${teamNumber}-${suffix}` : `${teamNumber}`;
-
-  // Find the physical station this SSID is currently assigned to
-  const station = useStationForSsid(ssid);
+export function ControlPage({ teamNumber }: { teamNumber: number }) {
+  // All active stations for this team
+  const activeStations = useStationsForTeam(teamNumber);
   const availableStation = useFindAvailableStation();
 
-  // Server-side saved team configs
+  // Server-side saved team configs filtered to this team
   const savedTeams = useSavedTeams();
-  const savedConfig = savedTeams?.teams.find(t => t.ssid === ssid);
-
-  const handleChangeTeam = () => {
-    localStorage.removeItem('saved-team-number');
-    localStorage.removeItem('saved-team-suffix');
-    window.location.href = '/';
-  };
+  const teamConfigs = useMemo(() => {
+    if (!savedTeams) return [];
+    return savedTeams.teams.filter(t => {
+      const num = parseInt(t.ssid.split('-', 2)[0]);
+      return num === teamNumber;
+    });
+  }, [savedTeams, teamNumber]);
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          Team {displayName}
-          {station && <Chip label="Connected" color="success" size="small" icon={<CheckCircleIcon />} />}
-        </Typography>
-        <Link
-          component="button"
-          variant="body2"
-          onClick={handleChangeTeam}
-          underline="hover"
-          sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}
-        >
-          Change Team
-        </Link>
-      </Box>
+      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>
+        Team {teamNumber}
+      </Typography>
 
-      {/* Show match panel if station is assigned */}
-      {station && <MatchPanelForControl station={station} ssid={ssid} />}
+      {/* Robot list and add-robot form */}
+      <RobotList
+        teamNumber={teamNumber}
+        teamConfigs={teamConfigs}
+        activeStations={activeStations}
+        availableStation={availableStation}
+      />
 
-      {/* Configuration section */}
-      {station ? (
-        <StationExperience station={station} ssid={ssid} />
-      ) : (
-        <ConfigurationPanel ssid={ssid} savedConfig={savedConfig} availableStation={availableStation} />
-      )}
+      {/* Active robot experiences */}
+      {Array.from(activeStations.entries()).map(([ssid, station]) => (
+        <Box key={ssid} sx={{ mt: 2 }}>
+          <Typography variant="h6" sx={{ mb: 1, fontFamily: 'monospace' }}>
+            {ssid}
+          </Typography>
+          <MatchPanelForControl station={station} ssid={ssid} />
+          <StationExperience station={station} />
+        </Box>
+      ))}
     </Container>
   );
 }
 
 /**
- * Panel shown when this SSID is not yet configured on any station.
- * Shows saved config (if available) or passphrase entry form.
+ * List of saved robot configs for this team + add-robot form.
  */
-function ConfigurationPanel({
-  ssid,
-  savedConfig,
+function RobotList({
+  teamNumber,
+  teamConfigs,
+  activeStations,
   availableStation,
 }: {
-  ssid: string;
-  savedConfig: SavedTeamConfig | undefined;
+  teamNumber: number;
+  teamConfigs: SavedTeamConfig[];
+  activeStations: Map<string, StationName>;
   availableStation: StationName | null;
 }) {
-  const [passphrase, setPassphrase] = useState('');
-  const [internetAccess, setInternetAccess] = useState(false);
-
-  const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
-  const isPassphraseValid = passphraseRegex.test(passphrase);
-
-  const handleEnable = (wpaKey: string, stage = false, internet = false) => {
-    if (!availableStation) return;
-    sendNewConfig(availableStation, ssid, wpaKey, stage, internet);
-  };
+  const [showAddForm, setShowAddForm] = useState(false);
 
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="h6">Robots</Typography>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setShowAddForm(!showAddForm)}>
+            Add Robot
+          </Button>
+        </Box>
+
         {!availableStation && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            All 6 radio slots are in use. Remove a team from another station before enabling this one.
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            All 6 radio slots are in use. Remove a team from another station before enabling a new robot.
           </Alert>
         )}
 
-        {savedConfig ? (
-          <SavedConfigSection savedConfig={savedConfig} availableStation={availableStation} onEnable={handleEnable} />
+        {showAddForm && (
+          <AddRobotForm
+            teamNumber={teamNumber}
+            availableStation={availableStation}
+            onDone={() => setShowAddForm(false)}
+          />
+        )}
+
+        {teamConfigs.length === 0 && !showAddForm ? (
+          <Typography variant="body2" color="text.secondary">
+            No saved robots for this team. Click "Add Robot" to configure one.
+          </Typography>
         ) : (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Configure Wi-Fi
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Enter the WPA passphrase for SSID <strong>FRC-{ssid}</strong>
-            </Typography>
-            <TextField
-              label="Passphrase"
-              value={passphrase}
-              onChange={e => setPassphrase(e.target.value)}
-              fullWidth
-              margin="normal"
-              helperText={
-                passphrase && !isPassphraseValid ? 'Passphrase must be alphanumeric and between 8-16 characters.' : ''
-              }
-              error={!!passphrase && !isPassphraseValid}
-            />
-            <FormControlLabel
-              control={<Switch checked={internetAccess} onChange={(_, checked) => setInternetAccess(checked)} />}
-              label="Internet access"
-            />
-            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-              <Button
-                variant="contained"
-                color="primary"
-                disabled={!isPassphraseValid || !availableStation}
-                onClick={() => handleEnable(passphrase, false, internetAccess)}
-              >
-                Enable
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                disabled={!isPassphraseValid || !availableStation}
-                onClick={() => handleEnable(passphrase, true, internetAccess)}
-              >
-                Stage
-              </Button>
-            </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {teamConfigs.map(config => (
+              <RobotRow
+                key={config.ssid}
+                config={config}
+                isActive={activeStations.has(config.ssid)}
+                availableStation={availableStation}
+              />
+            ))}
           </Box>
         )}
 
-        {/* Passphrase check section (optional) */}
-        <PassphraseChecker ssid={ssid} savedConfig={savedConfig} />
+        {/* Passphrase checker for any saved config */}
+        {teamConfigs.length > 0 && <PassphraseChecker teamConfigs={teamConfigs} />}
       </CardContent>
     </Card>
   );
 }
 
 /**
- * Shows a saved config with enable/stage buttons.
+ * A single row in the robot list showing a saved config.
  */
-function SavedConfigSection({
-  savedConfig,
+function RobotRow({
+  config,
+  isActive,
   availableStation,
-  onEnable,
 }: {
-  savedConfig: SavedTeamConfig;
+  config: SavedTeamConfig;
+  isActive: boolean;
   availableStation: StationName | null;
-  onEnable: (wpaKey: string, stage?: boolean, internet?: boolean) => void;
 }) {
-  const [internetAccess, setInternetAccess] = useState(savedConfig.internetAccess ?? false);
+  const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
+
+  const handleEnable = (stage: boolean) => {
+    if (!availableStation) return;
+    sendNewConfig(availableStation, config.ssid, config.wpaKey, stage);
+  };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h6">Saved Configuration</Typography>
-        <Tooltip title="Remove saved configuration">
-          <IconButton
-            size="small"
-            onClick={() => sendRemoveSavedTeam(savedConfig.ssid)}
-            sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-          >
-            <DeleteOutlineIcon />
-          </IconButton>
-        </Tooltip>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 2,
+        py: 1,
+        borderRadius: 1,
+        '&:hover': { backgroundColor: 'action.hover' },
+        transition: 'background-color 0.15s',
+      }}
+    >
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+            {suffix ?? config.ssid}
+          </Typography>
+          {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          Last used {formatAge(config.lastUsedAt)}
+        </Typography>
       </Box>
 
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Last used {formatAge(savedConfig.lastUsedAt)}
-      </Typography>
-
-      <FormControlLabel
-        control={<Switch checked={internetAccess} onChange={(_, checked) => setInternetAccess(checked)} />}
-        label="Internet access"
-      />
-
-      <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          disabled={!availableStation}
-          onClick={() => onEnable(savedConfig.wpaKey, false, internetAccess)}
-          sx={{ flex: 1 }}
-        >
-          Enable
-        </Button>
-        <Button
-          variant="outlined"
-          color="secondary"
-          disabled={!availableStation}
-          onClick={() => onEnable(savedConfig.wpaKey, true, internetAccess)}
-        >
-          Stage
-        </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        {!isActive && (
+          <>
+            <Button size="small" variant="outlined" disabled={!availableStation} onClick={() => handleEnable(true)}>
+              Stage
+            </Button>
+            <Button size="small" variant="contained" disabled={!availableStation} onClick={() => handleEnable(false)}>
+              Enable
+            </Button>
+          </>
+        )}
+        <Tooltip title="Remove saved robot">
+          <IconButton
+            size="small"
+            onClick={() => sendRemoveSavedTeam(config.ssid)}
+            sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+          >
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
     </Box>
   );
 }
 
 /**
- * Optional passphrase verification feature.
- * Computes SHA-256(ssid + input) on each keypress and compares to the server's hash.
+ * Form for adding a new robot (suffix + passphrase).
  */
-function PassphraseChecker({ ssid, savedConfig }: { ssid: string; savedConfig: SavedTeamConfig | undefined }) {
+function AddRobotForm({
+  teamNumber,
+  availableStation,
+  onDone,
+}: {
+  teamNumber: number;
+  availableStation: StationName | null;
+  onDone: () => void;
+}) {
+  const [suffix, setSuffix] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+
+  const ssid = suffix ? `${teamNumber}-${suffix}` : `${teamNumber}`;
+  const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
+  const isValid = passphraseRegex.test(passphrase);
+
+  const handleSubmit = (stage: boolean) => {
+    if (!isValid || !availableStation) return;
+    sendNewConfig(availableStation, ssid, passphrase, stage);
+    onDone();
+  };
+
+  return (
+    <Card variant="outlined" sx={{ mb: 2, p: 2 }}>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        New Robot
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        SSID: <strong>{ssid}</strong>
+      </Typography>
+      <TextField
+        label="Suffix (optional)"
+        value={suffix}
+        onChange={e => setSuffix(e.target.value.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 10))}
+        fullWidth
+        size="small"
+        sx={{ mb: 1 }}
+      />
+      <TextField
+        label="Passphrase"
+        value={passphrase}
+        onChange={e => setPassphrase(e.target.value)}
+        fullWidth
+        size="small"
+        helperText={passphrase && !isValid ? 'Must be 8-16 alphanumeric characters.' : ''}
+        error={!!passphrase && !isValid}
+        sx={{ mb: 2 }}
+      />
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          disabled={!isValid || !availableStation}
+          onClick={() => handleSubmit(true)}
+        >
+          Stage
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          disabled={!isValid || !availableStation}
+          onClick={() => handleSubmit(false)}
+        >
+          Apply Now
+        </Button>
+        <Button size="small" onClick={onDone}>
+          Cancel
+        </Button>
+      </Box>
+    </Card>
+  );
+}
+
+/**
+ * Passphrase verification feature.
+ * Computes SHA-256(ssid + input) on each keypress and compares to saved hashes.
+ */
+function PassphraseChecker({ teamConfigs }: { teamConfigs: SavedTeamConfig[] }) {
   const [checkValue, setCheckValue] = useState('');
-  const [hashMatch, setHashMatch] = useState<boolean | null>(null);
-  const savedTeams = useSavedTeams();
+  const [matchedSsid, setMatchedSsid] = useState<string | null>(null);
 
   const handleCheck = useCallback(
     async (value: string) => {
       setCheckValue(value);
 
       if (value.length < 8) {
-        setHashMatch(null);
+        setMatchedSsid(null);
         return;
       }
 
-      // Compute SHA-256(ssid + value) and compare against all saved teams
-      const hash = await createHash(ssid + value);
-      const teams = savedTeams?.teams ?? [];
-      const match = teams.some(t => t.ssid === ssid && t.wpaKeyHash === hash);
-      setHashMatch(match);
+      // Check against all team configs
+      for (const config of teamConfigs) {
+        if (!config.wpaKeyHash) continue;
+        const hash = await createHash(config.ssid + value);
+        if (hash === config.wpaKeyHash) {
+          setMatchedSsid(config.ssid);
+          return;
+        }
+      }
+      setMatchedSsid(null);
     },
-    [ssid, savedTeams],
+    [teamConfigs],
   );
 
-  // Only show if there's a saved config with a hash to compare against
-  if (!savedConfig?.wpaKeyHash) return null;
+  // Only show if there are configs with hashes
+  const hasHashes = teamConfigs.some(c => c.wpaKeyHash);
+  if (!hasHashes) return null;
 
   return (
-    <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+    <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Check passphrase
       </Typography>
@@ -355,8 +415,15 @@ function PassphraseChecker({ ssid, savedConfig }: { ssid: string; savedConfig: S
           onChange={e => handleCheck(e.target.value)}
           sx={{ flex: 1 }}
         />
-        {hashMatch === true && <CheckCircleIcon sx={{ color: 'success.main' }} />}
-        {hashMatch === false && (
+        {matchedSsid && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <CheckCircleIcon sx={{ color: 'success.main' }} />
+            <Typography variant="body2" color="success.main" sx={{ fontFamily: 'monospace' }}>
+              {matchedSsid}
+            </Typography>
+          </Box>
+        )}
+        {checkValue.length >= 8 && !matchedSsid && (
           <Typography variant="body2" color="error">
             No match
           </Typography>
@@ -367,11 +434,12 @@ function PassphraseChecker({ ssid, savedConfig }: { ssid: string; savedConfig: S
 }
 
 /**
- * Full station experience shown once a team is configured on a physical station.
- * Shows robot connection status, telemetry, charts, network diagnostics, etc.
+ * Full station experience shown once a robot is configured on a physical station.
+ * Shows radio status, telemetry, charts, network diagnostics, etc.
  */
-function StationExperience({ station }: { station: StationName; ssid: string }) {
+function StationExperience({ station }: { station: StationName }) {
   const [chartMode, setChartMode] = useState(true);
+  const [internetAccess, setInternetAccess] = useState(false);
   const latest = useLatest();
   const matchState = useMatchState();
   const telemetry = useLatestTelemetry(station);
@@ -402,8 +470,6 @@ function StationExperience({ station }: { station: StationName; ssid: string }) 
     dataAgeMs,
   } = stationStatus || {};
 
-  const internetAccess = latest?.radioUpdate?.stationStatuses[station]?.ssid ? false : false; // TODO: get actual internet state
-
   return (
     <>
       <TeamChecksModal station={station} />
@@ -433,6 +499,29 @@ function StationExperience({ station }: { station: StationName; ssid: string }) 
               ) : null}
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
+              {/* Internet access toggle */}
+              {stationSsid && (
+                <Tooltip title={internetAccess ? 'Disable internet access' : 'Enable internet access'}>
+                  <IconButton
+                    onClick={() => {
+                      const next = !internetAccess;
+                      setInternetAccess(next);
+                      sendInternetToggle(station, next);
+                    }}
+                    size="small"
+                    sx={{
+                      color: internetAccess ? 'success.main' : 'text.secondary',
+                      '&:hover': {
+                        color: internetAccess ? 'success.dark' : 'success.main',
+                        backgroundColor: 'action.hover',
+                      },
+                    }}
+                  >
+                    {internetAccess ? <PublicIcon /> : <PublicOffIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
+              {/* Chart/table toggle */}
               <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
                 <IconButton
                   onClick={() => setChartMode(!chartMode)}
