@@ -413,3 +413,9 @@ TRUSTED_PROXIES=127.0.0.1,::1,10.0.0.0/8,192.168.1.0/24
 ```
 
 This allows the application to read the `X-Forwarded-For` header from trusted proxies to log the real client IP instead of the proxy's IP (127.0.0.1).
+
+## Resources
+
+- [FRCture](https://frcture.readthedocs.io/en/latest/) — reverse-engineered documentation of FRC network protocols, including:
+  - [DS → RIO protocol](https://frcture.readthedocs.io/en/latest/driverstation/ds_to_rio.html) — Driver Station to roboRIO packet format
+  - [RIO → DS protocol](https://frcture.readthedocs.io/en/latest/driverstation/rio_to_ds.html) — roboRIO to Driver Station packet format

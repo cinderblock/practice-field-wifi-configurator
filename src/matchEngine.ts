@@ -1,12 +1,15 @@
 import dgram from 'dgram';
 import { makeDSPacket, Control, UdpSendPort, type OutboundTag } from './fmsServer.js';
 import {
+  Alliance,
   MatchPhase,
   MatchConfig,
+  MatchSlot,
   MatchState,
   MatchEndReason,
   StationName,
   StationNameList,
+  StationNumber,
   StationControlState,
 } from './types.js';
 import { appWarn, appError } from './appLogger.js';
@@ -17,11 +20,15 @@ const MAX_PERIOD = 300;
 const MAX_PAUSE = 10;
 const POST_MATCH_DISPLAY_MS = 3000;
 
+// 2026 REBUILT match timing:
+// Auto: 20s, Pause: ~3s (scoring assessment), Teleop: 110s (10s transition + 4×25s shifts), Endgame: 30s
 const DEFAULT_CONFIG: MatchConfig = {
-  autoDuration: 15,
-  teleopDuration: 135,
+  autoDuration: 20,
+  teleopDuration: 110,
   endgameDuration: 30,
   pauseDuration: 3,
+  skipAuto: false,
+  autoWinner: 'scores',
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -47,6 +54,13 @@ export class MatchEngine {
   private matchNumber = 0;
   private endReason: MatchEndReason | undefined;
   private teamResolver: TeamResolver;
+  /** Maps physical station → alliance match slot during an active match */
+  private portToSlot = new Map<StationName, MatchSlot>();
+  /** Which alliance won auto (computed after auto ends) */
+  private autoWinnerAlliance: Alliance | null = null;
+  /** Optional callback to get auto-period scores for auto winner determination.
+   *  Returns { red: number, blue: number } totals. */
+  private autoScoreResolver?: () => { red: number; blue: number };
 
   constructor(teamResolver?: TeamResolver) {
     this.teamResolver = teamResolver ?? (() => null);
@@ -59,6 +73,8 @@ export class MatchEngine {
         mode: 'teleOp',
         joined: false,
         ready: false,
+        alliance: null,
+        matchSlot: null,
       });
       this.sequenceNumbers.set(station, 0);
     }
@@ -104,18 +120,49 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Set callback used to determine auto winner from scoring data. */
+  setAutoScoreResolver(resolver: () => { red: number; blue: number }) {
+    this.autoScoreResolver = resolver;
+  }
+
   // ── Station self-service ──────────────────────────────────────────
 
+  /** @deprecated Use joinStationAlliance() instead. Kept for backward compatibility. */
   joinStation(station: StationName) {
+    // Infer alliance from the station name prefix (backward compat)
+    const alliance: Alliance = station.startsWith('red') ? 'red' : 'blue';
+    this.joinStationAlliance(station, alliance);
+  }
+
+  /** Join a station to a specific alliance (decoupled from physical port). */
+  joinStationAlliance(station: StationName, alliance: Alliance) {
     if (this.isMatchActive()) {
       appWarn(`Cannot join station ${station} during an active match`);
       return;
     }
+    // Enforce max 3 per alliance
+    const allianceCount = [...this.stationStates.values()].filter(s => s.joined && s.alliance === alliance).length;
+    if (allianceCount >= 3) {
+      appWarn(`Cannot join ${station} to ${alliance}: alliance already has 3 stations`);
+      return;
+    }
     const state = this.stationStates.get(station)!;
-    if (state.joined) return;
+    if (state.joined) {
+      // Already joined — allow changing alliance if not ready
+      if (state.alliance !== alliance) {
+        state.alliance = alliance;
+        state.ready = false;
+        state.matchSlot = null;
+        console.log(`Station ${station} switched to ${alliance} alliance`);
+        this.broadcast();
+      }
+      return;
+    }
     state.joined = true;
     state.ready = false;
-    console.log(`Station ${station} joined match system`);
+    state.alliance = alliance;
+    state.matchSlot = null;
+    console.log(`Station ${station} joined ${alliance} alliance`);
     this.broadcast();
   }
 
@@ -128,6 +175,8 @@ export class MatchEngine {
     if (!state.joined) return;
     state.joined = false;
     state.ready = false;
+    state.alliance = null;
+    state.matchSlot = null;
     console.log(`Station ${station} left match system`);
     this.broadcast();
   }
@@ -158,6 +207,8 @@ export class MatchEngine {
       teleopDuration,
       endgameDuration: clamp(config.endgameDuration, 0, teleopDuration),
       pauseDuration: clamp(config.pauseDuration, 0, MAX_PAUSE),
+      skipAuto: config.skipAuto ?? false,
+      autoWinner: config.autoWinner ?? 'scores',
     };
     // Changing config invalidates all ready states
     for (const state of this.stationStates.values()) {
@@ -187,6 +238,27 @@ export class MatchEngine {
     this.matchNumber++;
     this.totalMatchTime = 0;
     this.endReason = undefined;
+    this.autoWinnerAlliance = null;
+
+    // Compute portToSlot mapping: assign each joined station to an alliance slot
+    this.portToSlot.clear();
+    const redStations = joinedStations.filter(s => this.stationStates.get(s)!.alliance === 'red');
+    const blueStations = joinedStations.filter(s => this.stationStates.get(s)!.alliance === 'blue');
+    for (let i = 0; i < redStations.length; i++) {
+      const slot = `red${(i + 1) as StationNumber}` as MatchSlot;
+      this.portToSlot.set(redStations[i], slot);
+      this.stationStates.get(redStations[i])!.matchSlot = slot;
+    }
+    for (let i = 0; i < blueStations.length; i++) {
+      const slot = `blue${(i + 1) as StationNumber}` as MatchSlot;
+      this.portToSlot.set(blueStations[i], slot);
+      this.stationStates.get(blueStations[i])!.matchSlot = slot;
+    }
+
+    // Handle skipAuto: if enabled, start directly in countdown → teleop
+    const effectiveAutoDuration = this.config.skipAuto ? 0 : this.config.autoDuration;
+    const effectivePauseDuration = this.config.skipAuto ? 0 : this.config.pauseDuration;
+
     this.phase = 'countdown';
     this.remainingTime = 3;
 
@@ -196,13 +268,16 @@ export class MatchEngine {
       state.teamNumber = teamNumber;
       state.enabled = false;
       state.eStop = false;
-      state.mode = joinedStations.includes(station) ? 'auto' : 'teleOp';
+      state.mode = joinedStations.includes(station) ? (effectiveAutoDuration > 0 ? 'auto' : 'teleOp') : 'teleOp';
     }
 
     this.lastTickTime = Date.now();
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
 
-    console.log(`Match ${this.matchNumber} started with stations: ${joinedStations.join(', ')}`);
+    console.log(
+      `Match ${this.matchNumber} started with stations: ${joinedStations.join(', ')} ` +
+        `(red: ${redStations.join(',')}, blue: ${blueStations.join(',')})`,
+    );
     this.broadcast();
   }
 
@@ -256,9 +331,12 @@ export class MatchEngine {
     this.prePausePhase = null;
     this.config = null;
     this.phase = 'idle';
+    this.portToSlot.clear();
+    this.autoWinnerAlliance = null;
     for (const state of this.stationStates.values()) {
       state.ready = false;
-      // joined stays as-is — teams must leave manually
+      state.matchSlot = null;
+      // joined + alliance stay as-is — teams must leave manually
     }
     console.log(`Match ${this.matchNumber} abandoned`);
     this.broadcast();
@@ -366,6 +444,8 @@ export class MatchEngine {
       stationStates,
       connectedStations: Object.fromEntries(this.dsConnections),
       endReason: this.phase === 'postMatch' ? this.endReason : undefined,
+      portToSlot: this.portToSlot.size > 0 ? Object.fromEntries(this.portToSlot) : undefined,
+      autoWinnerAlliance: this.autoWinnerAlliance,
     };
   }
 
@@ -398,21 +478,24 @@ export class MatchEngine {
     // Phase expired — move to next
     switch (this.phase) {
       case 'countdown':
-        if (this.config.autoDuration > 0) {
-          this.phase = 'auto';
-          this.remainingTime = this.config.autoDuration;
-          this.enableParticipating('auto');
-          console.log('Autonomous period started');
-        } else {
+        if (this.config.skipAuto || this.config.autoDuration <= 0) {
           // Skip auto — go straight to teleop
           this.phase = 'teleop';
           this.remainingTime = this.config.teleopDuration;
           this.enableParticipating('teleOp');
           console.log('Teleop period started (auto skipped)');
+        } else {
+          this.phase = 'auto';
+          this.remainingTime = this.config.autoDuration;
+          this.enableParticipating('auto');
+          console.log('Autonomous period started');
         }
         break;
 
       case 'auto':
+        // Auto just ended — compute auto winner
+        this.computeAutoWinner();
+
         if (this.config.pauseDuration > 0) {
           this.phase = 'autoPause';
           this.remainingTime = this.config.pauseDuration;
@@ -447,14 +530,55 @@ export class MatchEngine {
     }
   }
 
+  /** Determine which alliance won the autonomous period. */
+  private computeAutoWinner() {
+    if (!this.config) return;
+    const mode = this.config.autoWinner ?? 'scores';
+
+    if (mode === 'red') {
+      this.autoWinnerAlliance = 'red';
+      console.log('Auto winner: RED (manual override)');
+    } else if (mode === 'blue') {
+      this.autoWinnerAlliance = 'blue';
+      console.log('Auto winner: BLUE (manual override)');
+    } else {
+      // 'scores' mode — use scoring engine
+      if (this.autoScoreResolver) {
+        try {
+          const scores = this.autoScoreResolver();
+          if (scores.red > scores.blue) {
+            this.autoWinnerAlliance = 'red';
+          } else if (scores.blue > scores.red) {
+            this.autoWinnerAlliance = 'blue';
+          } else {
+            // Tie — no winner (stays null). FMS would assign randomly; we leave it undecided.
+            this.autoWinnerAlliance = null;
+          }
+          console.log(
+            `Auto winner: ${this.autoWinnerAlliance ?? 'TIE'} (scores: red=${scores.red}, blue=${scores.blue})`,
+          );
+        } catch (err) {
+          appError(`Auto score resolver failed: ${err}`);
+          this.autoWinnerAlliance = null;
+        }
+      } else {
+        this.autoWinnerAlliance = null;
+        console.log('Auto winner: undetermined (no score resolver)');
+      }
+    }
+  }
+
   private schedulePostMatchReset() {
     setTimeout(() => {
       if (this.phase !== 'postMatch') return;
       this.config = null;
       this.phase = 'idle';
+      this.portToSlot.clear();
+      this.autoWinnerAlliance = null;
       for (const state of this.stationStates.values()) {
         state.ready = false;
-        // joined stays as-is — teams must leave manually to get free-drive back
+        state.matchSlot = null;
+        // joined + alliance stay as-is — teams must leave manually to get free-drive back
       }
       console.log('Post-match reset complete');
       this.broadcast();
@@ -488,10 +612,11 @@ export class MatchEngine {
 
     const control = new Control(false, false, 'teleOp'); // disabled, not e-stopped
 
+    const allianceStation = (this.portToSlot.get(station) ?? station) as StationName;
     const packet = makeDSPacket({
       sequence: seq & 0xffff,
       control,
-      allianceStation: station,
+      allianceStation,
       tournamentLevel: 'Practice',
       matchNumber: 0,
       playNumber: 0,
@@ -538,16 +663,30 @@ export class MatchEngine {
     // E-stop is a backend-only state that prevents re-enabling.
     const control = new Control(false, state.enabled && !state.eStop, state.mode);
 
+    // Use the portToSlot mapping for the alliance station byte if available.
+    // This is the critical decoupling: the DS sees the alliance position, not the physical port.
+    const allianceStation = (this.portToSlot.get(station) ?? station) as StationName;
+
+    // Build game data tags — during teleop/endgame, send the auto winner character
+    // per REBUILT game rules: 'R' = red's goal inactive first, 'B' = blue's goal inactive first
+    const tags: OutboundTag[] = [];
+    if (
+      this.autoWinnerAlliance &&
+      (this.phase === 'teleop' || this.phase === 'endgame' || this.phase === 'autoPause')
+    ) {
+      tags.push({ type: 'gameData', data: this.autoWinnerAlliance === 'red' ? 'R' : 'B' });
+    }
+
     const packet = makeDSPacket({
       sequence: seq & 0xffff,
       control,
-      allianceStation: station,
+      allianceStation,
       tournamentLevel: 'Practice',
       matchNumber: this.matchNumber,
       playNumber: 1,
       matchTime: new Date(),
       remainingTime: Math.max(0, Math.round(this.remainingTime)),
-      tags: [],
+      tags,
     });
 
     this.udpSocket.send(packet, 0, packet.length, UdpSendPort, ip, err => {

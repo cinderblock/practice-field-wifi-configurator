@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alliance,
   AppLogMessage,
   InternetToggle,
   MatchConfig,
   MatchState,
   MdnsActivity,
   NetworkStats,
+  SavedTeamsState,
   SubnetScanResults,
   TeamCheckResults,
   TelemetryUpdate,
@@ -13,6 +15,7 @@ import {
   isMatchState,
   isMdnsActivity,
   isNetworkStats,
+  isSavedTeamsState,
   isSubnetScanResults,
   isTeamCheckResults,
   isTelemetryUpdate,
@@ -219,6 +222,7 @@ function isErrorEntry(entry: unknown): entry is { error: string; details: string
 let currentMatchState: MatchState | null = null;
 let currentNetworkStats: NetworkStats | null = null;
 let currentSubnetScan: SubnetScanResults | null = null;
+let currentSavedTeams: SavedTeamsState | null = null;
 let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
@@ -329,6 +333,11 @@ function handleTeamCheckResults(results: TeamCheckResults) {
   events.dispatchEvent(new CustomEvent('teamCheckResults', { detail: results }));
 }
 
+function handleSavedTeamsState(state: SavedTeamsState) {
+  currentSavedTeams = state;
+  events.dispatchEvent(new CustomEvent('savedTeamsState', { detail: state }));
+}
+
 function handleServerInfo(info: ServerInfo) {
   // Auto-refresh if the backend has been updated since this frontend was built.
   // Both sides use the git short hash; 'unknown' means we can't compare (dev mode, no git).
@@ -434,6 +443,11 @@ function receiveMessage(detail: Message) {
     return;
   }
 
+  if (isSavedTeamsState(detail)) {
+    handleSavedTeamsState(detail);
+    return;
+  }
+
   if (isAppLogMessage(detail)) {
     handleAppLog(detail);
     return;
@@ -534,6 +548,20 @@ export function useWsConnected(): boolean {
   return connected;
 }
 
+// ── Saved Teams ─────────────────────────────────────────────────────
+
+export function useSavedTeams(): SavedTeamsState | null {
+  const [state, setState] = useState<SavedTeamsState | null>(currentSavedTeams);
+
+  useEffect(() => {
+    const handler = (e: Event) => setState((e as CustomEvent).detail);
+    events.addEventListener('savedTeamsState', handler);
+    return () => events.removeEventListener('savedTeamsState', handler);
+  }, []);
+
+  return state;
+}
+
 // ── Match State ─────────────────────────────────────────────────────
 
 export function useMatchState(): MatchState | null {
@@ -594,6 +622,16 @@ export function useMdnsActivity(): MdnsActivity | null {
 
 export function sendStationJoin(station: StationName) {
   ws?.send(JSON.stringify({ type: 'stationJoin', station }));
+}
+
+/** Join a station to a specific alliance (decoupled from physical port). */
+export function sendStationJoinAlliance(station: StationName, alliance: Alliance) {
+  ws?.send(JSON.stringify({ type: 'stationJoinAlliance', station, alliance }));
+}
+
+/** Remove a saved team config from the server. */
+export function sendRemoveSavedTeam(ssid: string) {
+  ws?.send(JSON.stringify({ type: 'removeSavedTeam', ssid }));
 }
 
 export function sendStationLeave(station: StationName) {

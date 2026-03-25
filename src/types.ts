@@ -371,12 +371,21 @@ export type Mode = 'teleOp' | 'test' | 'auto';
 
 export type MatchPhase = 'idle' | 'countdown' | 'auto' | 'autoPause' | 'paused' | 'teleop' | 'endgame' | 'postMatch';
 
+export type AutoWinnerMode = 'red' | 'blue' | 'scores';
+
 export type MatchConfig = {
   autoDuration: number;
   teleopDuration: number;
   endgameDuration: number;
   pauseDuration: number;
+  skipAuto?: boolean;
+  autoWinner?: AutoWinnerMode;
 };
+
+/** A position within a match: alliance + slot number. Semantically distinct from StationName
+ *  (which identifies a physical port/VLAN). A physical station "blue3" could be mapped to
+ *  match slot "red1" if the team joined the red alliance. */
+export type MatchSlot = `${Alliance}${StationNumber}`;
 
 export type StationControlState = {
   teamNumber: number | null;
@@ -385,6 +394,10 @@ export type StationControlState = {
   mode: Mode;
   joined: boolean;
   ready: boolean;
+  /** Which alliance this station joined for the match (null = not joined) */
+  alliance: Alliance | null;
+  /** Assigned match slot during an active match (null when idle) */
+  matchSlot: MatchSlot | null;
 };
 
 export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';
@@ -407,6 +420,10 @@ export type MatchState = {
   /** Map of station → DS connection info for stations with a connected Driver Station */
   connectedStations: Partial<Record<StationName, DSConnectionInfo>>;
   endReason?: MatchEndReason;
+  /** Maps physical station names to their assigned alliance match slots during a match */
+  portToSlot?: Partial<Record<StationName, MatchSlot>>;
+  /** Which alliance won the auto period (set after auto ends, null before or if not determined) */
+  autoWinnerAlliance?: Alliance | null;
 };
 
 export function isMatchState(msg: unknown): msg is MatchState {
@@ -422,6 +439,18 @@ export function isStationJoin(msg: unknown): msg is StationJoin {
   if (typeof msg !== 'object' || !msg) return false;
   const m = msg as StationJoin;
   return m.type === 'stationJoin' && StationNameRegex.test(m.station);
+}
+
+/** Join a station to a specific alliance (decoupled from physical port). */
+export type StationJoinAlliance = { type: 'stationJoinAlliance'; station: StationName; alliance: Alliance };
+export function isStationJoinAlliance(msg: unknown): msg is StationJoinAlliance {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationJoinAlliance;
+  return (
+    m.type === 'stationJoinAlliance' &&
+    StationNameRegex.test(m.station) &&
+    (m.alliance === 'red' || m.alliance === 'blue')
+  );
 }
 
 export type StationLeave = { type: 'stationLeave'; station: StationName };
@@ -472,6 +501,8 @@ export function isUpdateMatchConfig(msg: unknown): msg is UpdateMatchConfig {
   if (typeof m.config.teleopDuration !== 'number') return false;
   if (typeof m.config.endgameDuration !== 'number') return false;
   if (typeof m.config.pauseDuration !== 'number') return false;
+  if (m.config.skipAuto !== undefined && typeof m.config.skipAuto !== 'boolean') return false;
+  if (m.config.autoWinner !== undefined && !['red', 'blue', 'scores'].includes(m.config.autoWinner)) return false;
   return true;
 }
 
@@ -706,6 +737,38 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
   if (typeof lastUsedAt !== 'number') return false;
 
   return true;
+}
+
+// ── Server-Side Saved Team Configs ──────────────────────────────────
+
+/** A saved team WiFi configuration stored server-side. */
+export interface SavedTeamConfig {
+  ssid: string;
+  wpaKey: string;
+  /** SHA-256(ssid + wpaKey) for client-side passphrase verification without revealing the key */
+  wpaKeyHash: string;
+  internetAccess?: boolean;
+  createdAt: number;
+  lastUsedAt: number;
+}
+
+/** Broadcast from server to clients with all saved team configs. */
+export interface SavedTeamsState {
+  type: 'savedTeamsState';
+  teams: SavedTeamConfig[];
+}
+
+export function isSavedTeamsState(msg: unknown): msg is SavedTeamsState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as SavedTeamsState).type === 'savedTeamsState';
+}
+
+/** Client request to remove a saved team config. */
+export type RemoveSavedTeam = { type: 'removeSavedTeam'; ssid: string };
+export function isRemoveSavedTeam(msg: unknown): msg is RemoveSavedTeam {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RemoveSavedTeam;
+  return m.type === 'removeSavedTeam' && typeof m.ssid === 'string';
 }
 
 // ── mDNS Reflector Activity ─────────────────────────────────────────

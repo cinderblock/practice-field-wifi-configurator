@@ -28,6 +28,7 @@ import { FirmwareStore } from './firmwareStore.js';
 import { handleFirmwareRequest } from './firmwareApi.js';
 import { ScoringEngine } from './scoringEngine.js';
 import { handleScoringRequest } from './scoringApi.js';
+import { SavedTeamStore } from './savedTeamStore.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -165,11 +166,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   await matchAudio.init();
   matchAudio.attachToEngine(matchEngine);
 
+  // Initialize saved team store (server-side WiFi credential persistence)
+  const savedTeamStore = new SavedTeamStore();
+
   // Initialize scoring engine
   const ScoringApiKey = process.env.SCORING_API_KEY;
   const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;
   const scoringEngine = new ScoringEngine();
   scoringEngine.setAutoRegisterLimit(ScoringAutoRegisterLimit);
+
+  // Wire up auto score resolver so match engine can determine auto winner from scoring data
+  matchEngine.setAutoScoreResolver(() => {
+    const scoreState = scoringEngine.getState();
+    // Use the auto phase breakdown if available, otherwise fall back to current totals
+    const autoBreakdown = scoreState.phaseBreakdown?.['auto'];
+    if (autoBreakdown) {
+      return { red: autoBreakdown.red.total, blue: autoBreakdown.blue.total };
+    }
+    return { red: scoreState.red.total, blue: scoreState.blue.total };
+  });
 
   // Auto-switch scoring mode based on match state
   matchEngine.addStateListener(state => scoringEngine.onMatchStateChange(state));
@@ -201,6 +216,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         console.error('Radio configuration failed:', err.message);
       });
     },
+    savedTeamStore,
   );
   setBroadcast(broadcast);
 
@@ -331,6 +347,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     if (robotTestMonitor) ws.send(JSON.stringify(robotTestMonitor.getState()));
     ws.send(JSON.stringify(scoringEngine.getState()));
     ws.send(JSON.stringify({ type: 'firmwareStoreUpdate', entries: firmwareStore.getEntries() }));
+  });
+
+  // Auto-save team configs to the saved team store when radio config changes
+  radioManager.addConfigChangeListener(() => {
+    for (const station of StationNameList) {
+      const config = radioManager.getStationConfig(station);
+      if (config?.ssid && config?.wpaKey) {
+        savedTeamStore.saveTeam(config.ssid, config.wpaKey, config.internetAccess);
+      }
+    }
   });
 
   // Clean up state and broadcast updates when station configs change

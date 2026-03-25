@@ -11,6 +11,7 @@ import {
   isAdminStationDisable,
   isAdminClearEStop,
   isStationJoin,
+  isStationJoinAlliance,
   isStationLeave,
   isStationReady,
   isStationStartMatch,
@@ -26,6 +27,7 @@ import {
   isCastReceiverRegister,
   isCastReceiverSwap,
   isRadioConfigureRequest,
+  isRemoveSavedTeam,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -36,6 +38,7 @@ import { getRealClientIp, normalizeIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
 import { appError, appWarn } from './appLogger.js';
 import { MatchEngine } from './matchEngine.js';
+import type { SavedTeamStore } from './savedTeamStore.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -77,6 +80,7 @@ export function setupWebSocket(
   httpHandlers?: HttpRequestHandler[],
   onFirmwareUpdate?: FirmwareUpdateCallback,
   onRadioConfigure?: RadioConfigureCallback,
+  savedTeamStore?: SavedTeamStore,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -171,6 +175,9 @@ export function setupWebSocket(
   // Broadcast match state to all clients
   matchEngine.addStateListener(broadcast);
 
+  // Broadcast saved team config changes to all clients
+  savedTeamStore?.addListener(broadcast);
+
   // Broadcast pending commit state changes to all clients
   radioManager.addPendingCommitListener(pending => {
     broadcast({
@@ -208,6 +215,11 @@ export function setupWebSocket(
     ws.send(
       JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo),
     );
+
+    // Send saved team configs
+    if (savedTeamStore) {
+      ws.send(JSON.stringify(savedTeamStore.getState()));
+    }
 
     ws.on('close', () => {
       wsToIp.delete(ws);
@@ -291,7 +303,10 @@ export function setupWebSocket(
               });
           }
         }
+      } else if (isStationJoinAlliance(data)) {
+        matchEngine.joinStationAlliance(data.station, data.alliance);
       } else if (isStationJoin(data)) {
+        // Backward compat: infer alliance from station name prefix
         matchEngine.joinStation(data.station);
       } else if (isStationLeave(data)) {
         matchEngine.leaveStation(data.station);
@@ -345,6 +360,10 @@ export function setupWebSocket(
         // Send the assigned ID back to the receiver
         ws.send(JSON.stringify({ type: 'castReceiverId', id }));
         broadcastReceiverList();
+      } else if (isRemoveSavedTeam(data)) {
+        if (savedTeamStore) {
+          savedTeamStore.removeTeam(data.ssid);
+        }
       } else if (isCastReceiverSwap(data)) {
         // Find the target receiver and send it the swap command
         for (const [rws, info] of castReceivers) {

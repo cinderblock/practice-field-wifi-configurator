@@ -9,8 +9,17 @@ function stationRoutes(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0];
+
+        // Redirect legacy station URLs to root
         if (url?.match(/^\/(red|blue)[1-3]$/)) {
-          req.url = '/station.html';
+          res.writeHead(302, { Location: '/' });
+          res.end();
+          return;
+        }
+
+        // Control page: /control/<ssid> → control.html
+        if (url?.startsWith('/control')) {
+          req.url = '/control.html';
         }
         if (url === '/admin') {
           req.url = '/admin.html';
@@ -67,6 +76,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
+        control: 'control.html',
         station: 'station.html',
         admin: 'admin.html',
         logs: 'logs.html',
