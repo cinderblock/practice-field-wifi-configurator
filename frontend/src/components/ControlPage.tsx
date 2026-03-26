@@ -26,15 +26,22 @@ import {
   useLastLinked,
   sendRoutePreference,
   useRoutePreferenceState,
+  usePortBridgeState,
+  sendPortBridge,
 } from '../hooks/useBackend';
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
 import { StationNetworkCard } from './NetworkPage';
-import { StationName, StationNameList, SavedTeamConfig } from '../../../src/types';
+import { StationName, StationNameList, SavedTeamConfig, PortConfig } from '../../../src/types';
 import { createHash } from './cryptoUtils';
 import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { CopyToClipboard } from './CopyToClipboard';
 import IconButton from '@mui/material/IconButton';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import EthernetIcon from '@mui/icons-material/SettingsEthernet';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
@@ -325,6 +332,7 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
                 {ssid}
               </Typography>
               <MatchPanelForControl station={station} ssid={ssid} />
+              <PortSelector station={station} />
               <StationExperience station={station} showCharts={isSelected} />
             </Box>
           );
@@ -1445,5 +1453,79 @@ function StationExperience({ station, showCharts = true }: { station: StationNam
         hideStationLabel
       />
     </>
+  );
+}
+
+/**
+ * Port selector — lets a team bridge a physical Ethernet port to their station.
+ * Only rendered when FIELD_PORTS is configured on the server.
+ */
+function PortSelector({ station }: { station: StationName }) {
+  const portState = usePortBridgeState();
+
+  // Don't render if port bridging is not configured
+  if (!portState || portState.ports.length === 0) return null;
+
+  // Find which port (if any) is currently bridged to this station
+  const currentPortVlanId = Object.entries(portState.activeBridges).find(([, s]) => s === station)?.[0];
+  const currentPort = currentPortVlanId ? portState.ports.find(p => p.vlanId === Number(currentPortVlanId)) : null;
+
+  // Build list of available ports (not bridged to another station)
+  const usedVlanIds = new Set(
+    Object.entries(portState.activeBridges)
+      .filter(([, s]) => s !== station)
+      .map(([vlanId]) => Number(vlanId)),
+  );
+  const availablePorts = portState.ports.filter(p => !usedVlanIds.has(p.vlanId));
+
+  const handleChange = (value: string) => {
+    if (value === '') {
+      // Disconnect
+      sendPortBridge(station, null);
+    } else {
+      sendPortBridge(station, Number(value));
+    }
+  };
+
+  return (
+    <Card sx={{ mb: 1 }}>
+      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <EthernetIcon sx={{ color: currentPort ? 'success.main' : 'text.secondary', fontSize: 20 }} />
+          <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
+            <InputLabel id={`port-select-${station}`}>Ethernet Port</InputLabel>
+            <Select
+              labelId={`port-select-${station}`}
+              label="Ethernet Port"
+              value={currentPortVlanId ?? ''}
+              onChange={e => handleChange(e.target.value as string)}
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              {availablePorts.map(port => (
+                <MenuItem key={port.vlanId} value={String(port.vlanId)}>
+                  {port.name}
+                </MenuItem>
+              ))}
+              {/* Show the currently selected port even if it's "used" (by this station) */}
+              {currentPort && !availablePorts.find(p => p.vlanId === currentPort.vlanId) && (
+                <MenuItem key={currentPort.vlanId} value={String(currentPort.vlanId)}>
+                  {currentPort.name}
+                </MenuItem>
+              )}
+            </Select>
+          </FormControl>
+          {currentPort && (
+            <Chip
+              label={`Connected to ${currentPort.name}`}
+              color="success"
+              size="small"
+              sx={{ fontSize: '0.75rem' }}
+            />
+          )}
+        </Box>
+      </CardContent>
+    </Card>
   );
 }

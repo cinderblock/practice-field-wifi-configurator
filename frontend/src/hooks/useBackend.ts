@@ -27,6 +27,7 @@ import {
   isPendingCommitState,
   isLastLinkedState,
   isServerInfo,
+  isPortBridgeState,
   isRobotTestState,
   isFirmwareUpdateProgress,
   isRadioConfigureProgress,
@@ -48,6 +49,8 @@ import {
   PendingCommitState,
   LastLinkedState,
   ServerInfo,
+  PortBridgeState,
+  PortBridgeRequest,
   RoutePreferenceMsg,
   RunTeamChecks,
   StationName,
@@ -350,6 +353,15 @@ function handleSavedTeamsState(state: SavedTeamsState) {
   events.dispatchEvent(new CustomEvent('savedTeamsState', { detail: state }));
 }
 
+// ── Port Bridge State ────────────────────────────────────────────────
+
+let currentPortBridgeState: PortBridgeState | null = null;
+
+function handlePortBridgeState(state: PortBridgeState) {
+  currentPortBridgeState = state;
+  events.dispatchEvent(new CustomEvent('portBridgeState', { detail: state }));
+}
+
 function handleServerInfo(info: ServerInfo) {
   // Auto-refresh if the backend has been updated since this frontend was built.
   // Both sides use the git short hash; 'unknown' means we can't compare (dev mode, no git).
@@ -472,6 +484,11 @@ function receiveMessage(detail: Message) {
 
   if (isSavedTeamsState(detail)) {
     handleSavedTeamsState(detail);
+    return;
+  }
+
+  if (isPortBridgeState(detail)) {
+    handlePortBridgeState(detail);
     return;
   }
 
@@ -1072,6 +1089,26 @@ export function sendDismissPendingDevice(id: string) {
 
 export function sendScoreReset() {
   ws?.send(JSON.stringify({ type: 'scoreReset' }));
+}
+
+// ── Port Bridge ─────────────────────────────────────────────────────
+
+export function usePortBridgeState(): PortBridgeState | null {
+  const [state, setState] = useState<PortBridgeState | null>(currentPortBridgeState);
+
+  useEffect(() => {
+    setState(currentPortBridgeState);
+    const handler = (e: Event) => setState((e as CustomEvent<PortBridgeState>).detail);
+    events.addEventListener('portBridgeState', handler);
+    return () => events.removeEventListener('portBridgeState', handler);
+  }, []);
+
+  return state;
+}
+
+/** Request to bridge a physical port to a station, or unbind (portVlanId=null). */
+export function sendPortBridge(station: StationName, portVlanId: number | null) {
+  ws?.send(JSON.stringify({ type: 'portBridge', station, portVlanId } satisfies PortBridgeRequest));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

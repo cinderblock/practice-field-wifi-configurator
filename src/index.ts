@@ -37,6 +37,7 @@ import { ScoringEngine } from './scoringEngine.js';
 import { handleScoringRequest } from './scoringApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
 import { ApiKeyStore } from './apiKeyStore.js';
+import { PortBridgeManager, parseFieldPorts } from './portBridgeManager.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -63,6 +64,9 @@ const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
 const TestInterface = process.env.TEST_INTERFACE;
 const VlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
 const WebSocketPort = Number(process.env.WEBSOCKET_PORT) || 3000;
+
+// Physical port bridging configuration
+const FieldPorts = parseFieldPorts(process.env.FIELD_PORTS);
 
 // Trusted proxy configuration
 const trustedProxyMatcher = process.env.TRUSTED_PROXIES
@@ -117,6 +121,23 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
     // Enable IP forwarding once at startup (required for inter-VLAN routing)
     await net.setSysctl({ key: 'net.ipv4.ip_forward', value: '1' });
+  }
+
+  // Initialize port bridge manager (physical Ethernet port → station bridge mapping)
+  let portBridgeManager: PortBridgeManager | undefined;
+  if (VlanInterface && FieldPorts.length > 0) {
+    const portNet = net ?? (process.env.DRY_RUN ? createDryRunBackend() : createBackend());
+    portBridgeManager = new PortBridgeManager(portNet, VlanInterface, FieldPorts);
+
+    if (KeepNetwork) {
+      // Graceful restart — try to restore port bridge state from kernel
+      await portBridgeManager.restoreFromKernel();
+    } else {
+      // Full restart — clean up stale port VLAN interfaces
+      await portBridgeManager.cleanupPortInterfaces();
+    }
+
+    console.log(`Port bridging enabled: ${FieldPorts.length} port(s) configured`);
   }
 
   // Initialize radio manager — firmware mode will be set when the radio connects
@@ -233,6 +254,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     savedTeamStore,
     apiKeyStore,
     scoringEngine,
+    portBridgeManager,
   );
   setBroadcast(broadcast);
 
@@ -388,6 +410,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         checksInFlight.delete(station);
         checksRetryCount.delete(station);
         subnetScanner.clearStation(station);
+        // Unbind any physical ports from this station's bridge
+        portBridgeManager?.unbridgeAllFromStation(station).catch(err => {
+          console.error(`Failed to unbind ports from ${station}:`, err);
+        });
       }
     }
     broadcast(subnetScanner.getResults());

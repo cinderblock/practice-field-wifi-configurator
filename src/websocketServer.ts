@@ -35,6 +35,7 @@ import {
   isApprovePendingDevice,
   isDismissPendingDevice,
   isScoreReset,
+  isPortBridgeRequest,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -49,6 +50,7 @@ import { MatchEngine } from './matchEngine.js';
 import type { SavedTeamStore } from './savedTeamStore.js';
 import type { ApiKeyStore } from './apiKeyStore.js';
 import type { ScoringEngine } from './scoringEngine.js';
+import type { PortBridgeManager } from './portBridgeManager.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -93,6 +95,7 @@ export function setupWebSocket(
   savedTeamStore?: SavedTeamStore,
   apiKeyStore?: ApiKeyStore,
   scoringEngine?: ScoringEngine,
+  portBridgeManager?: PortBridgeManager,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -204,6 +207,11 @@ export function setupWebSocket(
     broadcast({ type: 'lastLinkedState', timestamps } satisfies LastLinkedState);
   });
 
+  // Broadcast port bridge state changes to all clients
+  portBridgeManager?.setOnChange(() => {
+    broadcast(portBridgeManager.getState());
+  });
+
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const rawIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
@@ -249,6 +257,11 @@ export function setupWebSocket(
     // Send API key management state
     if (apiKeyStore) {
       ws.send(JSON.stringify(apiKeyStore.getState()));
+    }
+
+    // Send port bridge state (available ports and active bridges)
+    if (portBridgeManager?.enabled) {
+      ws.send(JSON.stringify(portBridgeManager.getState()));
     }
 
     ws.on('close', () => {
@@ -430,6 +443,21 @@ export function setupWebSocket(
         apiKeyStore?.dismissDevice(data.id);
       } else if (isScoreReset(data)) {
         scoringEngine?.reset();
+      } else if (isPortBridgeRequest(data)) {
+        if (!portBridgeManager?.enabled) {
+          ws.send(JSON.stringify({ error: 'Port bridging is not configured on this server' }));
+        } else if (data.portVlanId === null) {
+          // Unbind all ports from this station
+          portBridgeManager.unbridgeAllFromStation(data.station).catch(err => {
+            appError('Error unbridging ports: ' + err.message);
+            ws.send(JSON.stringify({ error: 'Failed to unbind port', details: err.message }));
+          });
+        } else {
+          portBridgeManager.bridgePort(data.station, data.portVlanId).catch(err => {
+            appError('Error bridging port: ' + err.message);
+            ws.send(JSON.stringify({ error: 'Failed to bridge port', details: err.message }));
+          });
+        }
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

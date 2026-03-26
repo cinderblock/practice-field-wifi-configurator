@@ -393,6 +393,7 @@ server {
 | `IPTABLES_COMMENT_PREFIX`     | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
 | `MDNS_REFLECTOR`              | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
 | `TEST_INTERFACE`              | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
+| `FIELD_PORTS`                 | _(none)_            | Physical port bridging config: `VLANID:Name,...` (e.g., `201:Port A,202:Port B`). Requires `VLAN_INTERFACE`.                          |
 | `DRY_RUN`                     | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
 | `API_KEYS_FILE`               | `api-keys.json`     | Path to the JSON file for API key persistence.                                                                                        |
 | `SCORING_AUTO_REGISTER_LIMIT` | `1`                 | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |

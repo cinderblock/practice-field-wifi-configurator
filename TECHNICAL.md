@@ -29,22 +29,27 @@ A frontend client sends a WebSocket message with `{ station, ssid, wpaKey }`. He
 
    **a. Network configuration** (`networkManager.ts` — only if `VLAN_INTERFACE` is set):
 
-   Only stations whose configuration has changed are torn down and recreated (differential updates). For each of the 6 stations (red1–3, blue1–3):
-   - **Create VLAN sub-interface** — `ip link add link eth0 name eth0.red1 type vlan id 10` (idempotent, skips if already exists with matching config)
+   Only stations whose configuration has changed are torn down and recreated (differential updates). For each of the 6 stations (slot1–slot6):
+   - **Create VLAN sub-interface** — `ip link add link eno1 name eno1.slot1 type vlan id 10` (idempotent, skips if already exists with matching config)
+   - **Create bridge** — `ip link add name br-slot1 type bridge` (the bridge is the L2 anchor — all IP/iptables/routes reference it)
+   - **Enslave VLAN to bridge** — `ip link set eno1.slot1 master br-slot1`
    - If team is assigned:
      - **Remove stale addresses** — removes only IPv4 addresses that don't belong to the new team (preserves IPv6 link-local)
      - **Check for conflicts** — `arping` to detect if the IP is already in use (OFFSEASON mode only)
-     - **Add IP** — `ip addr add 10.TE.AM.254/24 dev eth0.red1` (pFMS Host is `.254` by default, configurable via `VLAN_HOST_OCTET`)
-     - **Bring up** — `ip link set eth0.red1 up`
-     - **Add forwarding rules** — `iptables -A FORWARD -i/-o eth0.red1 -j ACCEPT`
-     - **Add MASQUERADE** — `iptables -t nat -A POSTROUTING -o eth0.red1 -j MASQUERADE` so guest WiFi traffic is NATed to the team VLAN
+     - **Add IP** — `ip addr add 10.TE.AM.254/24 dev br-slot1` (pFMS Host is `.254` by default, configurable via `VLAN_HOST_OCTET`)
+     - **Bring up** — `ip link set eno1.slot1 up && ip link set br-slot1 up`
+     - **Add forwarding rules** — `iptables -A FORWARD -i/-o br-slot1 -j ACCEPT`
+     - **Add MASQUERADE** — `iptables -t nat -A POSTROUTING -o br-slot1 -j MASQUERADE` so guest WiFi traffic is NATed to the team VLAN
      - **Add routing table entry** — per-station route for laptop route preferences
    - If no team:
-     - **Bring down** — `ip link set eth0.red1 down`
+     - **Bring down** — `ip link set br-slot1 down`
    - **Start DHCP server** _(OFFSEASON only)_ — serves `10.TE.AM.100–199`, gateway `10.TE.AM.254` (configurable). Skipped in PRACTICE mode since the AP handles DHCP (gateway = `10.TE.AM.4`).
 
+   **Physical port bridging** (if `FIELD_PORTS` is configured):
+   When a team requests a physical Ethernet port (e.g., "Port A", VLAN 201), the port's VLAN sub-interface (`eno1.p201`) is created and added as a second member of the station's bridge. A laptop plugged into that switch port is then on the same L2 segment as the radio VLAN — it can reach the robot directly. Ports are managed at runtime via the team control page UI.
+
    **b. Radio configuration** (`radioManager.ts`):
-   - **POST /configuration** — sends `{ stationConfigurations: { red1: { ssid, wpaKey }, ... } }` to the radio
+   - **POST /configuration** — sends `{ stationConfigurations: { red1: { ssid, wpaKey }, ... } }` to the radio (internal slot names are translated to radio-native `red1`–`blue3` at the boundary)
    - **Wait for CONFIGURING** — polls in-memory status until radio enters `CONFIGURING` state (2s timeout)
    - **Wait for ACTIVE** — polls until radio exits `CONFIGURING` (45s timeout), verifies final status is `ACTIVE`
 
@@ -99,7 +104,7 @@ The admin page provides safety overrides independent of the self-service system:
 When the same team number is assigned to multiple stations (e.g., two robots from team 1234), DS address discovery uses the kernel ARP/neighbor table to resolve the correct station:
 
 1. `isTeamDuplicated()` checks if the team number appears on more than one station
-2. If duplicated, `resolveStationByNeighbor()` runs `ip neigh show <ip>` and matches the reported device (e.g., `eno1.red1`) to a station
+2. If duplicated, `resolveStationByNeighbor()` runs `ip neigh show <ip>` and matches the reported device (e.g., `br-slot1`) to a station
 3. Falls back to `getStationForTeam()` if the neighbor entry isn't populated yet
 
 For unique team numbers (the common case), the lookup is a direct synchronous map check with no subprocess overhead.
