@@ -3,7 +3,7 @@ import dgram, { Socket } from 'dgram';
 import { EventEmitter } from 'events';
 import { Transform, TransformCallback } from 'stream';
 import { BufferOverflowError, BufferReader, BufferWriter } from './BufferWrappers.js';
-import { StationName, Mode } from './types.js';
+import { MatchSlot, StationName, Mode } from './types.js';
 
 const DefaultTcpPort = 1750;
 const DefaultUdpPort = 1160;
@@ -444,7 +444,8 @@ export type OutboundTag = { type: 'gameData'; data: string };
 type DsPacket = {
   sequence: number;
   control: Control;
-  allianceStation: StationName;
+  /** Match position (red1-blue3), NOT physical station name (slot1-slot6). */
+  allianceStation: MatchSlot;
   tournamentLevel: TournamentLevel;
   matchNumber: number;
   playNumber: number;
@@ -453,7 +454,7 @@ type DsPacket = {
   tags: OutboundTag[];
 };
 
-function allianceStationFromName(station: StationName): number {
+function allianceStationFromName(station: MatchSlot): number {
   return ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'].indexOf(station);
 }
 

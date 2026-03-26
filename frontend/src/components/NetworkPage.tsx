@@ -20,17 +20,11 @@ import {
   DSConnectionInfo,
   StationMdnsActivity,
   StationName,
+  StationNameList,
   StationNetworkStats,
   StationSubnetScan,
 } from '../../../src/types';
-import {
-  allianceColor,
-  describeIp,
-  formatAge,
-  formatBytes,
-  formatDuration,
-  prettyStationName,
-} from '../../../src/utils';
+import { describeIp, formatAge, formatBytes, formatDuration, prettyStationName } from '../../../src/utils';
 import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
 
 const PULSE_STYLES = {
@@ -59,7 +53,7 @@ export function StationNetworkCard({
   const team = scan?.team ?? mdns?.team;
 
   return (
-    <Card sx={{ mb: 1.5, ...(!hideStationLabel && { borderLeft: `4px solid ${allianceColor(station)}` }) }}>
+    <Card sx={{ mb: 1.5 }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -266,9 +260,6 @@ export function StationNetworkCard({
   );
 }
 
-const RED_STATIONS: StationName[] = ['red1', 'red2', 'red3'];
-const BLUE_STATIONS: StationName[] = ['blue1', 'blue2', 'blue3'];
-
 export function NetworkPage() {
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
@@ -283,7 +274,7 @@ export function NetworkPage() {
       </Typography>
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          {RED_STATIONS.map(s => (
+          {StationNameList.slice(0, 3).map(s => (
             <StationNetworkCard
               key={s}
               station={s}
@@ -295,7 +286,7 @@ export function NetworkPage() {
           ))}
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          {BLUE_STATIONS.map(s => (
+          {StationNameList.slice(3).map(s => (
             <StationNetworkCard
               key={s}
               station={s}

@@ -34,7 +34,7 @@ npm install
 | Path                | Description                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
 | `/`                 | Home — station configuration form (assign teams to stations)                        |
-| `/(red\|blue)[123]` | Station page — per-station view with match controls                                 |
+| `/slot[1-6]`        | Station page — per-station view with match controls                                 |
 | `/admin`            | Admin page — global/per-station e-stop, match status, force stop                    |
 | `/network`          | Network page — discovered devices, VLAN status, network stats                       |
 | `/route`            | Route page — choose which robot to talk to when a team has duplicate stations       |
@@ -214,7 +214,7 @@ The FRC Driver Station ↔ roboRIO UDP protocol uses **asymmetric ports**: DS se
 To fix DS ↔ RIO UDP, the pFMS dynamically adds PREROUTING DNAT rules when a DS connects:
 
 ```
-iptables -t nat -A PREROUTING -i eth0.red1 -p udp -d 10.TE.AM.254 \
+iptables -t nat -A PREROUTING -i eth0.slot1 -p udp -d 10.TE.AM.254 \
   -j DNAT --to-destination <ds-laptop-ip>
 ```
 
@@ -255,7 +255,7 @@ The test page can also **program a radio** in `TEAM_ROBOT_RADIO` mode — settin
 The test interface needs to be a dedicated network path to the robot — either:
 
 - **Dedicated NIC** — a separate physical Ethernet port (e.g., a USB Ethernet adapter). Plug the robot's radio directly into this port.
-- **VLAN on the trunk** — if the robot is connected through the field AP, create a VLAN interface on the same trunk that carries the team VLANs. The VLAN ID must match the station the robot is on (10–60). For example, to test a robot on Red 1:
+- **VLAN on the trunk** — if the robot is connected through the field AP, create a VLAN interface on the same trunk that carries the team VLANs. The VLAN ID must match the station the robot is on (10–60). For example, to test a robot on Slot 1 (VLAN 10):
   ```sh
   ip link add link eno1 name eno1.10 type vlan id 10
   ip link set eno1.10 up
@@ -329,7 +329,7 @@ Environment variables are stored in `/etc/pfms/environment` (one `KEY=value` per
 ```Caddyfile
 practice.example.com {
     @stations {
-        path_regexp ^/(red|blue)[123]$
+        path_regexp ^/slot[1-6]$
     }
     rewrite @stations /station
 
@@ -355,8 +355,8 @@ server {
         try_files $uri $uri.html $uri/ =404;
     }
 
-    # Station pages: /red1, /blue3, etc. → /station.html
-    location ~^/(red|blue)[123]$ {
+    # Station pages: /slot1, /slot6, etc. → /station.html
+    location ~^/slot[1-6]$ {
         rewrite ^ /station.html break;
     }
 

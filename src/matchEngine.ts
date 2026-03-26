@@ -127,11 +127,11 @@ export class MatchEngine {
 
   // ── Station self-service ──────────────────────────────────────────
 
-  /** @deprecated Use joinStationAlliance() instead. Kept for backward compatibility. */
+  /** @deprecated Use joinStationAlliance() instead. Kept for backward compatibility.
+   *  With slot-based naming, defaults to 'red' since alliance can't be inferred from slot name. */
   joinStation(station: StationName) {
-    // Infer alliance from the station name prefix (backward compat)
-    const alliance: Alliance = station.startsWith('red') ? 'red' : 'blue';
-    this.joinStationAlliance(station, alliance);
+    appWarn(`joinStation() is deprecated — use joinStationAlliance() with an explicit alliance`);
+    this.joinStationAlliance(station, 'red');
   }
 
   /** Join a station to a specific alliance (decoupled from physical port). */
@@ -612,7 +612,9 @@ export class MatchEngine {
 
     const control = new Control(false, false, 'teleOp'); // disabled, not e-stopped
 
-    const allianceStation = (this.portToSlot.get(station) ?? station) as StationName;
+    // Use portToSlot mapping for the match position byte, falling back to 'red1'
+    // for stations not in a match (e.g. duplicate DS blocking outside of match context)
+    const allianceStation = this.portToSlot.get(station) ?? ('red1' as MatchSlot);
     const packet = makeDSPacket({
       sequence: seq & 0xffff,
       control,
@@ -665,7 +667,9 @@ export class MatchEngine {
 
     // Use the portToSlot mapping for the alliance station byte if available.
     // This is the critical decoupling: the DS sees the alliance position, not the physical port.
-    const allianceStation = (this.portToSlot.get(station) ?? station) as StationName;
+    // Falls back to 'red1' for out-of-match heartbeats — the position byte doesn't matter
+    // when disabled, but the protocol requires a valid value.
+    const allianceStation = this.portToSlot.get(station) ?? ('red1' as MatchSlot);
 
     // Build game data tags — during teleop/endgame, send the auto winner character
     // per REBUILT game rules: 'R' = red's goal inactive first, 'B' = blue's goal inactive first

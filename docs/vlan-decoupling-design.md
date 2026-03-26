@@ -16,16 +16,16 @@ The names `red1`/`blue3` are now misleading — they imply an alliance that no l
 
 Rename the 6 physical station identifiers to something neutral:
 
-| Current | Proposed | VLAN ID |
-| ------- | -------- | ------- |
-| `red1`  | `a`      | 10      |
-| `red2`  | `b`      | 20      |
-| `red3`  | `c`      | 30      |
-| `blue1` | `d`      | 40      |
-| `blue2` | `e`      | 50      |
-| `blue3` | `f`      | 60      |
+| Current | Implemented | VLAN ID |
+| ------- | ----------- | ------- |
+| `red1`  | `slot1`     | 10      |
+| `red2`  | `slot2`     | 20      |
+| `red3`  | `slot3`     | 30      |
+| `blue1` | `slot4`     | 40      |
+| `blue2` | `slot5`     | 50      |
+| `blue3` | `slot6`     | 60      |
 
-Alternatives: `stationA`–`stationF`, or just use VLAN IDs directly as identifiers (`10`, `20`, ...).
+**Status: Implemented** — using `slot1`–`slot6`. A translation layer at the radio boundary maps between internal slot names and the VH-113's native `red1`–`blue3` names.
 
 ### What Changes
 

@@ -5,8 +5,12 @@ import {
   AdditionalChannelStatistic,
   AllChannels,
   ChannelScanDetails,
+  defaultRadioToSlot,
+  defaultSlotToRadio,
   isReadyScanResults,
-  isValidRadioUpdate,
+  isValidRawRadioUpdate,
+  RadioStationName,
+  RadioStationNameList,
   RadioUpdate,
   ReadyScanResults,
   ScanResults,
@@ -14,6 +18,7 @@ import {
   StationNameList,
   Status,
   StatusEntry,
+  translateRadioUpdate,
 } from './types.js';
 
 type StatusListener = (entry: StatusEntry) => void;
@@ -89,7 +94,15 @@ class RadioManager {
     try {
       const raw = JSON.parse(readFileSync(this.stagedConfigPath, 'utf8'));
       const validStations = new Set<string>(StationNameList);
-      for (const [station, config] of Object.entries(raw)) {
+      const radioNames = new Set<string>(RadioStationNameList);
+      let migrated = false;
+      for (const [key, config] of Object.entries(raw)) {
+        // Migrate old radio-keyed configs (red1-blue3) to slot names (slot1-slot6)
+        let station = key;
+        if (!validStations.has(station) && radioNames.has(station)) {
+          station = defaultRadioToSlot[key as RadioStationName];
+          migrated = true;
+        }
         if (!validStations.has(station)) continue;
         if (config === null) {
           // Staged clear
@@ -106,6 +119,10 @@ class RadioManager {
       if (stations.length) {
         console.log(`Restored staged changes for: ${stations.join(', ')}`);
         this.setPendingCommit(true);
+      }
+      if (migrated) {
+        console.log('Migrated staged config from radio station names (red1-blue3) to slot names (slot1-slot6)');
+        this.saveStagedConfig();
       }
     } catch (err) {
       console.error('Failed to restore staged config:', err);
@@ -125,7 +142,15 @@ class RadioManager {
     try {
       const raw = JSON.parse(readFileSync(this.activeConfigPath, 'utf8'));
       const validStations = new Set<string>(StationNameList);
-      for (const [station, config] of Object.entries(raw)) {
+      const radioNames = new Set<string>(RadioStationNameList);
+      let migrated = false;
+      for (const [key, config] of Object.entries(raw)) {
+        // Migrate old radio-keyed configs (red1-blue3) to slot names (slot1-slot6)
+        let station = key;
+        if (!validStations.has(station) && radioNames.has(station)) {
+          station = defaultRadioToSlot[key as RadioStationName];
+          migrated = true;
+        }
         if (!validStations.has(station)) continue;
         if (
           config &&
@@ -142,6 +167,10 @@ class RadioManager {
       }
       const stations = Object.keys(this.activeConfig);
       if (stations.length) console.log(`Restored active config for: ${stations.join(', ')}`);
+      if (migrated) {
+        console.log('Migrated active config from radio station names (red1-blue3) to slot names (slot1-slot6)');
+        this.saveActiveConfig();
+      }
     } catch (err) {
       console.error('Failed to restore active config:', err);
     }
@@ -215,13 +244,16 @@ class RadioManager {
 
       this.connected = true;
 
-      const radioUpdate: RadioUpdate = await response.json();
+      const rawUpdate = await response.json();
 
-      if (!isValidRadioUpdate(radioUpdate)) {
-        appError('Invalid radio status: ' + JSON.stringify(radioUpdate));
+      if (!isValidRawRadioUpdate(rawUpdate)) {
+        appError('Invalid radio status: ' + JSON.stringify(rawUpdate));
 
         throw new Error('Invalid radio status');
       }
+
+      // Translate radio-native station names (red1-blue3) to internal slot names (slot1-slot6)
+      const radioUpdate: RadioUpdate = translateRadioUpdate(rawUpdate);
 
       // const lastStatus = this.entries[this.entries.length - 1]?.radioStatus.status;
       // if (lastStatus !== radioStatus.status) {
@@ -461,7 +493,15 @@ class RadioManager {
   }
 
   private async doCommitConfiguration(): Promise<void> {
-    const config = { stationConfigurations: this.activeConfig };
+    // Translate internal slot names (slot1-slot6) to radio-native names (red1-blue3)
+    // before sending to the radio's HTTP API
+    const radioConfig = {} as Record<RadioStationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
+    for (const slot of StationNameList) {
+      if (this.activeConfig[slot]) {
+        radioConfig[defaultSlotToRadio[slot]] = this.activeConfig[slot];
+      }
+    }
+    const config = { stationConfigurations: radioConfig };
 
     // Log the configuration to be sent for debugging
     const sanitizedConfig = JSON.parse(JSON.stringify(config)).stationConfigurations;

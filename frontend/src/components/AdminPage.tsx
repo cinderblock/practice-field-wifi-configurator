@@ -17,7 +17,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 
 import type { MatchPhase, StationName } from '../../../src/types';
-import { allianceColor, prettyStationName } from '../../../src/utils';
+import { StationNameList } from '../../../src/types';
+import { prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   useLatest,
@@ -84,7 +85,7 @@ function StationControlCard({ station }: { station: StationName }) {
   const subtitle = teamNumber ? prettyStationName(station) : null;
 
   return (
-    <Card sx={{ mb: 1, borderLeft: `4px solid ${allianceColor(station)}` }}>
+    <Card sx={{ mb: 1 }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
@@ -157,12 +158,12 @@ function StationControlSection() {
         </Typography>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
-            {(['red1', 'red2', 'red3'] as StationName[]).map(s => (
+            {StationNameList.slice(0, 3).map(s => (
               <StationControlCard key={s} station={s} />
             ))}
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            {(['blue1', 'blue2', 'blue3'] as StationName[]).map(s => (
+            {StationNameList.slice(3).map(s => (
               <StationControlCard key={s} station={s} />
             ))}
           </Grid>

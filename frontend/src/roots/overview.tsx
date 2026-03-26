@@ -1,15 +1,16 @@
 import { createRoot } from 'react-dom/client';
-import { AllianceStatus } from '../components/AllianceStatus';
+import { SlotGroup } from '../components/AllianceStatus';
 import { WrapAll } from './wrap';
 import Grid from '@mui/material/Grid';
 import Container from '@mui/material/Container';
+import { StationNameList } from '../../../src/types';
 
 createRoot(document.getElementById('root')!).render(
   <WrapAll>
     <Container maxWidth="xl" sx={{ py: 2 }}>
       <Grid container spacing={2}>
-        <AllianceStatus alliance="red" />
-        <AllianceStatus alliance="blue" reverse />
+        <SlotGroup slots={StationNameList.slice(0, 3)} />
+        <SlotGroup slots={StationNameList.slice(3)} />
       </Grid>
     </Container>
   </WrapAll>,

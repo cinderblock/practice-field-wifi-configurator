@@ -49,10 +49,32 @@ export type RadioChannel =
   | 221
   | 229;
 export type Alliance = 'red' | 'blue';
+
+// ── Station identity (physical slot, decoupled from radio naming) ───
+export type SlotNumber = 1 | 2 | 3 | 4 | 5 | 6;
+export type StationName = `slot${SlotNumber}`;
+export const StationNameList = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6'] as const;
+export const StationNameRegex = /^slot[1-6]$/;
+
+// ── Radio-native naming (VH-113 firmware uses red1-blue3) ───────────
 export type StationNumber = 1 | 2 | 3;
-export type StationName = `${Alliance}${StationNumber}`;
-export const StationNameList = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'] as const;
-export const StationNameRegex = /^(red|blue)[123]$/;
+export type RadioStationName = `${Alliance}${StationNumber}`;
+export const RadioStationNameList = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'] as const;
+
+/** Default mapping from internal slot names to radio station names. */
+export const defaultSlotToRadio: Record<StationName, RadioStationName> = {
+  slot1: 'red1',
+  slot2: 'red2',
+  slot3: 'red3',
+  slot4: 'blue1',
+  slot5: 'blue2',
+  slot6: 'blue3',
+};
+
+/** Inverse mapping from radio station names to internal slot names. */
+export const defaultRadioToSlot: Record<RadioStationName, StationName> = Object.fromEntries(
+  Object.entries(defaultSlotToRadio).map(([slot, radio]) => [radio, slot]),
+) as Record<RadioStationName, StationName>;
 export type Status = 'BOOTING' | 'CONFIGURING' | 'ACTIVE' | 'ERROR';
 export type VLAN = '10_20_30' | '40_50_60' | '70_80_90';
 export type ConnectionQuality = 'excellent' | 'good' | 'caution' | 'warning';
@@ -126,12 +148,13 @@ export function isStationDetails(details: unknown): details is StationDetails {
   return true;
 }
 
-export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
+/** Validate a raw radio response (station keys are radio-native red1-blue3). */
+export function isValidRawRadioUpdate(update: unknown): update is RawRadioUpdate {
   if (typeof update !== 'object') return false;
   if (!update) return false;
 
   const { channel, channelBandwidth, redVlans, blueVlans, status, stationStatuses, syslogIpAddress, version } =
-    update as RadioUpdate;
+    update as RawRadioUpdate;
 
   if (!isStatus(status)) return false;
 
@@ -139,16 +162,29 @@ export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
     if (!isRadioChannel(channel)) return false;
     if (!isChannelBandwidth(channelBandwidth)) return false;
     if (!isSyslogIpAddress(syslogIpAddress)) return false;
-
-    // if (redVlans === blueVlans) return false;
   }
 
   if (!isVLAN(redVlans)) return false;
   if (!isVLAN(blueVlans)) return false;
-  if (!isStationStatuses(stationStatuses)) return false;
+  if (!isRawStationStatuses(stationStatuses)) return false;
   if (!isVersion(version)) return false;
 
   return true;
+}
+
+/** Translate a validated raw radio update to our internal slot-keyed format. */
+export function translateRadioUpdate(raw: RawRadioUpdate): RadioUpdate {
+  const stationStatuses = {} as Record<StationName, StationDetails | null>;
+  for (const radioName of RadioStationNameList) {
+    const slotName = defaultRadioToSlot[radioName];
+    stationStatuses[slotName] = raw.stationStatuses[radioName];
+  }
+  return { ...raw, stationStatuses };
+}
+
+/** @deprecated Use isValidRawRadioUpdate + translateRadioUpdate instead. */
+export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
+  return isValidRawRadioUpdate(update);
 }
 
 function isRadioChannel(channel: unknown): channel is RadioChannel {
@@ -176,11 +212,14 @@ function arrayCompare<T>(a: T[], b: T[]): boolean {
   return true;
 }
 
-function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<StationName, StationDetails | null> {
+/** Validate station statuses keyed by the radio's native names (red1-blue3). */
+function isRawStationStatuses(
+  stationStatuses: unknown,
+): stationStatuses is Record<RadioStationName, StationDetails | null> {
   if (typeof stationStatuses !== 'object') return false;
   if (!stationStatuses) return false;
 
-  if (!arrayCompare(Object.keys(stationStatuses).sort(), [...StationNameList].sort())) return false;
+  if (!arrayCompare(Object.keys(stationStatuses).sort(), [...RadioStationNameList].sort())) return false;
 
   const statuses = stationStatuses as Record<string, StationDetails | null>;
 
@@ -188,8 +227,6 @@ function isStationStatuses(stationStatuses: unknown): stationStatuses is Record<
     const station = statuses[stationId];
     if (station === null) continue;
     if (!isStationDetails(station)) {
-      // console.log(`bad station ${stationId}`);
-      // console.log(station);
       return false;
     }
   }
@@ -212,20 +249,27 @@ function isVersion(version: unknown): version is string {
   return true;
 }
 
+/** Radio update with station statuses keyed by our internal slot names (slot1-slot6). */
 export interface RadioUpdate {
   channel: number;
   channelBandwidth: `${number}MHz`;
   redVlans: VLAN;
   blueVlans: VLAN;
   status: Status;
-  stationStatuses: {
-    red1: StationDetails | null;
-    red2: StationDetails | null;
-    red3: StationDetails | null;
-    blue1: StationDetails | null;
-    blue2: StationDetails | null;
-    blue3: StationDetails | null;
-  };
+  stationStatuses: Record<StationName, StationDetails | null>;
+  syslogIpAddress: string;
+  version: string;
+}
+
+/** Raw radio response — station statuses keyed by the radio's native names (red1-blue3).
+ *  Used for validation before translation to internal slot names. */
+export interface RawRadioUpdate {
+  channel: number;
+  channelBandwidth: `${number}MHz`;
+  redVlans: VLAN;
+  blueVlans: VLAN;
+  status: Status;
+  stationStatuses: Record<RadioStationName, StationDetails | null>;
   syslogIpAddress: string;
   version: string;
 }
@@ -383,7 +427,7 @@ export type MatchConfig = {
 };
 
 /** A position within a match: alliance + slot number. Semantically distinct from StationName
- *  (which identifies a physical port/VLAN). A physical station "blue3" could be mapped to
+ *  (which identifies a physical radio slot). A physical station "slot6" could be mapped to
  *  match slot "red1" if the team joined the red alliance. */
 export type MatchSlot = `${Alliance}${StationNumber}`;
 

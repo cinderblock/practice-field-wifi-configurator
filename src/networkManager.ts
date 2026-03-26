@@ -135,12 +135,12 @@ export function stopAllDHCP() {
 
 // TODO: load this map from the radio config
 export const vlanMap: Record<StationName, number> = {
-  red1: 10,
-  red2: 20,
-  red3: 30,
-  blue1: 40,
-  blue2: 50,
-  blue3: 60,
+  slot1: 10,
+  slot2: 20,
+  slot3: 30,
+  slot4: 40,
+  slot5: 50,
+  slot6: 60,
 };
 
 /** Track what's currently configured per station to avoid unnecessary teardown */
@@ -261,6 +261,28 @@ async function updateNetworkConfig(stations: Stations, physical_interface: strin
 
   previousStations = { ...stations };
   appInfo('Network configuration applied');
+}
+
+/**
+ * Remove any legacy VLAN interfaces from a previous version that used
+ * radio-native station names (eno1.red1, eno1.blue3, etc.) as interface names.
+ * Called once at startup on a fresh start (not KEEP_NETWORK) to clean up orphans.
+ */
+export async function cleanupOldVlanInterfaces(physicalInterface: string): Promise<void> {
+  const oldNames = ['red1', 'red2', 'red3', 'blue1', 'blue2', 'blue3'];
+  for (const oldName of oldNames) {
+    const oldIfName = `${physicalInterface}.${oldName}`;
+    try {
+      const ifaces = await net.listInterfaces(oldIfName);
+      if (ifaces.length > 0) {
+        appWarn(`Removing legacy VLAN interface ${oldIfName}`);
+        await net.setInterfaceDown(oldIfName);
+        await net.deleteInterface(oldIfName);
+      }
+    } catch {
+      // Interface doesn't exist — nothing to do
+    }
+  }
 }
 
 /** Enable or disable internet access (NAT + forwarding) for a team subnet. */

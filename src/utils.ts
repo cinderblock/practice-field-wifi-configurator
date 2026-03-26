@@ -1,4 +1,4 @@
-import type { DiscoveredHost, StationName } from './types.js';
+import type { Alliance, DiscoveredHost, StationName } from './types.js';
 import CIDRMatcher from 'cidr-matcher';
 
 export function formatBytes(bytes: number): string {
@@ -35,20 +35,17 @@ export function capitalizeFirstLetter(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
-/** Returns the MUI-friendly hex color for a station's alliance. */
-export function allianceColor(station: StationName): string {
-  return station.startsWith('red') ? '#d32f2f' : '#1565c0';
+/** Returns the MUI-friendly hex color for an alliance. */
+export function allianceColor(alliance: Alliance): string {
+  return alliance === 'red' ? '#d32f2f' : '#1565c0';
 }
 
 export function prettyStationName(station: StationName) {
-  const match = station.match(/^(?<alliance>red|blue)(?<station>\d)$/);
-  if (!match?.groups) {
+  const match = station.match(/^slot(\d)$/);
+  if (!match) {
     throw new Error(`Invalid station name: ${station}`);
   }
-
-  const { alliance, station: stationNumber } = match.groups;
-
-  return `${capitalizeFirstLetter(alliance)} ${stationNumber}`;
+  return `Slot ${match[1]}`;
 }
 
 /**

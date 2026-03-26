@@ -9,7 +9,13 @@ import type { NetworkBackend } from './node-ip/index.js';
 import CIDRMatcher from 'cidr-matcher';
 import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
-import { stopAllDHCP, resolveStationByNeighbor, vlanMap, restorePreviousStations } from './networkManager.js';
+import {
+  stopAllDHCP,
+  resolveStationByNeighbor,
+  vlanMap,
+  restorePreviousStations,
+  cleanupOldVlanInterfaces,
+} from './networkManager.js';
 import {
   onConfigChange as onRouteConfigChange,
   cleanupAllPreferences,
@@ -99,6 +105,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           // Table may not exist yet on first run — that's fine.
         }
       }
+      // Remove any legacy VLAN interfaces from a previous version that used
+      // radio-native station names (eno1.red1, eno1.blue3) as interface names.
+      await cleanupOldVlanInterfaces(VlanInterface);
     }
 
     // Enable IP forwarding once at startup (required for inter-VLAN routing)
@@ -486,7 +495,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // e.g. "10.1.15.202 dev eno1.blue2 src 10.1.15.254 ..."
         const match = stdout.match(/dev\s+(\S+)/);
         const iface = match?.[1] ?? '';
-        const isTeamVlan = /\.(red|blue)\d/.test(iface);
+        const isTeamVlan = /\.slot\d/.test(iface);
         teamVlanRouteCache.set(ip, isTeamVlan);
         // Expire cache after 60s (team config may change)
         setTimeout(() => teamVlanRouteCache.delete(ip), 60_000);

@@ -7,7 +7,7 @@ import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import { StationName } from '../../../src/types';
-import { allianceColor, prettyStationName } from '../../../src/utils';
+import { prettyStationName } from '../../../src/utils';
 import { useRoutePreferenceState, sendRoutePreference } from '../hooks/useBackend';
 
 function ConflictingTeamCard({
@@ -33,16 +33,7 @@ function ConflictingTeamCard({
                 key={station}
                 onClick={() => sendRoutePreference(selected ? null : station)}
                 variant={selected ? 'contained' : 'outlined'}
-                sx={{
-                  borderColor: allianceColor(station),
-                  color: selected ? 'white' : allianceColor(station),
-                  backgroundColor: selected ? allianceColor(station) : undefined,
-                  '&:hover': {
-                    backgroundColor: allianceColor(station),
-                    color: 'white',
-                    borderColor: allianceColor(station),
-                  },
-                }}
+                color={selected ? 'primary' : 'inherit'}
               >
                 {prettyStationName(station)}
               </Button>
@@ -54,11 +45,7 @@ function ConflictingTeamCard({
             <Typography variant="body2" color="text.secondary">
               Routed to:
             </Typography>
-            <Chip
-              label={prettyStationName(currentPreference)}
-              size="small"
-              sx={{ backgroundColor: allianceColor(currentPreference), color: 'white' }}
-            />
+            <Chip label={prettyStationName(currentPreference)} size="small" color="primary" />
             <Button size="small" onClick={() => sendRoutePreference(null)} sx={{ ml: 'auto' }}>
               Clear
             </Button>
