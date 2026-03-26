@@ -1000,6 +1000,7 @@ function StationExperience({ station }: { station: StationName }) {
         scan={subnetScan?.stations[station]}
         mdns={mdnsActivity?.stations[station]}
         dsInfo={matchState?.connectedStations[station]}
+        hideStationLabel
       />
     </>
   );

@@ -46,23 +46,26 @@ export function StationNetworkCard({
   scan,
   mdns,
   dsInfo,
+  hideStationLabel,
 }: {
   station: StationName;
   stats?: StationNetworkStats;
   scan?: StationSubnetScan;
   mdns?: StationMdnsActivity;
   dsInfo?: DSConnectionInfo;
+  /** Hide the station name header and alliance-colored border (for team-facing pages). */
+  hideStationLabel?: boolean;
 }) {
   const team = scan?.team ?? mdns?.team;
 
   return (
-    <Card sx={{ mb: 1.5, borderLeft: `4px solid ${allianceColor(station)}` }}>
+    <Card sx={{ mb: 1.5, ...(!hideStationLabel && { borderLeft: `4px solid ${allianceColor(station)}` }) }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="subtitle1" fontWeight="bold">
-            {prettyStationName(station)}
-            {team != null && (
+            {!hideStationLabel && prettyStationName(station)}
+            {!hideStationLabel && team != null && (
               <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                 Team {team}
               </Typography>
