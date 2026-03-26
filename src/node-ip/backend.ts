@@ -72,4 +72,13 @@ export interface NetworkBackend {
 
   /** Remove a route from a specific routing table. No-op if not present. */
   removeRoute(opts: RouteOptions): Promise<void>;
+
+  /** Create a Linux bridge interface. No-op if it already exists. */
+  createBridge(name: string): Promise<void>;
+
+  /** Add an interface as a member of a bridge. */
+  addBridgeMember(bridge: string, member: string): Promise<void>;
+
+  /** Remove an interface from its bridge (set nomaster). */
+  removeBridgeMember(bridge: string, member: string): Promise<void>;
 }

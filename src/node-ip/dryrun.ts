@@ -118,5 +118,17 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     async removeRoute(opts: RouteOptions) {
       console.log(`[dry-run] Would remove route: ${opts.destination} dev ${opts.device} table ${opts.table}`);
     },
+
+    async createBridge(name: string) {
+      console.log(`[dry-run] Would create bridge ${name}`);
+    },
+
+    async addBridgeMember(bridge: string, member: string) {
+      console.log(`[dry-run] Would add ${member} to bridge ${bridge}`);
+    },
+
+    async removeBridgeMember(_bridge: string, member: string) {
+      console.log(`[dry-run] Would remove ${member} from its bridge`);
+    },
   };
 }

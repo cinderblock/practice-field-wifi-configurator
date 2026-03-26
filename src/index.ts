@@ -13,6 +13,7 @@ import {
   stopAllDHCP,
   resolveStationByNeighbor,
   vlanMap,
+  bridgeName,
   restorePreviousStations,
   cleanupOldVlanInterfaces,
 } from './networkManager.js';
@@ -35,6 +36,7 @@ import { handleFirmwareRequest } from './firmwareApi.js';
 import { ScoringEngine } from './scoringEngine.js';
 import { handleScoringRequest } from './scoringApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
+import { ApiKeyStore } from './apiKeyStore.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -91,7 +93,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
     // Always remove legacy VLAN interfaces from the previous version that used
     // radio-native station names (eno1.red1, eno1.blue3). These hold VLAN IDs
-    // that conflict with the new eno1.slot1-slot6 names, so they must be
+    // that conflict with the current eno1.slot1-slot6 names, so they must be
     // cleaned up even during graceful restarts.
     await cleanupOldVlanInterfaces(VlanInterface);
 
@@ -133,9 +135,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     const teamMappings = radioManager.getTeamMappings();
     if (VlanInterface && Object.keys(teamMappings).length > 0) {
       if (KeepNetwork) {
-        // Graceful reload — verify VLANs actually exist and have IPs.
+        // Graceful reload — verify team bridges actually exist and have IPs.
         // If a commit was staged but never applied before the restart,
-        // the VLANs may be missing even though active-config.json has teams.
+        // the bridges may be missing even though active-config.json has teams.
         let vlansOk = true;
         try {
           const interfaces = await (net ?? createBackend()).listInterfaces();
@@ -181,10 +183,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Initialize saved team store (server-side WiFi credential persistence)
   const savedTeamStore = new SavedTeamStore();
 
-  // Initialize scoring engine
-  const ScoringApiKey = process.env.SCORING_API_KEY;
+  // Initialize scoring engine and API key store
   const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;
   const scoringEngine = new ScoringEngine();
+  const apiKeyStore = new ApiKeyStore();
   scoringEngine.setAutoRegisterLimit(ScoringAutoRegisterLimit);
 
   // Wire up auto score resolver so match engine can determine auto winner from scoring data
@@ -210,7 +212,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     trustedProxyMatcher,
     station => onRunTeamChecks?.(station),
     [
-      (req, res) => handleScoringRequest(req, res, scoringEngine, ScoringApiKey),
+      (req, res) => handleScoringRequest(req, res, scoringEngine, apiKeyStore, trustedProxyMatcher),
       (req, res) => handleFirmwareRequest(req, res, firmwareStore),
     ],
     (wpaKey, wpaKey24, skipReconfigure) => {
@@ -229,11 +231,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       });
     },
     savedTeamStore,
+    apiKeyStore,
+    scoringEngine,
   );
   setBroadcast(broadcast);
 
   // Broadcast score state changes to all WebSocket clients
   scoringEngine.addStateListener(broadcast);
+
+  // Broadcast API key state changes to all WebSocket clients
+  apiKeyStore.addListener(broadcast);
 
   // Subnet scanning for device discovery on team VLANs
   const subnetScanner = new SubnetScanner(
@@ -486,19 +493,19 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       return `10.${high}.${low}.${VlanHostOctet}`;
     }
 
-    /** Check if an IP routes through a team VLAN interface. Uses `ip route get`
-     *  to ask the kernel — if the route goes via eno1.red* or eno1.blue*, the
-     *  source is a robot-network device, not a Driver Station. */
+    /** Check if an IP routes through a team bridge interface. Uses `ip route get`
+     *  to ask the kernel — if the route goes via br-slot*, the source is a
+     *  robot-network device, not a Driver Station. */
     const teamVlanRouteCache = new Map<string, boolean>();
     async function isTeamSubnetAddress(ip: string): Promise<boolean> {
       const cached = teamVlanRouteCache.get(ip);
       if (cached !== undefined) return cached;
       try {
         const { stdout } = await execFile('ip', ['route', 'get', ip]);
-        // e.g. "10.1.15.202 dev eno1.blue2 src 10.1.15.254 ..."
+        // e.g. "10.1.15.202 dev br-slot2 src 10.1.15.254 ..."
         const match = stdout.match(/dev\s+(\S+)/);
         const iface = match?.[1] ?? '';
-        const isTeamVlan = /\.slot\d/.test(iface);
+        const isTeamVlan = /^br-slot\d$/.test(iface);
         teamVlanRouteCache.set(ip, isTeamVlan);
         // Expire cache after 60s (team config may change)
         setTimeout(() => teamVlanRouteCache.delete(ip), 60_000);
@@ -551,17 +558,17 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         stationBlocks = new Map();
         blockedDsRules.set(station, stationBlocks);
       }
-      const vlanInterface = `${VlanInterface}.${station}`;
+      const brName = bridgeName(station);
       await net.iptables({
         action: '-I',
         chain: 'FORWARD',
         source: dsIp,
-        outInterface: vlanInterface,
+        outInterface: brName,
         jump: 'DROP',
         comment: `${IPTABLES_COMMENT_PREFIX}block-dup-ds-${station}`,
       });
-      stationBlocks.set(dsIp, vlanInterface);
-      console.warn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${vlanInterface})`);
+      stationBlocks.set(dsIp, brName);
+      console.warn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${brName})`);
       matchEngine.setBlockedDS(station, [...stationBlocks!.keys()]);
       startBlockedDsControlLoop();
     }
@@ -631,7 +638,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       if (!net || !VlanInterface) return;
       const team = radioManager.getTeamForStation(station);
       if (!team) return;
-      const vlanInterface = `${VlanInterface}.${station}`;
+      const brName = bridgeName(station);
       const gatewayIp = teamGatewayIp(team);
       const existing = activeDnatRules.get(station);
       if (existing?.dsIp === dsIp) return; // Already set, idempotent
@@ -643,14 +650,14 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         action: '-A',
         table: 'nat',
         chain: 'PREROUTING',
-        inInterface: vlanInterface,
+        inInterface: brName,
         protocol: 'udp',
         destination: gatewayIp,
         jump: 'DNAT',
         toDestination: dsIp,
         comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
       });
-      activeDnatRules.set(station, { dsIp, gatewayIp, vlanInterface });
+      activeDnatRules.set(station, { dsIp, gatewayIp, vlanInterface: brName });
       console.log(`DNAT rule added: ${station} UDP → ${gatewayIp} rewritten to ${dsIp}`);
       // Flush any stale conntrack entries for UDP traffic to the gateway IP.
       // Without this, packets that arrived before the DNAT rule was inserted get

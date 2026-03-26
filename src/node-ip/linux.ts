@@ -312,6 +312,22 @@ export function createLinuxBackend(): NetworkBackend {
       }
     },
 
+    async createBridge(name: string): Promise<void> {
+      if (name.length > 15) {
+        throw new Error(`Interface name "${name}" exceeds 15 character Linux limit`);
+      }
+      if (await backend.interfaceExists(name)) return;
+      await ip('link', 'add', 'name', name, 'type', 'bridge');
+    },
+
+    async addBridgeMember(bridge: string, member: string): Promise<void> {
+      await ip('link', 'set', member, 'master', bridge);
+    },
+
+    async removeBridgeMember(_bridge: string, member: string): Promise<void> {
+      await ip('link', 'set', member, 'nomaster');
+    },
+
     async flushRulesByComment(commentPrefix: string): Promise<void> {
       if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
 

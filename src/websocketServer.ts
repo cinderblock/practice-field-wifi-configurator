@@ -28,6 +28,13 @@ import {
   isCastReceiverSwap,
   isRadioConfigureRequest,
   isRemoveSavedTeam,
+  isCreateApiKey,
+  isRevokeApiKey,
+  isReactivateApiKey,
+  isDeleteApiKey,
+  isApprovePendingDevice,
+  isDismissPendingDevice,
+  isScoreReset,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -40,6 +47,8 @@ import CIDRMatcher from 'cidr-matcher';
 import { appError, appWarn } from './appLogger.js';
 import { MatchEngine } from './matchEngine.js';
 import type { SavedTeamStore } from './savedTeamStore.js';
+import type { ApiKeyStore } from './apiKeyStore.js';
+import type { ScoringEngine } from './scoringEngine.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -82,6 +91,8 @@ export function setupWebSocket(
   onFirmwareUpdate?: FirmwareUpdateCallback,
   onRadioConfigure?: RadioConfigureCallback,
   savedTeamStore?: SavedTeamStore,
+  apiKeyStore?: ApiKeyStore,
+  scoringEngine?: ScoringEngine,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -233,6 +244,11 @@ export function setupWebSocket(
     // Send saved team configs
     if (savedTeamStore) {
       ws.send(JSON.stringify(savedTeamStore.getState()));
+    }
+
+    // Send API key management state
+    if (apiKeyStore) {
+      ws.send(JSON.stringify(apiKeyStore.getState()));
     }
 
     ws.on('close', () => {
@@ -390,6 +406,30 @@ export function setupWebSocket(
           }
         }
         broadcastReceiverList();
+      } else if (isCreateApiKey(data)) {
+        if (apiKeyStore) {
+          const entry = apiKeyStore.createKey(data.label);
+          // Send the full key ONLY to the requesting client (shown once)
+          ws.send(JSON.stringify({ type: 'apiKeyCreated', key: entry.key, id: entry.id, label: entry.label }));
+        }
+      } else if (isRevokeApiKey(data)) {
+        apiKeyStore?.revokeKey(data.id);
+      } else if (isReactivateApiKey(data)) {
+        apiKeyStore?.reactivateKey(data.id);
+      } else if (isDeleteApiKey(data)) {
+        apiKeyStore?.deleteKey(data.id);
+      } else if (isApprovePendingDevice(data)) {
+        if (apiKeyStore) {
+          const entry = apiKeyStore.approveDevice(data.id, data.label);
+          if (entry) {
+            // Send the full key ONLY to the requesting admin client (shown once)
+            ws.send(JSON.stringify({ type: 'apiKeyCreated', key: entry.key, id: entry.id, label: entry.label }));
+          }
+        }
+      } else if (isDismissPendingDevice(data)) {
+        apiKeyStore?.dismissDevice(data.id);
+      } else if (isScoreReset(data)) {
+        scoringEngine?.reset();
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
       }

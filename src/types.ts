@@ -1156,6 +1156,183 @@ export function isScoreState(msg: unknown): msg is ScoreState {
   return (msg as ScoreState).type === 'scoreState';
 }
 
+// ── API Key Management ──────────────────────────────────────────────
+
+export type ApiKeyStatus = 'active' | 'revoked';
+
+/** A registered API key for the scoring API. */
+export interface ApiKeyEntry {
+  /** Short display identifier (first 8 hex chars of the key). */
+  id: string;
+  /** The full API key (64-char hex string). */
+  key: string;
+  /** Human-readable label (e.g. "Speaker Sensor", "Ref Tablet"). */
+  label: string;
+  /** Current status. */
+  status: ApiKeyStatus;
+  /** When the key was created. */
+  createdAt: number;
+  /** When the key was last used to authenticate a request. */
+  lastUsedAt?: number;
+  /** Total number of authenticated requests made with this key. */
+  requestCount: number;
+  /** The most recent source IP that used this key. */
+  lastSourceIp?: string;
+  /** The User-Agent header from the most recent request. */
+  lastUserAgent?: string;
+  /** If this key was created by approving a pending device, the source IP of that device. */
+  discoveredFromIp?: string;
+}
+
+/** Summary of a key for the admin UI (full key value is never broadcast). */
+export interface ApiKeySummary {
+  id: string;
+  /** Masked key for display: first 8 chars + "..." */
+  keyPreview: string;
+  label: string;
+  status: ApiKeyStatus;
+  createdAt: number;
+  lastUsedAt?: number;
+  requestCount: number;
+  lastSourceIp?: string;
+  lastUserAgent?: string;
+}
+
+/** A pending (unapproved) device that attempted to use the scoring API without a valid key. */
+export interface PendingDevice {
+  /** Unique identifier for this pending entry. */
+  id: string;
+  /** Source IP of the request. */
+  sourceIp: string;
+  /** User-Agent header, if present. */
+  userAgent?: string;
+  /** The key that was presented (masked), if any. */
+  presentedKey?: string;
+  /** Timestamp of the first rejected request from this device. */
+  firstSeen: number;
+  /** Timestamp of the most recent rejected request. */
+  lastSeen: number;
+  /** Number of rejected requests from this device. */
+  requestCount: number;
+  /** The URL path that was last requested (e.g. "/api/score"). */
+  lastPath?: string;
+}
+
+/** Broadcast state for the API key management system. */
+export interface ApiKeyState {
+  type: 'apiKeyState';
+  /** All registered keys (full key value is never included). */
+  keys: ApiKeySummary[];
+  /** Devices waiting for approval. */
+  pendingDevices: PendingDevice[];
+  /** Whether the scoring API currently requires authentication. */
+  authRequired: boolean;
+}
+
+export function isApiKeyState(msg: unknown): msg is ApiKeyState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ApiKeyState).type === 'apiKeyState';
+}
+
+/** Server → requesting client only: newly created key with the full key value (shown once). */
+export interface ApiKeyCreated {
+  type: 'apiKeyCreated';
+  /** The full API key — copy this now, it will not be shown again. */
+  key: string;
+  id: string;
+  label: string;
+}
+
+export function isApiKeyCreated(msg: unknown): msg is ApiKeyCreated {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ApiKeyCreated).type === 'apiKeyCreated';
+}
+
+// ── API Key Admin Commands (WebSocket client → server) ──────────────
+
+/** Create a new API key. */
+export interface CreateApiKey {
+  type: 'createApiKey';
+  label: string;
+}
+
+export function isCreateApiKey(msg: unknown): msg is CreateApiKey {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as CreateApiKey;
+  return m.type === 'createApiKey' && typeof m.label === 'string' && m.label.length > 0;
+}
+
+/** Revoke an active API key. */
+export interface RevokeApiKey {
+  type: 'revokeApiKey';
+  id: string;
+}
+
+export function isRevokeApiKey(msg: unknown): msg is RevokeApiKey {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RevokeApiKey;
+  return m.type === 'revokeApiKey' && typeof m.id === 'string';
+}
+
+/** Reactivate a revoked API key. */
+export interface ReactivateApiKey {
+  type: 'reactivateApiKey';
+  id: string;
+}
+
+export function isReactivateApiKey(msg: unknown): msg is ReactivateApiKey {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as ReactivateApiKey;
+  return m.type === 'reactivateApiKey' && typeof m.id === 'string';
+}
+
+/** Permanently delete an API key. */
+export interface DeleteApiKey {
+  type: 'deleteApiKey';
+  id: string;
+}
+
+export function isDeleteApiKey(msg: unknown): msg is DeleteApiKey {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as DeleteApiKey;
+  return m.type === 'deleteApiKey' && typeof m.id === 'string';
+}
+
+/** Approve a pending device (generates a key for it). */
+export interface ApprovePendingDevice {
+  type: 'approvePendingDevice';
+  id: string;
+  label: string;
+}
+
+export function isApprovePendingDevice(msg: unknown): msg is ApprovePendingDevice {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as ApprovePendingDevice;
+  return m.type === 'approvePendingDevice' && typeof m.id === 'string' && typeof m.label === 'string';
+}
+
+/** Dismiss/reject a pending device. */
+export interface DismissPendingDevice {
+  type: 'dismissPendingDevice';
+  id: string;
+}
+
+export function isDismissPendingDevice(msg: unknown): msg is DismissPendingDevice {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as DismissPendingDevice;
+  return m.type === 'dismissPendingDevice' && typeof m.id === 'string';
+}
+
+/** Reset scores via WebSocket (replaces the HTTP fetch from admin UI). */
+export interface ScoreReset {
+  type: 'scoreReset';
+}
+
+export function isScoreReset(msg: unknown): msg is ScoreReset {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ScoreReset).type === 'scoreReset';
+}
+
 export interface StopCast {
   type: 'stopCast';
   /** If set, stop only this specific receiver. If omitted, stop all. */

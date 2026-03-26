@@ -1,7 +1,10 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
+import CIDRMatcher from 'cidr-matcher';
 import { ScoringEngine } from './scoringEngine.js';
+import { ApiKeyStore } from './apiKeyStore.js';
 import { isScoreEvent, ScoringElementConfig, ScoringMode } from './types.js';
+import { getRealClientIp, normalizeIp } from './utils.js';
 
 /** Read the full request body as a string. */
 function readBody(req: IncomingMessage): Promise<string> {
@@ -35,21 +38,45 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(data);
 }
 
-function checkAuth(req: IncomingMessage, apiKey: string | undefined): boolean {
-  if (!apiKey) return true; // No key configured = open access
-
+/** Extract the API key from the request (header or query param). */
+function extractKey(req: IncomingMessage): string | undefined {
   // Check X-API-Key header
   const headerKey = req.headers['x-api-key'];
-  if (headerKey === apiKey) return true;
+  if (typeof headerKey === 'string' && headerKey) return headerKey;
 
-  // Check ?key= query parameter (convenient for tiny devices)
+  // Check ?key= query parameter (convenient for tiny devices like ESP32/Arduino)
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const queryKey = url.searchParams.get('key');
-    if (queryKey === apiKey) return true;
+    if (queryKey) return queryKey;
   } catch {
-    // Malformed URL — auth fails
+    // Malformed URL — no key
   }
+
+  return undefined;
+}
+
+/**
+ * Check authentication for a scoring API request.
+ * Returns true if the request is authorized.
+ * On failure, records the device as pending for admin approval.
+ */
+function checkAuth(req: IncomingMessage, apiKeyStore: ApiKeyStore, trustedProxyMatcher?: CIDRMatcher): boolean {
+  // No active keys = open access (same as before when no env var was set)
+  if (!apiKeyStore.hasAnyActiveKeys()) return true;
+
+  const presentedKey = extractKey(req);
+  if (presentedKey) {
+    const sourceIp = normalizeIp(getRealClientIp(req.socket.remoteAddress, req.headers, trustedProxyMatcher));
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined;
+    const entry = apiKeyStore.validateKey(presentedKey, sourceIp, userAgent);
+    if (entry) return true;
+  }
+
+  // Auth failed — record as pending device for auto-discovery
+  const sourceIp = normalizeIp(getRealClientIp(req.socket.remoteAddress, req.headers, trustedProxyMatcher));
+  const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined;
+  apiKeyStore.recordPendingDevice(sourceIp, userAgent, presentedKey, req.url);
 
   return false;
 }
@@ -62,7 +89,8 @@ export function handleScoringRequest(
   req: IncomingMessage,
   res: ServerResponse,
   engine: ScoringEngine,
-  apiKey: string | undefined,
+  apiKeyStore: ApiKeyStore,
+  trustedProxyMatcher?: CIDRMatcher,
 ): boolean {
   const url = req.url?.split('?')[0]; // Strip query params for routing
   const method = req.method ?? 'GET';
@@ -81,10 +109,12 @@ export function handleScoringRequest(
 
   // ── POST /api/score ── Submit score event(s) ──────────────────────
   if (method === 'POST' && url === '/api/score') {
-    if (!checkAuth(req, apiKey)) {
+    if (!checkAuth(req, apiKeyStore, trustedProxyMatcher)) {
       json(res, 401, {
         error: 'Unauthorized',
-        message: 'Valid API key required via X-API-Key header or ?key= parameter',
+        message:
+          'Valid API key required via X-API-Key header or ?key= parameter. ' +
+          'If this is a new device, an admin can approve it from the admin panel.',
       });
       return true;
     }
@@ -144,7 +174,7 @@ export function handleScoringRequest(
 
   // ── POST /api/score/reset ── Reset scores ─────────────────────────
   if (method === 'POST' && url === '/api/score/reset') {
-    if (!checkAuth(req, apiKey)) {
+    if (!checkAuth(req, apiKeyStore, trustedProxyMatcher)) {
       json(res, 401, { error: 'Unauthorized' });
       return true;
     }
@@ -161,7 +191,7 @@ export function handleScoringRequest(
 
   // ── PUT /api/score/config ── Set element configuration ────────────
   if (method === 'PUT' && url === '/api/score/config') {
-    if (!checkAuth(req, apiKey)) {
+    if (!checkAuth(req, apiKeyStore, trustedProxyMatcher)) {
       json(res, 401, { error: 'Unauthorized' });
       return true;
     }
@@ -228,7 +258,7 @@ export function handleScoringRequest(
 
   // ── PUT /api/score/mode ── Set scoring mode ───────────────────────
   if (method === 'PUT' && url === '/api/score/mode') {
-    if (!checkAuth(req, apiKey)) {
+    if (!checkAuth(req, apiKeyStore, trustedProxyMatcher)) {
       json(res, 401, { error: 'Unauthorized' });
       return true;
     }
@@ -356,14 +386,17 @@ const API_SCHEMA = {
         type: 'apiKey',
         in: 'header',
         name: 'X-API-Key',
-        description: 'API key passed in the X-API-Key header.',
+        description:
+          'API key passed in the X-API-Key header. Keys are managed via the admin panel at /admin. ' +
+          'Authentication is only required when at least one key has been created.',
       },
       ApiKeyQuery: {
         type: 'apiKey',
         in: 'query',
         name: 'key',
         description:
-          'API key passed as a ?key= query parameter. Convenient for tiny devices that cannot set custom headers.',
+          'API key passed as a ?key= query parameter. Convenient for tiny devices that cannot set custom headers. ' +
+          'Keys are managed via the admin panel. Unrecognized devices appear as pending for admin approval.',
       },
     },
     schemas: {
