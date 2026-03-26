@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { ControlPage } from '../components/ControlPage';
 import { WrapAll } from './wrap';
+import { clearTeamNumberCookie } from '../utils/cookies';
 
 // Extract the team number from the URL path: /control/<teamNumber>
 const pathParts = window.location.pathname.split('/');
@@ -18,6 +19,8 @@ if (!raw) {
   if (digits) {
     window.location.href = `/control/${digits[1]}`;
   } else {
+    // Can't parse at all — clear the cookie to prevent redirect loops and go home
+    clearTeamNumberCookie();
     window.location.href = '/';
   }
 } else {
