@@ -31,6 +31,7 @@ import {
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
+  LastLinkedState,
   ServerInfo,
   StationName,
 } from './types.js';
@@ -187,6 +188,11 @@ export function setupWebSocket(
     } satisfies PendingCommitState);
   });
 
+  // Broadcast last-linked timestamp changes to all clients
+  radioManager.addLastLinkedListener(timestamps => {
+    broadcast({ type: 'lastLinkedState', timestamps } satisfies LastLinkedState);
+  });
+
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const rawIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
@@ -209,6 +215,14 @@ export function setupWebSocket(
         pending: radioManager.pendingCommit,
         stagedChanges: radioManager.pendingCommit ? radioManager.getStagedChanges() : undefined,
       } satisfies PendingCommitState),
+    );
+
+    // Send initial last-linked timestamps
+    ws.send(
+      JSON.stringify({
+        type: 'lastLinkedState',
+        timestamps: radioManager.getLastLinkedTimestamps(),
+      } satisfies LastLinkedState),
     );
 
     // Send server info (start time for uptime display)

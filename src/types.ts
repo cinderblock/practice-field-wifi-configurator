@@ -705,6 +705,20 @@ export function isPendingCommitState(msg: unknown): msg is PendingCommitState {
   return (msg as PendingCommitState).type === 'pendingCommitState';
 }
 
+// ── Last Linked Types ───────────────────────────────────────────────
+
+/** Sent from server to client with per-station last-linked timestamps. */
+export type LastLinkedState = {
+  type: 'lastLinkedState';
+  /** Map of station → server timestamp (Date.now()) when a robot was last linked. */
+  timestamps: Partial<Record<StationName, number>>;
+};
+
+export function isLastLinkedState(msg: unknown): msg is LastLinkedState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as LastLinkedState).type === 'lastLinkedState';
+}
+
 /** Sent from client to server to trigger a commit of pending changes */
 export type ApplyConfigMsg = {
   type: 'applyConfig';

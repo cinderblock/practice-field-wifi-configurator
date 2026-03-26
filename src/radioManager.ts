@@ -43,7 +43,14 @@ class RadioManager {
   private readonly maxBroadcastInterval = 15000;
   private shouldDefer?: () => boolean;
   private _pendingCommit = false;
+  /** True when a non-staged (immediate) commit was deferred because shouldDefer() returned true. */
+  private _deferredCommit = false;
   private pendingCommitListeners: ((pending: boolean) => void)[] = [];
+  /** Per-station timestamp of last time a robot was linked (isLinked=true). */
+  private lastLinked = new Map<StationName, number>();
+  /** Previous isLinked state per station — used to detect transitions and avoid chatty broadcasts. */
+  private wasLinked = new Map<StationName, boolean>();
+  private lastLinkedListeners: ((timestamps: Partial<Record<StationName, number>>) => void)[] = [];
 
   constructor(
     private readonly apiBaseUrl: string,
@@ -221,6 +228,22 @@ class RadioManager {
       //   this.lastStatusChangeTime = timestamp;
       // }
 
+      // Track per-station lastLinked timestamps — only broadcast on transitions
+      let linkTransition = false;
+      for (const station of StationNameList) {
+        const linked = radioUpdate.stationStatuses[station]?.isLinked ?? false;
+        const prev = this.wasLinked.get(station) ?? false;
+        this.wasLinked.set(station, linked);
+
+        if (linked) {
+          this.lastLinked.set(station, timestamp);
+        }
+        if (linked !== prev) {
+          linkTransition = true;
+        }
+      }
+      if (linkTransition) this.notifyLastLinkedListeners();
+
       submit(radioUpdate);
     } catch (error) {
       if (this.connected) {
@@ -292,7 +315,10 @@ class RadioManager {
     } else {
       // Immediate: apply to activeConfig and commit
       if (config) this.activeConfig[stationId] = config;
-      else delete this.activeConfig[stationId];
+      else {
+        delete this.activeConfig[stationId];
+        this.lastLinked.delete(stationId);
+      }
       this.saveActiveConfig();
       this.notifyConfigChange();
       await this.commitConfiguration();
@@ -321,6 +347,27 @@ class RadioManager {
     return () => this.pendingCommitListeners.splice(this.pendingCommitListeners.indexOf(listener), 1);
   }
 
+  /** Get all per-station lastLinked timestamps. */
+  getLastLinkedTimestamps(): Partial<Record<StationName, number>> {
+    return Object.fromEntries(this.lastLinked);
+  }
+
+  addLastLinkedListener(listener: (timestamps: Partial<Record<StationName, number>>) => void): () => void {
+    this.lastLinkedListeners.push(listener);
+    return () => this.lastLinkedListeners.splice(this.lastLinkedListeners.indexOf(listener), 1);
+  }
+
+  private notifyLastLinkedListeners() {
+    const timestamps = this.getLastLinkedTimestamps();
+    for (const listener of this.lastLinkedListeners) {
+      try {
+        listener(timestamps);
+      } catch (err) {
+        console.error('Error in lastLinked listener:', err);
+      }
+    }
+  }
+
   /**
    * Set a callback that determines whether radio configuration should be deferred.
    * When the callback returns true, commitConfiguration() queues the commit instead
@@ -331,29 +378,37 @@ class RadioManager {
   }
 
   /**
-   * If a commit was deferred, retry it now (if no longer deferred).
+   * If a non-staged commit was deferred, retry it now (if no longer deferred).
    * Call this when the defer condition clears (e.g., match ends, robots disabled).
+   *
+   * Only retries commits that were originally requested as immediate (stage=false)
+   * but got deferred because shouldDefer() was true. User-staged changes (stage=true)
+   * are never auto-applied — they wait for an explicit "Apply" action.
    */
   retryDeferredCommit() {
-    if (!this._pendingCommit) return;
+    if (!this._deferredCommit) return;
     if (this.shouldDefer?.()) return; // Still deferred
     console.log('Defer condition cleared, committing queued radio configuration');
-    // Clear pending flag immediately so subsequent calls don't queue duplicates
+    // Clear deferred flag immediately so subsequent calls don't queue duplicates
     // while the commit is in progress (radio config takes ~30s).
-    this.setPendingCommit(false);
+    this._deferredCommit = false;
     this.commitConfiguration();
   }
 
   commitConfiguration(): Promise<void> {
     if (this.shouldDefer?.()) {
-      if (!this._pendingCommit) {
+      if (!this._deferredCommit) {
         console.log('Radio configuration deferred: robots enabled or match active');
       }
+      this._deferredCommit = true;
       this.setPendingCommit(true);
       return Promise.resolve();
     }
     // Merge staged changes into activeConfig before committing
     this.applyStagedChanges();
+    // All staged changes have been merged — clear pending flags
+    this._deferredCommit = false;
+    this.setPendingCommit(false);
     // Serialize concurrent calls — each queues after the previous one so
     // previousStations in networkManager is never read mid-update.
     this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
@@ -370,6 +425,7 @@ class RadioManager {
         // Staged clear
         if (this.activeConfig[station]) {
           delete this.activeConfig[station];
+          this.lastLinked.delete(station);
           changed = true;
         }
       } else {
@@ -382,6 +438,7 @@ class RadioManager {
       this.saveActiveConfig();
       this.saveStagedConfig();
       this.notifyConfigChange();
+      this.notifyLastLinkedListeners();
     }
   }
 

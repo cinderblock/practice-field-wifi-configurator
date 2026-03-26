@@ -23,6 +23,7 @@ import {
   useSubnetScan,
   useMdnsActivity,
   useBackendStagedChanges,
+  useLastLinked,
 } from '../hooks/useBackend';
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
@@ -54,6 +55,9 @@ function formatNumberWithThinSpace(num: number | undefined): string {
 /**
  * Find ALL physical stations assigned to SSIDs belonging to a given team number.
  * Returns a Map of ssid → stationName.
+ *
+ * Stations with a staged clear (null) are excluded — they are pending release
+ * and should not show as active for this team.
  */
 function useStationsForTeam(teamNumber: number): Map<string, StationName> {
   const latest = useLatest();
@@ -64,20 +68,27 @@ function useStationsForTeam(teamNumber: number): Map<string, StationName> {
     const stationStatuses = latest?.radioUpdate?.stationStatuses;
 
     for (const station of StationNameList) {
+      const hasStagedClear = station in stagedChanges && stagedChanges[station] === null;
+
+      // Check staged changes first — a staged config overrides active status,
+      // and a staged clear means this station is pending release.
+      const staged = stagedChanges[station];
+      if (staged?.ssid) {
+        const num = parseInt(staged.ssid.split('-', 2)[0]);
+        if (num === teamNumber) {
+          result.set(staged.ssid, station);
+        }
+        continue; // Staged config takes precedence over active radio status
+      }
+
+      if (hasStagedClear) continue; // Station pending release — skip
+
       // Check active radio status
       const ssid = stationStatuses?.[station]?.ssid;
       if (ssid) {
         const num = parseInt(ssid.split('-', 2)[0]);
         if (num === teamNumber) {
           result.set(ssid, station);
-        }
-      }
-      // Check staged changes (may override or add)
-      const staged = stagedChanges[station];
-      if (staged?.ssid) {
-        const num = parseInt(staged.ssid.split('-', 2)[0]);
-        if (num === teamNumber && !result.has(staged.ssid)) {
-          result.set(staged.ssid, station);
         }
       }
     }
@@ -87,6 +98,10 @@ function useStationsForTeam(teamNumber: number): Map<string, StationName> {
 
 /**
  * Find the first unconfigured station slot.
+ *
+ * A station is considered available if it will be empty after pending changes
+ * are applied: either it has no active config and no staged config, or it has
+ * an active config but a staged clear (null) pending.
  */
 function useFindAvailableStation(): StationName | null {
   const latest = useLatest();
@@ -97,13 +112,60 @@ function useFindAvailableStation(): StationName | null {
 
     for (const station of StationNameList) {
       const hasSsid = stationStatuses?.[station]?.ssid;
-      const hasStaged = station in stagedChanges && stagedChanges[station] !== null;
-      if (!hasSsid && !hasStaged) {
+      const hasStagedConfig = station in stagedChanges && stagedChanges[station] !== null;
+      const hasStagedClear = station in stagedChanges && stagedChanges[station] === null;
+      // Available if: (no active config and no staged config) OR (staged clear pending)
+      if ((!hasSsid && !hasStagedConfig) || hasStagedClear) {
         return station;
       }
     }
     return null;
   }, [latest, stagedChanges]);
+}
+
+type DisconnectedStation = {
+  station: StationName;
+  ssid: string;
+  lastLinked: number | null;
+};
+
+/**
+ * Find all configured stations where the robot is NOT currently linked.
+ * Returns them sorted by lastLinked timestamp ascending (oldest first = best takeover candidates).
+ */
+function useFindDisconnectedStations(): DisconnectedStation[] {
+  const latest = useLatest();
+  const stagedChanges = useBackendStagedChanges();
+  const lastLinked = useLastLinked();
+
+  return useMemo(() => {
+    const stationStatuses = latest?.radioUpdate?.stationStatuses;
+    const disconnected: DisconnectedStation[] = [];
+
+    for (const station of StationNameList) {
+      // Skip stations with staged changes — they're in flux
+      if (station in stagedChanges) continue;
+
+      const status = stationStatuses?.[station];
+      if (!status?.ssid) continue; // Not configured
+
+      // Robot not linked = disconnected
+      if (!status.isLinked) {
+        disconnected.push({
+          station,
+          ssid: status.ssid,
+          lastLinked: lastLinked[station] ?? null,
+        });
+      }
+    }
+
+    // Sort by lastLinked ascending (null = never linked = oldest = first)
+    return disconnected.sort((a, b) => {
+      const aTime = a.lastLinked ?? 0;
+      const bTime = b.lastLinked ?? 0;
+      return aTime - bTime;
+    });
+  }, [latest, stagedChanges, lastLinked]);
 }
 
 /**
@@ -173,6 +235,7 @@ function RobotList({
   availableStation: StationName | null;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const disconnectedStations = useFindDisconnectedStations();
 
   return (
     <Card sx={{ mb: 2 }}>
@@ -184,9 +247,17 @@ function RobotList({
           </Button>
         </Box>
 
-        {!availableStation && (
+        {!availableStation && disconnectedStations.length > 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            All 6 radio slots are in use, but {disconnectedStations.length} disconnected robot
+            {disconnectedStations.length > 1 ? 's are' : ' is'} available to take over.
+          </Alert>
+        )}
+
+        {!availableStation && disconnectedStations.length === 0 && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            All 6 radio slots are in use. Remove a team from another station before enabling a new robot.
+            All 6 radio slots are in use and all robots are connected. Wait for a team to leave before enabling a new
+            robot.
           </Alert>
         )}
 
@@ -194,6 +265,7 @@ function RobotList({
           <AddRobotForm
             teamNumber={teamNumber}
             availableStation={availableStation}
+            disconnectedStations={disconnectedStations}
             onDone={() => setShowAddForm(false)}
           />
         )}
@@ -209,7 +281,9 @@ function RobotList({
                 key={config.ssid}
                 config={config}
                 isActive={activeStations.has(config.ssid)}
+                activeStation={activeStations.get(config.ssid) ?? null}
                 availableStation={availableStation}
+                disconnectedStations={disconnectedStations}
               />
             ))}
           </Box>
@@ -228,66 +302,175 @@ function RobotList({
 function RobotRow({
   config,
   isActive,
+  activeStation,
   availableStation,
+  disconnectedStations,
 }: {
   config: SavedTeamConfig;
   isActive: boolean;
+  activeStation: StationName | null;
   availableStation: StationName | null;
+  disconnectedStations: DisconnectedStation[];
 }) {
+  const [showTakeover, setShowTakeover] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
+  const canTakeover = !isActive && !availableStation && disconnectedStations.length > 0;
 
   const handleEnable = (stage: boolean) => {
     if (!availableStation) return;
     sendNewConfig(availableStation, config.ssid, config.wpaKey, stage);
   };
 
+  const handleRelease = () => {
+    if (!activeStation) return;
+    // Stage a clear for this station — committed when "Apply pending changes" is clicked
+    sendNewConfig(activeStation, '', '', true);
+  };
+
+  const handleTakeover = (targetStation: StationName, stage: boolean) => {
+    // Clear the target station (staged), then configure our robot on it
+    sendNewConfig(targetStation, '', '', true);
+    sendNewConfig(targetStation, config.ssid, config.wpaKey, stage);
+    setShowTakeover(false);
+  };
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        px: 2,
-        py: 1,
-        borderRadius: 1,
-        '&:hover': { backgroundColor: 'action.hover' },
-        transition: 'background-color 0.15s',
-      }}
-    >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-            {suffix ?? config.ssid}
+    <>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 2,
+          py: 1,
+          borderRadius: 1,
+          '&:hover': { backgroundColor: 'action.hover' },
+          transition: 'background-color 0.15s',
+        }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+              {suffix ?? config.ssid}
+            </Typography>
+            {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Last used {formatAge(config.lastUsedAt)}
           </Typography>
-          {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
         </Box>
-        <Typography variant="caption" color="text.secondary">
-          Last used {formatAge(config.lastUsedAt)}
-        </Typography>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {isActive ? (
+            <Tooltip title="Release this robot's radio slot">
+              <Button size="small" variant="outlined" color="warning" onClick={handleRelease}>
+                Release
+              </Button>
+            </Tooltip>
+          ) : availableStation ? (
+            <>
+              <Button size="small" variant="outlined" onClick={() => handleEnable(true)}>
+                Stage
+              </Button>
+              <Button size="small" variant="contained" onClick={() => handleEnable(false)}>
+                Enable
+              </Button>
+            </>
+          ) : canTakeover ? (
+            <Button size="small" variant="outlined" color="warning" onClick={() => setShowTakeover(!showTakeover)}>
+              Take Over Slot
+            </Button>
+          ) : (
+            <Tooltip title="All slots in use and connected">
+              <span>
+                <Button size="small" variant="outlined" disabled>
+                  Enable
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          <Tooltip title="Remove saved robot">
+            <IconButton
+              size="small"
+              onClick={() => sendRemoveSavedTeam(config.ssid)}
+              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        {!isActive && (
-          <>
-            <Button size="small" variant="outlined" disabled={!availableStation} onClick={() => handleEnable(true)}>
-              Stage
-            </Button>
-            <Button size="small" variant="contained" disabled={!availableStation} onClick={() => handleEnable(false)}>
-              Enable
-            </Button>
-          </>
-        )}
-        <Tooltip title="Remove saved robot">
-          <IconButton
-            size="small"
-            onClick={() => sendRemoveSavedTeam(config.ssid)}
-            sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
+      {showTakeover && (
+        <TakeoverPicker
+          disconnectedStations={disconnectedStations}
+          onSelect={(station, stage) => handleTakeover(station, stage)}
+          onCancel={() => setShowTakeover(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Inline picker showing disconnected stations sorted by staleness.
+ * Lets the user choose which slot to take over.
+ */
+function TakeoverPicker({
+  disconnectedStations,
+  onSelect,
+  onCancel,
+}: {
+  disconnectedStations: DisconnectedStation[];
+  onSelect: (station: StationName, stage: boolean) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Card variant="outlined" sx={{ mx: 2, mb: 1, p: 1.5 }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        Select a slot to take over
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        The selected team&apos;s config will be cleared and replaced with yours.
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        {disconnectedStations.map(({ station, ssid, lastLinked }) => (
+          <Box
+            key={station}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 1,
+              border: 1,
+              borderColor: 'divider',
+            }}
           >
-            <DeleteOutlineIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+            <Box>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                {ssid}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {lastLinked ? `Last connected ${formatAge(lastLinked)}` : 'Never connected'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Button size="small" variant="outlined" onClick={() => onSelect(station, true)}>
+                Stage
+              </Button>
+              <Button size="small" variant="contained" onClick={() => onSelect(station, false)}>
+                Apply Now
+              </Button>
+            </Box>
+          </Box>
+        ))}
       </Box>
-    </Box>
+      <Button size="small" onClick={onCancel} sx={{ mt: 1 }}>
+        Cancel
+      </Button>
+    </Card>
   );
 }
 
@@ -297,22 +480,34 @@ function RobotRow({
 function AddRobotForm({
   teamNumber,
   availableStation,
+  disconnectedStations,
   onDone,
 }: {
   teamNumber: number;
   availableStation: StationName | null;
+  disconnectedStations: DisconnectedStation[];
   onDone: () => void;
 }) {
   const [suffix, setSuffix] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [showTakeover, setShowTakeover] = useState(false);
 
   const ssid = suffix ? `${teamNumber}-${suffix}` : `${teamNumber}`;
   const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
   const isValid = passphraseRegex.test(passphrase);
+  const canTakeover = !availableStation && disconnectedStations.length > 0;
 
   const handleSubmit = (stage: boolean) => {
     if (!isValid || !availableStation) return;
     sendNewConfig(availableStation, ssid, passphrase, stage);
+    onDone();
+  };
+
+  const handleTakeover = (targetStation: StationName, stage: boolean) => {
+    if (!isValid) return;
+    // Clear the target station (staged), then configure our robot on it
+    sendNewConfig(targetStation, '', '', true);
+    sendNewConfig(targetStation, ssid, passphrase, stage);
     onDone();
   };
 
@@ -343,26 +538,48 @@ function AddRobotForm({
         sx={{ mb: 2 }}
       />
       <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          disabled={!isValid || !availableStation}
-          onClick={() => handleSubmit(true)}
-        >
-          Stage
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          disabled={!isValid || !availableStation}
-          onClick={() => handleSubmit(false)}
-        >
-          Apply Now
-        </Button>
+        {availableStation ? (
+          <>
+            <Button variant="outlined" size="small" disabled={!isValid} onClick={() => handleSubmit(true)}>
+              Stage
+            </Button>
+            <Button variant="contained" size="small" disabled={!isValid} onClick={() => handleSubmit(false)}>
+              Apply Now
+            </Button>
+          </>
+        ) : canTakeover ? (
+          <Button
+            variant="outlined"
+            size="small"
+            color="warning"
+            disabled={!isValid}
+            onClick={() => setShowTakeover(!showTakeover)}
+          >
+            Take Over Slot
+          </Button>
+        ) : (
+          <Tooltip title="All slots in use and connected">
+            <span>
+              <Button variant="contained" size="small" disabled>
+                No Slots Available
+              </Button>
+            </span>
+          </Tooltip>
+        )}
         <Button size="small" onClick={onDone}>
           Cancel
         </Button>
       </Box>
+
+      {showTakeover && (
+        <Box sx={{ mt: 2 }}>
+          <TakeoverPicker
+            disconnectedStations={disconnectedStations}
+            onSelect={(station, stage) => handleTakeover(station, stage)}
+            onCancel={() => setShowTakeover(false)}
+          />
+        </Box>
+      )}
     </Card>
   );
 }

@@ -21,6 +21,7 @@ import {
   isTelemetryUpdate,
   isRoutePreferenceState,
   isPendingCommitState,
+  isLastLinkedState,
   isServerInfo,
   isRobotTestState,
   isFirmwareUpdateProgress,
@@ -41,6 +42,7 @@ import {
   RadioConfigureRequest,
   RadioConfigureProgress,
   PendingCommitState,
+  LastLinkedState,
   ServerInfo,
   RoutePreferenceMsg,
   RunTeamChecks,
@@ -227,6 +229,7 @@ let currentMdnsActivity: MdnsActivity | null = null;
 let currentRoutePreferenceState: RoutePreferenceState | null = null;
 let currentPendingCommit = false;
 let currentStagedChanges: Record<string, { ssid: string; wpaKey: string } | null> = {};
+let currentLastLinked: Partial<Record<StationName, number>> = {};
 let currentServerInfo: ServerInfo | null = null;
 const currentTeamCheckResults = new Map<StationName, TeamCheckResults>();
 
@@ -328,6 +331,11 @@ function handlePendingCommitState(state: PendingCommitState) {
   events.dispatchEvent(new CustomEvent('pendingCommitState', { detail: state }));
 }
 
+function handleLastLinkedState(state: LastLinkedState) {
+  currentLastLinked = state.timestamps;
+  events.dispatchEvent(new CustomEvent('lastLinkedState', { detail: state }));
+}
+
 function handleTeamCheckResults(results: TeamCheckResults) {
   currentTeamCheckResults.set(results.station, results);
   events.dispatchEvent(new CustomEvent('teamCheckResults', { detail: results }));
@@ -360,6 +368,11 @@ function receiveMessage(detail: Message) {
 
   if (isPendingCommitState(detail)) {
     handlePendingCommitState(detail);
+    return;
+  }
+
+  if (isLastLinkedState(detail)) {
+    handleLastLinkedState(detail);
     return;
   }
 
@@ -727,6 +740,20 @@ export function useBackendStagedChanges(): Record<string, { ssid: string; wpaKey
   }, []);
 
   return staged;
+}
+
+/** Get per-station last-linked timestamps from the backend. */
+export function useLastLinked(): Partial<Record<StationName, number>> {
+  const [timestamps, setTimestamps] = useState(currentLastLinked);
+
+  useEffect(() => {
+    setTimestamps(currentLastLinked);
+    const handler = (e: Event) => setTimestamps((e as CustomEvent<LastLinkedState>).detail.timestamps);
+    events.addEventListener('lastLinkedState', handler);
+    return () => events.removeEventListener('lastLinkedState', handler);
+  }, []);
+
+  return timestamps;
 }
 
 export function sendApplyConfig() {
