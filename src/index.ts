@@ -89,6 +89,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     ];
     await checkInterfaceIps(VlanInterface, expectedIps, net);
 
+    // Always remove legacy VLAN interfaces from the previous version that used
+    // radio-native station names (eno1.red1, eno1.blue3). These hold VLAN IDs
+    // that conflict with the new eno1.slot1-slot6 names, so they must be
+    // cleaned up even during graceful restarts.
+    await cleanupOldVlanInterfaces(VlanInterface);
+
     if (KeepNetwork) {
       // Preserve existing rules — this is a graceful restart. Preferences are
       // restored from the kernel below, after the WebSocket server is up.
@@ -105,9 +111,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           // Table may not exist yet on first run — that's fine.
         }
       }
-      // Remove any legacy VLAN interfaces from a previous version that used
-      // radio-native station names (eno1.red1, eno1.blue3) as interface names.
-      await cleanupOldVlanInterfaces(VlanInterface);
     }
 
     // Enable IP forwarding once at startup (required for inter-VLAN routing)
