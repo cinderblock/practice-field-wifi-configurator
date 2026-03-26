@@ -345,7 +345,7 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
   batteryVoltage: {
     title: 'Battery',
     unit: 'V',
-    minValue: 0,
+    minValue: 5,
     maxValue: 14,
     series: [{ data: 'batteryVoltage', label: 'Voltage', color: { r: 76, g: 175, b: 80 }, lineWidth: 2 }],
   },
