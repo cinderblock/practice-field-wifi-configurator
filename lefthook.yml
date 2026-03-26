@@ -1,0 +1,8 @@
+pre-commit:
+  parallel: true
+  commands:
+    typecheck:
+      run: bun run typecheck
+    prettier:
+      glob: '*.{ts,tsx,js,jsx,json,css,md,yaml,yml,html}'
+      run: npx prettier --check {staged_files}

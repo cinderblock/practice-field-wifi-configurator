@@ -6,6 +6,7 @@
     "frontend"
   ],
   "scripts": {
+    "prepare": "lefthook install",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend",
     "build": "tsc && npm run build --workspaces",
@@ -41,6 +42,7 @@
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
     "eslint": "^9.23.0",
+    "lefthook": "^2.1.4",
     "prettier": "^3.6.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
