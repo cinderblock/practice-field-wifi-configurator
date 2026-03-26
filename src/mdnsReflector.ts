@@ -382,13 +382,15 @@ export class MdnsReflector {
       // Packet from a team VLAN — only forward responses (robot answers) to main
       if (!isResponse) return;
 
-      const records = parseAnswerRecords(msg);
-      const team = records.map(r => extractTeamFromName(r.name)).find(t => t !== null);
-      if (team == null) return;
-
       const station = this.teamToStation.get(sourceTeam);
       if (!station) return;
 
+      // Forward all responses from the VLAN to the main network. We don't
+      // filter on FRC_PATTERNS here because legitimate responses include
+      // radio.local, service discovery, and other device names that don't
+      // match the roboRIO naming convention. The source IP already tells us
+      // which team VLAN the packet came from.
+      const records = parseAnswerRecords(msg);
       const names: MdnsResolvedName[] = records.map(r => ({ name: r.name.toLowerCase(), resolvedIp: r.resolvedIp }));
       this.incrementCounter(station, sourceTeam, 'responsesForwarded', names);
       this.forwardToMain(msg);

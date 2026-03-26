@@ -36,12 +36,10 @@
 - [x] Factory-default radio detection: add `192.168.69.8` as a secondary IP on the test interface and probe the radio at `192.168.69.1` — if reachable there but not at `10.TE.AM.1`, the radio is unconfigured
 - [x] mDNS test: verify `.local` resolution works from the test interface (separate from the main mDNS reflector)
 - [ ] `/test` manual radio configuration doesn't support setting the radio's suffix/name field (VH-109 configuration option)
-- [ ] Fix mDNS equipment check on station VLANs (works on `/test` interface, fails on station VLANs)
-  - Root cause: `mdnsQuery()` binds to an ephemeral port (port 0), but mDNS responses are multicast to port 5353. The socket never receives responses because it's listening on the wrong port.
-  - Works on `/test` because: no mDNS reflector running there, and the unicast-response bit tells the responder to reply directly to the sender's port.
-  - Fails on station VLANs because: the mDNS reflector already has a socket on port 5353 with multicast membership. Multicast responses go to port 5353 where only the reflector's socket picks them up.
-  - Proper fix: bind `mdnsQuery` to port 5353 (with `SO_REUSEADDR`) so it receives multicast responses alongside the reflector. Both sockets get a copy of multicast UDP.
-  - Alternative: skip the raw query on station VLANs entirely and read from the reflector's already-resolved cache instead.
+- [x] Fix mDNS equipment check on station VLANs (works on `/test` interface, fails on station VLANs)
+  - Root cause: `mdnsQuery()` bound to ephemeral port (port 0), but mDNS responses are multicast to port 5353
+  - Fix: bind `mdnsQuery` to port 5353 with `SO_REUSEADDR`
+  - Also fixed: mDNS reflector was silently dropping VLAN responses whose answer names didn't match `roboRIO-TEAM-FRC` (e.g. `radio.local`, service discovery). Now forwards all responses from joined VLANs since the source IP already identifies the team.
 - [x] One-click radio firmware update from `/test` page
   - Detect when a connected robot's radio is on an old firmware version
   - Show an "Update Firmware" button (only when old version detected)
