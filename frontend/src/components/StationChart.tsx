@@ -428,6 +428,7 @@ export function StationChart({ station, metric, height = '60px', marginBottom = 
       <Box sx={{ width: '100%', '& canvas': { display: 'block', height: `${height} !important` } }}>
         <SmoothieComponent
           responsive
+          tooltip
           streamDelay={-1000}
           height={parseInt(height)}
           millisPerPixel={100}
