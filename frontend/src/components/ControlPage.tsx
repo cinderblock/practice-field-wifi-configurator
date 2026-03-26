@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -24,6 +24,7 @@ import {
   useMdnsActivity,
   useBackendStagedChanges,
   useLastLinked,
+  sendRoutePreference,
 } from '../hooks/useBackend';
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
@@ -170,14 +171,19 @@ function useFindDisconnectedStations(): DisconnectedStation[] {
 
 /**
  * The main control page component.
- * URL: /control/<teamNumber>
+ * URL: /control/<ssid>
  *
  * Shows a robot management dashboard for a single team:
- * - List of saved robot configs for this team
+ * - List of saved robot configs for this team (always visible)
  * - Add new robot form
- * - Active robot status and match controls
+ * - Selected robot's status and match controls
+ *
+ * Each DS laptop opens /control/<ssid> for the specific robot it drives.
+ * Selecting a different robot updates the URL via replaceState.
  */
-export function ControlPage({ teamNumber }: { teamNumber: number }) {
+export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; selectedSsid: string }) {
+  const [currentSsid, setCurrentSsid] = useState(selectedSsid);
+
   // All active stations for this team
   const activeStations = useStationsForTeam(teamNumber);
   const availableStation = useFindAvailableStation();
@@ -192,6 +198,32 @@ export function ControlPage({ teamNumber }: { teamNumber: number }) {
     });
   }, [savedTeams, teamNumber]);
 
+  // Selection handler — updates URL, and sets route preference when team has multiple robots
+  const handleSelectRobot = useCallback(
+    (ssid: string) => {
+      setCurrentSsid(ssid);
+      window.history.replaceState(null, '', `/control/${encodeURIComponent(ssid)}`);
+
+      const station = activeStations.get(ssid);
+      if (station && activeStations.size > 1) {
+        sendRoutePreference(station);
+      }
+    },
+    [activeStations],
+  );
+
+  // Auto-select: if the current SSID is not active but another robot for this team is,
+  // switch to the first active one.
+  useEffect(() => {
+    if (activeStations.has(currentSsid)) return;
+    if (activeStations.size > 0) {
+      const firstSsid = activeStations.keys().next().value as string;
+      handleSelectRobot(firstSsid);
+    }
+  }, [activeStations, currentSsid, handleSelectRobot]);
+
+  const selectedStation = activeStations.get(currentSsid) ?? null;
+
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
       <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>
@@ -204,18 +236,24 @@ export function ControlPage({ teamNumber }: { teamNumber: number }) {
         teamConfigs={teamConfigs}
         activeStations={activeStations}
         availableStation={availableStation}
+        selectedSsid={currentSsid}
+        onSelectRobot={handleSelectRobot}
       />
 
-      {/* Active robot experiences */}
-      {Array.from(activeStations.entries()).map(([ssid, station]) => (
-        <Box key={ssid} sx={{ mt: 2 }}>
+      {/* Selected robot's station experience */}
+      {selectedStation ? (
+        <Box sx={{ mt: 2 }}>
           <Typography variant="h6" sx={{ mb: 1, fontFamily: 'monospace' }}>
-            {ssid}
+            {currentSsid}
           </Typography>
-          <MatchPanelForControl station={station} ssid={ssid} />
-          <StationExperience station={station} />
+          <MatchPanelForControl station={selectedStation} ssid={currentSsid} />
+          <StationExperience station={selectedStation} />
         </Box>
-      ))}
+      ) : activeStations.size === 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+          No active robots. Enable a robot above to see its status.
+        </Typography>
+      ) : null}
     </Container>
   );
 }
@@ -228,11 +266,15 @@ function RobotList({
   teamConfigs,
   activeStations,
   availableStation,
+  selectedSsid,
+  onSelectRobot,
 }: {
   teamNumber: number;
   teamConfigs: SavedTeamConfig[];
   activeStations: Map<string, StationName>;
   availableStation: StationName | null;
+  selectedSsid: string;
+  onSelectRobot: (ssid: string) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const disconnectedStations = useFindDisconnectedStations();
@@ -267,6 +309,7 @@ function RobotList({
             availableStation={availableStation}
             disconnectedStations={disconnectedStations}
             onDone={() => setShowAddForm(false)}
+            onSelectRobot={onSelectRobot}
           />
         )}
 
@@ -281,9 +324,11 @@ function RobotList({
                 key={config.ssid}
                 config={config}
                 isActive={activeStations.has(config.ssid)}
+                isSelected={config.ssid === selectedSsid}
                 activeStation={activeStations.get(config.ssid) ?? null}
                 availableStation={availableStation}
                 disconnectedStations={disconnectedStations}
+                onSelect={() => onSelectRobot(config.ssid)}
               />
             ))}
           </Box>
@@ -298,45 +343,53 @@ function RobotList({
 
 /**
  * A single row in the robot list showing a saved config.
+ * Clickable to select — the selected robot's experience is shown below the list.
  */
 function RobotRow({
   config,
   isActive,
+  isSelected,
   activeStation,
   availableStation,
   disconnectedStations,
+  onSelect,
 }: {
   config: SavedTeamConfig;
   isActive: boolean;
+  isSelected: boolean;
   activeStation: StationName | null;
   availableStation: StationName | null;
   disconnectedStations: DisconnectedStation[];
+  onSelect: () => void;
 }) {
   const [showTakeover, setShowTakeover] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
   const canTakeover = !isActive && !availableStation && disconnectedStations.length > 0;
 
-  const handleEnable = (stage: boolean) => {
+  const handleEnable = (stage: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!availableStation) return;
     sendNewConfig(availableStation, config.ssid, config.wpaKey, stage);
+    onSelect(); // Auto-select the robot being enabled
   };
 
-  const handleRelease = () => {
+  const handleRelease = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!activeStation) return;
-    // Stage a clear for this station — committed when "Apply pending changes" is clicked
     sendNewConfig(activeStation, '', '', true);
   };
 
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
-    // Clear the target station (staged), then configure our robot on it
     sendNewConfig(targetStation, '', '', true);
     sendNewConfig(targetStation, config.ssid, config.wpaKey, stage);
     setShowTakeover(false);
+    onSelect(); // Auto-select the robot being configured
   };
 
   return (
     <>
       <Box
+        onClick={onSelect}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -344,7 +397,11 @@ function RobotRow({
           px: 2,
           py: 1,
           borderRadius: 1,
-          '&:hover': { backgroundColor: 'action.hover' },
+          cursor: 'pointer',
+          backgroundColor: isSelected ? 'action.selected' : 'transparent',
+          borderLeft: isSelected ? 3 : 0,
+          borderColor: 'primary.main',
+          '&:hover': { backgroundColor: isSelected ? 'action.selected' : 'action.hover' },
           transition: 'background-color 0.15s',
         }}
       >
@@ -363,21 +420,29 @@ function RobotRow({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {isActive ? (
             <Tooltip title="Release this robot's radio slot">
-              <Button size="small" variant="outlined" color="warning" onClick={handleRelease}>
+              <Button size="small" variant="outlined" color="warning" onClick={e => handleRelease(e)}>
                 Release
               </Button>
             </Tooltip>
           ) : availableStation ? (
             <>
-              <Button size="small" variant="outlined" onClick={() => handleEnable(true)}>
+              <Button size="small" variant="outlined" onClick={e => handleEnable(true, e)}>
                 Stage
               </Button>
-              <Button size="small" variant="contained" onClick={() => handleEnable(false)}>
+              <Button size="small" variant="contained" onClick={e => handleEnable(false, e)}>
                 Enable
               </Button>
             </>
           ) : canTakeover ? (
-            <Button size="small" variant="outlined" color="warning" onClick={() => setShowTakeover(!showTakeover)}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="warning"
+              onClick={e => {
+                e.stopPropagation();
+                setShowTakeover(!showTakeover);
+              }}
+            >
               Take Over Slot
             </Button>
           ) : (
@@ -392,7 +457,10 @@ function RobotRow({
           <Tooltip title="Remove saved robot">
             <IconButton
               size="small"
-              onClick={() => sendRemoveSavedTeam(config.ssid)}
+              onClick={e => {
+                e.stopPropagation();
+                sendRemoveSavedTeam(config.ssid);
+              }}
               sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
             >
               <DeleteOutlineIcon fontSize="small" />
@@ -482,11 +550,13 @@ function AddRobotForm({
   availableStation,
   disconnectedStations,
   onDone,
+  onSelectRobot,
 }: {
   teamNumber: number;
   availableStation: StationName | null;
   disconnectedStations: DisconnectedStation[];
   onDone: () => void;
+  onSelectRobot: (ssid: string) => void;
 }) {
   const [suffix, setSuffix] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -500,14 +570,15 @@ function AddRobotForm({
   const handleSubmit = (stage: boolean) => {
     if (!isValid || !availableStation) return;
     sendNewConfig(availableStation, ssid, passphrase, stage);
+    onSelectRobot(ssid); // Auto-select the newly added robot
     onDone();
   };
 
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
     if (!isValid) return;
-    // Clear the target station (staged), then configure our robot on it
     sendNewConfig(targetStation, '', '', true);
     sendNewConfig(targetStation, ssid, passphrase, stage);
+    onSelectRobot(ssid); // Auto-select the newly added robot
     onDone();
   };
 
@@ -651,6 +722,55 @@ function PassphraseChecker({ teamConfigs }: { teamConfigs: SavedTeamConfig[] }) 
 }
 
 /**
+ * Debounce the "multiple DS" warning so it doesn't flicker when DS TCP flaps (~6s cycle).
+ * Holds the warning for `holdMs` after blockedDsIps clears, then releases.
+ */
+type DebouncedDsInfo = { acceptedIp: string; blockedIps: string[] } | null;
+
+function useDebouncedMultipleDsWarning(station: StationName, holdMs = 10_000): DebouncedDsInfo {
+  const matchState = useMatchState();
+  const dsInfo = matchState?.connectedStations[station];
+  const liveBlockedIps = dsInfo?.blockedDsIps;
+  const liveAcceptedIp = dsInfo?.ip;
+  const hasBlocked = liveBlockedIps && liveBlockedIps.length > 0;
+
+  const [displayed, setDisplayed] = useState<DebouncedDsInfo>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastNonEmptyRef = useRef<DebouncedDsInfo>(null);
+
+  useEffect(() => {
+    if (hasBlocked && liveAcceptedIp) {
+      // Blocked IPs present — show immediately and cancel any pending clear
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+      const info: DebouncedDsInfo = { acceptedIp: liveAcceptedIp, blockedIps: [...liveBlockedIps] };
+      lastNonEmptyRef.current = info;
+      setDisplayed(info);
+    } else if (lastNonEmptyRef.current) {
+      // Blocked IPs just cleared — hold the previous value for holdMs
+      if (!holdTimerRef.current) {
+        holdTimerRef.current = setTimeout(() => {
+          setDisplayed(null);
+          lastNonEmptyRef.current = null;
+          holdTimerRef.current = null;
+        }, holdMs);
+      }
+    }
+  }, [hasBlocked, liveAcceptedIp, liveBlockedIps, holdMs]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    };
+  }, []);
+
+  return displayed;
+}
+
+/**
  * Full station experience shown once a robot is configured on a physical station.
  * Shows radio status, telemetry, charts, network diagnostics, etc.
  */
@@ -663,6 +783,7 @@ function StationExperience({ station }: { station: StationName }) {
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
   const mdnsActivity = useMdnsActivity();
+  const multipleDsWarning = useDebouncedMultipleDsWarning(station);
 
   // Always register the chart data collection handler
   useUpdateCallback(handleStatusUpdate);
@@ -691,18 +812,28 @@ function StationExperience({ station }: { station: StationName }) {
     <>
       <TeamChecksModal station={station} />
 
-      {/* DS connection alerts */}
-      {matchState?.connectedStations[station]?.blockedDsIps &&
-        matchState.connectedStations[station]!.blockedDsIps!.length > 0 && (
-          <Alert
-            severity="error"
-            sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
-          >
-            MULTIPLE DRIVER STATIONS DETECTED — {matchState.connectedStations[station]!.blockedDsIps!.join(', ')}{' '}
-            blocked. Close the extra Driver Station
-            {matchState.connectedStations[station]!.blockedDsIps!.length > 1 ? 's' : ''}.
-          </Alert>
-        )}
+      {/* DS connection alerts — shows all DS IPs (accepted + blocked) with debounced hold */}
+      {multipleDsWarning && (
+        <Alert
+          severity="error"
+          sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
+        >
+          MULTIPLE DRIVER STATIONS DETECTED
+          <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
+            <li>
+              <strong>{multipleDsWarning.acceptedIp}</strong> — active
+            </li>
+            {multipleDsWarning.blockedIps.map(ip => (
+              <li key={ip}>
+                <strong>{ip}</strong> — blocked
+              </li>
+            ))}
+          </Box>
+          <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 400 }}>
+            Close the extra Driver Station{multipleDsWarning.blockedIps.length > 1 ? 's' : ''}.
+          </Typography>
+        </Alert>
+      )}
 
       <Card sx={{ mb: 2 }}>
         <CardContent sx={{ display: 'flex', flexDirection: 'column' }}>

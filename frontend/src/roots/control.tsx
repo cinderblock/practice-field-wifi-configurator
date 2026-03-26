@@ -3,30 +3,25 @@ import { ControlPage } from '../components/ControlPage';
 import { WrapAll } from './wrap';
 import { clearTeamNumberCookie } from '../utils/cookies';
 
-// Extract the team number from the URL path: /control/<teamNumber>
+// Extract the SSID from the URL path: /control/<ssid>
+// The SSID is either a bare team number (e.g. "1234") or team-suffix (e.g. "1234-beta").
 const pathParts = window.location.pathname.split('/');
 const raw = decodeURIComponent(pathParts[2] ?? '');
 
-// Parse team number (digits only)
-const teamNumber = parseInt(raw, 10);
+// Parse team number from the SSID prefix (digits before the first hyphen)
+const teamNumber = parseInt(raw.split('-', 2)[0], 10);
 
 if (!raw) {
   // Nothing in URL — redirect to home
   window.location.href = '/';
 } else if (isNaN(teamNumber) || teamNumber <= 0) {
-  // Old URL format like /control/1234-Comp — extract digits and redirect
-  const digits = raw.match(/^(\d+)/);
-  if (digits) {
-    window.location.href = `/control/${digits[1]}`;
-  } else {
-    // Can't parse at all — clear the cookie to prevent redirect loops and go home
-    clearTeamNumberCookie();
-    window.location.href = '/';
-  }
+  // Can't parse a team number — clear the cookie to prevent redirect loops and go home
+  clearTeamNumberCookie();
+  window.location.href = '/';
 } else {
   createRoot(document.getElementById('root')!).render(
     <WrapAll>
-      <ControlPage teamNumber={teamNumber} />
+      <ControlPage teamNumber={teamNumber} selectedSsid={raw} />
     </WrapAll>,
   );
 }
