@@ -54,6 +54,38 @@ function formatNumberWithThinSpace(num: number | undefined): string {
 }
 
 /**
+ * Collect all SSIDs currently active or staged across ALL stations.
+ * Used to prevent configuring the same SSID on multiple stations.
+ */
+function useAllActiveSSIDs(): Set<string> {
+  const latest = useLatest();
+  const stagedChanges = useBackendStagedChanges();
+
+  return useMemo(() => {
+    const ssids = new Set<string>();
+    const stationStatuses = latest?.radioUpdate?.stationStatuses;
+
+    for (const station of StationNameList) {
+      // A staged clear means the station is being released — skip its active SSID
+      const hasStagedClear = station in stagedChanges && stagedChanges[station] === null;
+
+      // Staged config takes precedence
+      const staged = stagedChanges[station];
+      if (staged?.ssid) {
+        ssids.add(staged.ssid);
+        continue;
+      }
+
+      if (hasStagedClear) continue;
+
+      const ssid = stationStatuses?.[station]?.ssid;
+      if (ssid) ssids.add(ssid);
+    }
+    return ssids;
+  }, [latest, stagedChanges]);
+}
+
+/**
  * Find ALL physical stations assigned to SSIDs belonging to a given team number.
  * Returns a Map of ssid → stationName.
  *
@@ -561,21 +593,23 @@ function AddRobotForm({
   const [suffix, setSuffix] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [showTakeover, setShowTakeover] = useState(false);
+  const allActiveSSIDs = useAllActiveSSIDs();
 
   const ssid = suffix ? `${teamNumber}-${suffix}` : `${teamNumber}`;
   const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
   const isValid = passphraseRegex.test(passphrase);
+  const isDuplicate = allActiveSSIDs.has(ssid);
   const canTakeover = !availableStation && disconnectedStations.length > 0;
 
   const handleSubmit = (stage: boolean) => {
-    if (!isValid || !availableStation) return;
+    if (!isValid || !availableStation || isDuplicate) return;
     sendNewConfig(availableStation, ssid, passphrase, stage);
     onSelectRobot(ssid); // Auto-select the newly added robot
     onDone();
   };
 
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
-    if (!isValid) return;
+    if (!isValid || isDuplicate) return;
     sendNewConfig(targetStation, '', '', true);
     sendNewConfig(targetStation, ssid, passphrase, stage);
     onSelectRobot(ssid); // Auto-select the newly added robot
@@ -587,8 +621,9 @@ function AddRobotForm({
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         New Robot
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+      <Typography variant="body2" color={isDuplicate ? 'error' : 'text.secondary'} sx={{ mb: 1 }}>
         SSID: <strong>{ssid}</strong>
+        {isDuplicate && ' — already active'}
       </Typography>
       <TextField
         label="Suffix (optional)"
@@ -611,10 +646,20 @@ function AddRobotForm({
       <Box sx={{ display: 'flex', gap: 1 }}>
         {availableStation ? (
           <>
-            <Button variant="outlined" size="small" disabled={!isValid} onClick={() => handleSubmit(true)}>
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={!isValid || isDuplicate}
+              onClick={() => handleSubmit(true)}
+            >
               Stage
             </Button>
-            <Button variant="contained" size="small" disabled={!isValid} onClick={() => handleSubmit(false)}>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={!isValid || isDuplicate}
+              onClick={() => handleSubmit(false)}
+            >
               Apply Now
             </Button>
           </>
@@ -623,7 +668,7 @@ function AddRobotForm({
             variant="outlined"
             size="small"
             color="warning"
-            disabled={!isValid}
+            disabled={!isValid || isDuplicate}
             onClick={() => setShowTakeover(!showTakeover)}
           >
             Take Over Slot

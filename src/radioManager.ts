@@ -306,6 +306,24 @@ class RadioManager {
 
     const config = ssid ? { ssid, wpaKey, internetAccess } : null;
 
+    // Prevent duplicate SSIDs across stations.  If this SSID is already active
+    // (or staged) on a *different* station, clear the old one first so we never
+    // end up with the same SSID on two radios simultaneously.
+    if (ssid) {
+      for (const other of StationNameList) {
+        if (other === stationId) continue;
+        if (this.activeConfig[other]?.ssid === ssid) {
+          console.log(`Duplicate SSID "${ssid}": clearing ${other} (was active) before configuring ${stationId}`);
+          delete this.activeConfig[other];
+          this.lastLinked.delete(other);
+        }
+        if (this.stagedChanges[other]?.ssid === ssid) {
+          console.log(`Duplicate SSID "${ssid}": clearing staged config on ${other} before configuring ${stationId}`);
+          delete this.stagedChanges[other];
+        }
+      }
+    }
+
     if (stage) {
       // Stage: store in stagedChanges, don't touch activeConfig
       // null means "clear this station" when committed
