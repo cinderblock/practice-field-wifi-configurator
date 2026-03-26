@@ -4,6 +4,7 @@ import type { StationName, CheckResult, TeamCheckResults, DiscoveredHost } from 
 const FETCH_TIMEOUT = 1500;
 /** roboRIO's NI SysAPI is slower than the radio — give it more time. */
 const RIO_FETCH_TIMEOUT = 3000;
+const MDNS_PORT = 5353;
 
 // ── Help URLs ───────────────────────────────────────────────────────
 
@@ -118,8 +119,10 @@ function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promi
       }
     });
 
-    // Bind to the specific interface IP, then send the query
-    sock.bind(0, sourceIp, () => {
+    // Bind to port 5353 (with SO_REUSEADDR already set above) so we receive
+    // multicast responses. Binding to an ephemeral port fails when the mDNS
+    // reflector is running because multicast responses go to port 5353.
+    sock.bind(MDNS_PORT, sourceIp, () => {
       try {
         sock.addMembership('224.0.0.251', sourceIp);
       } catch {
