@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alliance,
+  ApiKeyCreated,
+  ApiKeyState,
   AppLogMessage,
   InternetToggle,
   MatchConfig,
@@ -11,6 +13,8 @@ import {
   SubnetScanResults,
   TeamCheckResults,
   TelemetryUpdate,
+  isApiKeyCreated,
+  isApiKeyState,
   isAppLogMessage,
   isMatchState,
   isMdnsActivity,
@@ -453,6 +457,16 @@ function receiveMessage(detail: Message) {
 
   if (isCastReceiverSwap(detail)) {
     handleCastReceiverSwap(detail);
+    return;
+  }
+
+  if (isApiKeyState(detail)) {
+    handleApiKeyState(detail);
+    return;
+  }
+
+  if (isApiKeyCreated(detail)) {
+    handleApiKeyCreated(detail);
     return;
   }
 
@@ -995,6 +1009,69 @@ export function useServerResponse(): ServerResponse | null {
   }, []);
 
   return response;
+}
+
+// ── API Key Management ──────────────────────────────────────────────
+
+let currentApiKeyState: ApiKeyState | null = null;
+
+function handleApiKeyState(state: ApiKeyState) {
+  currentApiKeyState = state;
+  events.dispatchEvent(new CustomEvent('apiKeyState', { detail: state }));
+}
+
+function handleApiKeyCreated(msg: ApiKeyCreated) {
+  events.dispatchEvent(new CustomEvent('apiKeyCreated', { detail: msg }));
+}
+
+export function useApiKeyState(): ApiKeyState | null {
+  const [state, setState] = useState<ApiKeyState | null>(currentApiKeyState);
+
+  useEffect(() => {
+    setState(currentApiKeyState);
+    const handler = (e: Event) => setState((e as CustomEvent<ApiKeyState>).detail);
+    events.addEventListener('apiKeyState', handler);
+    return () => events.removeEventListener('apiKeyState', handler);
+  }, []);
+
+  return state;
+}
+
+/** Subscribe to one-time key creation events (contains the full key value). */
+export function useApiKeyCreatedEvent(callback: (msg: ApiKeyCreated) => void) {
+  useEffect(() => {
+    const handler = (e: Event) => callback((e as CustomEvent<ApiKeyCreated>).detail);
+    events.addEventListener('apiKeyCreated', handler);
+    return () => events.removeEventListener('apiKeyCreated', handler);
+  }, [callback]);
+}
+
+export function sendCreateApiKey(label: string) {
+  ws?.send(JSON.stringify({ type: 'createApiKey', label }));
+}
+
+export function sendRevokeApiKey(id: string) {
+  ws?.send(JSON.stringify({ type: 'revokeApiKey', id }));
+}
+
+export function sendReactivateApiKey(id: string) {
+  ws?.send(JSON.stringify({ type: 'reactivateApiKey', id }));
+}
+
+export function sendDeleteApiKey(id: string) {
+  ws?.send(JSON.stringify({ type: 'deleteApiKey', id }));
+}
+
+export function sendApprovePendingDevice(id: string, label: string) {
+  ws?.send(JSON.stringify({ type: 'approvePendingDevice', id, label }));
+}
+
+export function sendDismissPendingDevice(id: string) {
+  ws?.send(JSON.stringify({ type: 'dismissPendingDevice', id }));
+}
+
+export function sendScoreReset() {
+  ws?.send(JSON.stringify({ type: 'scoreReset' }));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

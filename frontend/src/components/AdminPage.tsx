@@ -19,10 +19,20 @@ import TableRow from '@mui/material/TableRow';
 import type { MatchPhase, StationName } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
 import { prettyStationName } from '../../../src/utils';
+import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import TextField from '@mui/material/TextField';
+
+import type { ApiKeyCreated, PendingDevice } from '../../../src/types';
 import {
   useMatchState,
   useLatest,
   useScoreState,
+  useApiKeyState,
+  useApiKeyCreatedEvent,
   sendAdminStopMatch,
   sendAdminGlobalEStop,
   sendAdminStationEStop,
@@ -32,6 +42,13 @@ import {
   useCastReceivers,
   sendCastReceiverSwap,
   useFirmwareStore,
+  sendCreateApiKey,
+  sendRevokeApiKey,
+  sendReactivateApiKey,
+  sendDeleteApiKey,
+  sendApprovePendingDevice,
+  sendDismissPendingDevice,
+  sendScoreReset,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -261,6 +278,7 @@ export function AdminPage() {
       <GlobalEStopSection />
       <MatchStatusSection />
       <ScoringSection />
+      <ApiKeySection />
       <StationControlSection />
       <FirmwareSection />
     </Container>
@@ -329,7 +347,7 @@ function ScoringSection() {
                 size="small"
                 variant="outlined"
                 color="error"
-                onClick={() => fetch('/api/score/reset', { method: 'POST' })}
+                onClick={() => sendScoreReset()}
                 sx={{ textTransform: 'none', fontSize: '0.75rem' }}
               >
                 Reset
@@ -493,6 +511,273 @@ function ScoreCard({ alliance, score }: { alliance: 'red' | 'blue'; score: { tot
         {alliance}
       </Typography>
     </Box>
+  );
+}
+
+// ── API Key Management ──────────────────────────────────────────────
+
+function ApiKeySection() {
+  const apiKeyState = useApiKeyState();
+  const [newKeyLabel, setNewKeyLabel] = useState('');
+  const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
+  const [approveDevice, setApproveDevice] = useState<PendingDevice | null>(null);
+  const [approveLabel, setApproveLabel] = useState('');
+  const [, setTick] = useState(0);
+
+  // Re-render every second to update relative timestamps
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Listen for key creation events (full key shown once)
+  useApiKeyCreatedEvent(useCallback((msg: ApiKeyCreated) => setCreatedKey(msg), []));
+
+  if (!apiKeyState) return null;
+
+  const handleCreate = () => {
+    if (!newKeyLabel.trim()) return;
+    sendCreateApiKey(newKeyLabel.trim());
+    setNewKeyLabel('');
+  };
+
+  const handleApprove = () => {
+    if (!approveDevice) return;
+    sendApprovePendingDevice(approveDevice.id, approveLabel.trim() || `Device ${approveDevice.sourceIp}`);
+    setApproveDevice(null);
+    setApproveLabel('');
+  };
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h5">Scoring API Keys</Typography>
+          <Chip
+            label={apiKeyState.authRequired ? 'Auth Required' : 'Open Access'}
+            size="small"
+            color={apiKeyState.authRequired ? 'success' : 'warning'}
+          />
+        </Box>
+
+        {/* Key creation form */}
+        <Box sx={{ display: 'flex', gap: 1, my: 2, alignItems: 'flex-end' }}>
+          <TextField
+            size="small"
+            label="New Key Label"
+            placeholder="e.g. Speaker Sensor"
+            value={newKeyLabel}
+            onChange={e => setNewKeyLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            sx={{ flex: 1 }}
+          />
+          <Button variant="contained" size="small" onClick={handleCreate} disabled={!newKeyLabel.trim()}>
+            Create Key
+          </Button>
+        </Box>
+
+        {/* One-time key display */}
+        {createdKey && (
+          <Alert severity="success" onClose={() => setCreatedKey(null)} sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">New key created: {createdKey.label}</Typography>
+            <Typography
+              variant="body2"
+              sx={{ fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all', my: 0.5 }}
+            >
+              {createdKey.key}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Copy this key now — it will not be shown again.
+            </Typography>
+          </Alert>
+        )}
+
+        {/* Registered keys table */}
+        {apiKeyState.keys.length > 0 && (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Label</TableCell>
+                <TableCell>Key</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Requests</TableCell>
+                <TableCell>Last Used</TableCell>
+                <TableCell>Last IP</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {apiKeyState.keys.map(key => (
+                <TableRow key={key.id}>
+                  <TableCell>{key.label}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      {key.keyPreview}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={key.status} size="small" color={key.status === 'active' ? 'success' : 'error'} />
+                  </TableCell>
+                  <TableCell align="right">{key.requestCount}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {key.lastUsedAt ? formatAge(key.lastUsedAt) : 'Never'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      {key.lastSourceIp ?? '—'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {key.status === 'active' ? (
+                        <Button
+                          size="small"
+                          color="warning"
+                          onClick={() => sendRevokeApiKey(key.id)}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                        >
+                          Revoke
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          color="success"
+                          onClick={() => sendReactivateApiKey(key.id)}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                        >
+                          Reactivate
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => sendDeleteApiKey(key.id)}
+                        sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {/* Pending devices section */}
+        {apiKeyState.pendingDevices.length > 0 && (
+          <>
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+              Pending Devices ({apiKeyState.pendingDevices.length})
+            </Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>IP Address</TableCell>
+                  <TableCell>User Agent</TableCell>
+                  <TableCell align="right">Attempts</TableCell>
+                  <TableCell>Last Seen</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {apiKeyState.pendingDevices.map(device => (
+                  <TableRow key={device.id}>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {device.sourceIp}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {device.userAgent ?? '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">{device.requestCount}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatAge(device.lastSeen)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Button
+                          size="small"
+                          color="success"
+                          onClick={() => {
+                            setApproveDevice(device);
+                            setApproveLabel('');
+                          }}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() => sendDismissPendingDevice(device.id)}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                        >
+                          Dismiss
+                        </Button>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        )}
+
+        {/* Approve device dialog */}
+        <Dialog open={!!approveDevice} onClose={() => setApproveDevice(null)}>
+          <DialogTitle>Approve Device</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Generate an API key for device at <strong>{approveDevice?.sourceIp}</strong>
+              {approveDevice?.userAgent && (
+                <>
+                  <br />
+                  <Typography component="span" variant="caption" color="text.secondary">
+                    {approveDevice.userAgent}
+                  </Typography>
+                </>
+              )}
+            </Typography>
+            <TextField
+              label="Device Label"
+              placeholder={`Device ${approveDevice?.sourceIp ?? ''}`}
+              value={approveLabel}
+              onChange={e => setApproveLabel(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleApprove()}
+              fullWidth
+              autoFocus
+              size="small"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setApproveDevice(null)}>Cancel</Button>
+            <Button onClick={handleApprove} variant="contained" color="success">
+              Approve & Generate Key
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Empty state */}
+        {apiKeyState.keys.length === 0 && apiKeyState.pendingDevices.length === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            No API keys configured. The scoring API is currently open to all devices on the network. Create a key to
+            require authentication.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

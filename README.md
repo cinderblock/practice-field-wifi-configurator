@@ -92,7 +92,7 @@ Content-Type: application/json
 {"source":"goal-1","alliance":"red","element":"speaker"}
 ```
 
-Authentication via `X-API-Key` header or `?key=` query parameter. Optional if `SCORING_API_KEY` is not set.
+Authentication via `X-API-Key` header or `?key=` query parameter. API keys are managed through the admin panel at `/admin`. When no keys have been created, the scoring API is open to all devices on the network. Once a key is created, authentication is required for write endpoints. Unrecognized devices appear as "pending" in the admin panel for one-click approval.
 
 Full API documentation is served at `GET /api/score/schema` as an [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0) spec in JSON. Point any OpenAPI-compatible tool (Swagger UI, Redoc, code generators) at it, or read it directly from tiny devices.
 
@@ -394,7 +394,7 @@ server {
 | `MDNS_REFLECTOR`              | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
 | `TEST_INTERFACE`              | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
 | `DRY_RUN`                     | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
-| `SCORING_API_KEY`             | _(none)_            | Shared secret for scoring API authentication. If unset, scoring endpoints are open to anyone on the network.                          |
+| `API_KEYS_FILE`               | `api-keys.json`     | Path to the JSON file for API key persistence.                                                                                        |
 | `SCORING_AUTO_REGISTER_LIMIT` | `1`                 | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |
 
 ### Trusted Proxies Configuration

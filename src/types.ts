@@ -1379,3 +1379,42 @@ export function isCastReceiverList(msg: unknown): msg is CastReceiverList {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as CastReceiverList).type === 'castReceiverList';
 }
+
+// ── Physical Port Bridging ──────────────────────────────────────────
+
+/** Configuration for a physical Ethernet port available for bridging. */
+export interface PortConfig {
+  vlanId: number;
+  name: string; // Display name, e.g., "Port A"
+}
+
+/** Sent from server to client: current port bridge state. */
+export interface PortBridgeState {
+  type: 'portBridgeState';
+  /** Available physical ports (from server config). Empty = port bridging disabled. */
+  ports: PortConfig[];
+  /** Active bridges: portVlanId → stationName */
+  activeBridges: Record<number, StationName>;
+}
+
+export function isPortBridgeState(msg: unknown): msg is PortBridgeState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as PortBridgeState).type === 'portBridgeState';
+}
+
+/** Sent from client to server: request to bridge or unbind a port. */
+export interface PortBridgeRequest {
+  type: 'portBridge';
+  station: StationName;
+  /** VLAN ID of the port to bridge, or null to unbind all ports from this station. */
+  portVlanId: number | null;
+}
+
+export function isPortBridgeRequest(msg: unknown): msg is PortBridgeRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as PortBridgeRequest;
+  if (m.type !== 'portBridge') return false;
+  if (!StationNameRegex.test(m.station)) return false;
+  if (m.portVlanId !== null && typeof m.portVlanId !== 'number') return false;
+  return true;
+}
