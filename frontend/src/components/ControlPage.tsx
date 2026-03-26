@@ -25,6 +25,7 @@ import {
   useBackendStagedChanges,
   useLastLinked,
   sendRoutePreference,
+  useRoutePreferenceState,
 } from '../hooks/useBackend';
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
@@ -256,11 +257,49 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
 
   const selectedStation = activeStations.get(currentSsid) ?? null;
 
+  // Route preference state — for multi-robot routing feedback
+  const routeState = useRoutePreferenceState();
+  const routePreference = routeState?.preference ?? null;
+  const isMultiRobot = activeStations.size >= 2;
+
+  // Resolve the SSID that the laptop is currently routed to
+  const routedSsid = useMemo(() => {
+    if (!routePreference) return null;
+    for (const [ssid, station] of activeStations) {
+      if (station === routePreference) return ssid;
+    }
+    return null;
+  }, [routePreference, activeStations]);
+
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
       <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>
         Team {teamNumber}
       </Typography>
+
+      {/* Routing banner for multi-robot teams */}
+      {isMultiRobot && (
+        <Alert
+          severity={routedSsid ? (routedSsid === currentSsid ? 'success' : 'warning') : 'info'}
+          sx={{ mb: 2, '& .MuiAlert-message': { width: '100%' } }}
+        >
+          {routedSsid ? (
+            <>
+              This laptop is routed to <strong>{routedSsid}</strong>.
+              {routedSsid !== currentSsid && ' Select it below or click the robot you want to drive.'}
+            </>
+          ) : (
+            'Select a robot below to route this laptop to its network.'
+          )}
+          <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+            Each Driver Station laptop should open{' '}
+            <strong>
+              /control/<em>SSID</em>
+            </strong>{' '}
+            for the robot it drives.
+          </Typography>
+        </Alert>
+      )}
 
       {/* Robot list and add-robot form */}
       <RobotList
@@ -272,20 +311,25 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
         onSelectRobot={handleSelectRobot}
       />
 
-      {/* Selected robot's station experience */}
-      {selectedStation ? (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1, fontFamily: 'monospace' }}>
-            {currentSsid}
-          </Typography>
-          <MatchPanelForControl station={selectedStation} ssid={currentSsid} />
-          <StationExperience station={selectedStation} />
-        </Box>
-      ) : activeStations.size === 0 ? (
+      {/* All active robots' station experiences — charts only for selected */}
+      {activeStations.size === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
           No active robots. Enable a robot above to see its status.
         </Typography>
-      ) : null}
+      ) : (
+        Array.from(activeStations.entries()).map(([ssid, station]) => {
+          const isSelected = ssid === currentSsid;
+          return (
+            <Box key={ssid} sx={{ mt: 2 }}>
+              <Typography variant="h6" sx={{ fontFamily: 'monospace', mb: 1 }}>
+                {ssid}
+              </Typography>
+              <MatchPanelForControl station={station} ssid={ssid} />
+              <StationExperience station={station} showCharts={isSelected} />
+            </Box>
+          );
+        })
+      )}
     </Container>
   );
 }
@@ -818,8 +862,11 @@ function useDebouncedMultipleDsWarning(station: StationName, holdMs = 10_000): D
 /**
  * Full station experience shown once a robot is configured on a physical station.
  * Shows radio status, telemetry, charts, network diagnostics, etc.
+ *
+ * When showCharts is false, the chart toggle and chart view are hidden entirely
+ * (used for non-selected robots in multi-robot teams).
  */
-function StationExperience({ station }: { station: StationName }) {
+function StationExperience({ station, showCharts = true }: { station: StationName; showCharts?: boolean }) {
   const [chartMode, setChartMode] = useState(true);
   const [internetAccess, setInternetAccess] = useState(false);
   const latest = useLatest();
@@ -914,23 +961,25 @@ function StationExperience({ station }: { station: StationName }) {
                   </IconButton>
                 </Tooltip>
               )}
-              {/* Chart/table toggle */}
-              <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
-                <IconButton
-                  onClick={() => setChartMode(!chartMode)}
-                  size="small"
-                  sx={{
-                    color: chartMode ? 'primary.main' : 'text.secondary',
-                    backgroundColor: chartMode ? 'primary.light' : 'transparent',
-                    '&:hover': {
-                      backgroundColor: chartMode ? 'primary.main' : 'action.hover',
-                      color: chartMode ? 'primary.contrastText' : 'text.primary',
-                    },
-                  }}
-                >
-                  <ShowChartIcon />
-                </IconButton>
-              </Tooltip>
+              {/* Chart/table toggle — only shown when charts are enabled */}
+              {showCharts && (
+                <Tooltip title={chartMode ? 'Show table view' : 'Show live charts'}>
+                  <IconButton
+                    onClick={() => setChartMode(!chartMode)}
+                    size="small"
+                    sx={{
+                      color: chartMode ? 'primary.main' : 'text.secondary',
+                      backgroundColor: chartMode ? 'primary.light' : 'transparent',
+                      '&:hover': {
+                        backgroundColor: chartMode ? 'primary.main' : 'action.hover',
+                        color: chartMode ? 'primary.contrastText' : 'text.primary',
+                      },
+                    }}
+                  >
+                    <ShowChartIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           </Box>
 
@@ -957,7 +1006,7 @@ function StationExperience({ station }: { station: StationName }) {
             </CopyToClipboard>
           )}
 
-          {chartMode && stationSsid ? (
+          {showCharts && chartMode && stationSsid ? (
             <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
               <StationChart station={station} metric="signalLevels" height="60px" />
               <StationChart station={station} metric="snr" height="60px" />
