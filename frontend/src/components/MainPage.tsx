@@ -9,6 +9,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import SettingsIcon from '@mui/icons-material/Settings';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import { getTeamNumberCookie, setTeamNumberCookie } from '../utils/cookies';
 
 /**
@@ -106,6 +107,10 @@ function TeamEntryDialog() {
           <Link href="/scores" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <ScoreboardIcon fontSize="small" />
             Scoreboard
+          </Link>
+          <Link href="/overview" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <DashboardIcon fontSize="small" />
+            Overview
           </Link>
           <Link href="/admin" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <SettingsIcon fontSize="small" />

@@ -19,6 +19,7 @@
 - [ ] Hide the "Join match" button on station pages unless the station is configured
 - [ ] Match start modal: when all joined stations are ready, show a modal with a big "Start Match" button that triggers a 5-second countdown with audio ("starting match in 3, 2, 1" + trumpet start) played on every pFMS window joined to the match
 - [ ] "Switch driver stations" button: let a team easily move to a different station or swap with another team
+- [ ] Support more than 6 robots in a day without forcing clearing old ones first (e.g. queue/rotate teams through stations without manually wiping previous configurations)
 - [x] Syslog server should bind to the FMS IP (10.0.100.5) instead of 0.0.0.0
 - [x] Configure modal is too wide on mobile — full-screen dialog on mobile, responsive sizing
 
