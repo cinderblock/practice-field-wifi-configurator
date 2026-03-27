@@ -20,6 +20,7 @@ import type { MatchPhase, StationName } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
 import { prettyStationName } from '../../../src/utils';
 import Alert from '@mui/material/Alert';
+import Collapse from '@mui/material/Collapse';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -533,6 +534,13 @@ function ApiKeySection() {
   // Listen for key creation events (full key shown once)
   useApiKeyCreatedEvent(useCallback((msg: ApiKeyCreated) => setCreatedKey(msg), []));
 
+  // Dismiss the new-key banner when the key is deleted
+  useEffect(() => {
+    if (createdKey && apiKeyState && !apiKeyState.keys.some(k => k.id === createdKey.id)) {
+      setCreatedKey(null);
+    }
+  }, [createdKey, apiKeyState]);
+
   if (!apiKeyState) return null;
 
   const handleCreate = () => {
@@ -577,20 +585,20 @@ function ApiKeySection() {
         </Box>
 
         {/* One-time key display */}
-        {createdKey && (
+        <Collapse in={!!createdKey} unmountOnExit>
           <Alert severity="success" onClose={() => setCreatedKey(null)} sx={{ mb: 2 }}>
-            <Typography variant="subtitle2">New key created: {createdKey.label}</Typography>
+            <Typography variant="subtitle2">New key created: {createdKey?.label}</Typography>
             <Typography
               variant="body2"
               sx={{ fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all', my: 0.5 }}
             >
-              {createdKey.key}
+              {createdKey?.key}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               Copy this key now — it will not be shown again.
             </Typography>
           </Alert>
-        )}
+        </Collapse>
 
         {/* Registered keys table */}
         {apiKeyState.keys.length > 0 && (
