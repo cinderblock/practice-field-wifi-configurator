@@ -376,6 +376,14 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       VlanInterface,
       () => radioManager.getTeamMappings(),
       update => broadcast(update),
+      false, // dryRun
+      // Resolve station from VLAN ID for disambiguating duplicate teams
+      (vlanId: number) => {
+        for (const [station, vid] of Object.entries(vlanMap)) {
+          if (vid === vlanId) return station as StationName;
+        }
+        return undefined;
+      },
     );
     robotPacketCapture.start();
   }
@@ -459,6 +467,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   }
 
   if (StartFMS) {
+    // Synchronous record of the accepted DS IP per station. Updated immediately
+    // in trySetDSAddress (before the async addDnatRule resolves) to close the race
+    // window where a second DS could sneak in during the first DS's iptables call.
+    const acceptedDsForStation = new Map<StationName, string>();
+
     const telemetryManager = new TelemetryManager(
       () => radioManager.getTeamMappings(),
       update => {
@@ -467,6 +480,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         if (update.dsStatus && !update.dsStatus.enabled) {
           radioManager.retryDeferredCommit();
         }
+      },
+      // Resolve station for duplicate teams using the accepted DS IP map
+      (teamNumber, address) => {
+        if (!radioManager.isTeamDuplicated(teamNumber)) return undefined;
+        for (const [station, dsIp] of acceptedDsForStation) {
+          if (dsIp === address && radioManager.getTeamForStation(station) === teamNumber) {
+            return station;
+          }
+        }
+        return undefined;
       },
     );
 
@@ -544,11 +567,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // Track which DS IPs have active TCP connections (refcounted by fmsServer).
     // Used to prevent DNAT thrashing when two DSes compete for the same station.
     const connectedDsIps = new Set<string>();
-
-    // Synchronous record of the accepted DS IP per station. Updated immediately
-    // in trySetDSAddress (before the async addDnatRule resolves) to close the race
-    // window where a second DS could sneak in during the first DS's iptables call.
-    const acceptedDsForStation = new Map<StationName, string>();
 
     // Track blocked (duplicate) DS IPs per station. Multiple DSes can be blocked
     // simultaneously (e.g. someone opens 3 Driver Stations). Map: station → ip → vlanInterface

@@ -20,6 +20,8 @@ export class RobotPacketCapture {
     private readonly getTeamMappings: () => Record<number, StationName>,
     private readonly onTelemetry: (update: TelemetryUpdate) => void,
     private readonly dryRun = false,
+    /** Resolve station from a VLAN ID (for disambiguating duplicate teams). */
+    private readonly vlanToStation?: (vlanId: number) => StationName | undefined,
   ) {}
 
   start(): void {
@@ -108,10 +110,12 @@ export class RobotPacketCapture {
     if (data.length < 14) return;
     let etherType = data.readUInt16BE(12);
     let ipOffset = 14;
+    let vlanId: number | undefined;
 
     // Skip 802.1Q VLAN tag if present (4 extra bytes)
     if (etherType === 0x8100) {
       if (data.length < 18) return;
+      vlanId = data.readUInt16BE(14) & 0x0fff; // VLAN ID is lower 12 bits
       etherType = data.readUInt16BE(16);
       ipOffset = 18;
     }
@@ -147,9 +151,15 @@ export class RobotPacketCapture {
 
     const now = Date.now();
 
-    // Resolve team to station
+    // Resolve team to station. When a team is duplicated across stations,
+    // prefer the VLAN-based resolution (the VLAN ID in the 802.1Q tag maps
+    // directly to a station via the radio VLAN map).
     const mappings = this.getTeamMappings();
-    const station = mappings[team];
+    let station = mappings[team];
+    if (vlanId !== undefined && this.vlanToStation) {
+      const vlanStation = this.vlanToStation(vlanId);
+      if (vlanStation) station = vlanStation;
+    }
     if (!station) return;
 
     // Status byte: bit7=eStop, bit4=brownout, bit3=codeStart, bit2=enabled, bits1-0=mode (0=teleop,1=test,2=auto)

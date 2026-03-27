@@ -24,6 +24,9 @@ export class TelemetryManager {
   constructor(
     private readonly getTeamMappings: () => Record<number, StationName>,
     private readonly onUpdate: (update: TelemetryUpdate) => void,
+    /** Resolve the correct station when a team is duplicated across stations.
+     *  Called with (teamNumber, dsSourceAddress) — returns the station if resolvable. */
+    private readonly resolveByAddress?: (teamNumber: number, address: string) => StationName | undefined,
   ) {}
 
   /** Returns true if any station's DS is reporting enabled. */
@@ -38,7 +41,7 @@ export class TelemetryManager {
     const { address, data } = event;
 
     if (isUdpMessage(data)) {
-      this.processUdp(data);
+      this.processUdp(data, address);
       return;
     }
 
@@ -60,12 +63,12 @@ export class TelemetryManager {
     if (data.type === 0x16) {
       const team = this.tcpTeamByAddress.get(address);
       if (!team) return;
-      this.processLogData(data, team);
+      this.processLogData(data, team, address);
     }
   }
 
-  private processUdp(msg: UdpMessage): void {
-    const station = this.resolveStation(msg.teamNumber);
+  private processUdp(msg: UdpMessage, sourceAddress: string): void {
+    const station = this.resolveStationForAddress(msg.teamNumber, sourceAddress);
     if (!station) return;
 
     this.logFirst(msg.teamNumber, station);
@@ -98,8 +101,8 @@ export class TelemetryManager {
     this.onUpdate(update);
   }
 
-  private processLogData(msg: LogDataMessage, teamNumber: number): void {
-    const station = this.resolveStation(teamNumber);
+  private processLogData(msg: LogDataMessage, teamNumber: number, sourceAddress: string): void {
+    const station = this.resolveStationForAddress(teamNumber, sourceAddress);
     if (!station) return;
 
     this.logFirst(teamNumber, station);
@@ -116,6 +119,21 @@ export class TelemetryManager {
     };
 
     this.onUpdate(update);
+  }
+
+  /**
+   * Resolve team → station, using address-based disambiguation for duplicate teams.
+   * Falls back to the simple team→station mapping when address resolution isn't available
+   * or doesn't find a match.
+   */
+  private resolveStationForAddress(teamNumber: number, sourceAddress: string): StationName | undefined {
+    // Try address-based resolution first (handles duplicate teams)
+    if (this.resolveByAddress) {
+      const resolved = this.resolveByAddress(teamNumber, sourceAddress);
+      if (resolved) return resolved;
+    }
+    // Fall back to simple team→station mapping
+    return this.resolveStation(teamNumber);
   }
 
   private resolveStation(teamNumber: number): StationName | undefined {
