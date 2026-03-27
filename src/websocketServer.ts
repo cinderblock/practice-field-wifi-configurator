@@ -42,6 +42,7 @@ import {
   LastLinkedState,
   ServerInfo,
   StationName,
+  StationNameList,
 } from './types.js';
 import { getRealClientIp, normalizeIp } from './utils.js';
 import CIDRMatcher from 'cidr-matcher';
@@ -406,6 +407,16 @@ export function setupWebSocket(
       } else if (isRemoveSavedTeam(data)) {
         if (savedTeamStore) {
           savedTeamStore.removeTeam(data.ssid);
+        }
+        // Also release any radio slot currently configured with this SSID
+        // so the team can re-add the robot without it appearing "already active".
+        for (const station of StationNameList) {
+          if (radioManager.getStationConfig(station)?.ssid === data.ssid) {
+            radioManager.configure(station, { ssid: '', wpaKey: '', stage: true }).catch(err => {
+              appError(`Error releasing station ${station} after removing saved team ${data.ssid}: ${err.message}`);
+            });
+            break; // SSIDs are unique across stations
+          }
         }
       } else if (isCastReceiverSwap(data)) {
         // Find the target receiver and send it the swap command
