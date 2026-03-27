@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -13,15 +14,15 @@ import {
   sendStationJoinAlliance,
   sendStationLeave,
   sendStationReady,
-  sendStationStartMatch,
-  sendStationPauseMatch,
-  sendStationResumeMatch,
-  sendStationAbandonMatch,
+  sendStationSelfDisable,
+  sendStationSelfEStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
+import { getAllianceShiftState } from '../utils/shiftState';
 
 const phaseColors: Record<MatchPhase, string> = {
   idle: 'text.secondary',
+  created: 'info.main',
   countdown: 'warning.main',
   auto: 'info.main',
   autoPause: 'text.disabled',
@@ -33,6 +34,7 @@ const phaseColors: Record<MatchPhase, string> = {
 
 const phaseLabels: Record<MatchPhase, string> = {
   idle: 'Idle',
+  created: 'Match Created',
   countdown: 'Countdown',
   auto: 'Autonomous',
   autoPause: 'Pause',
@@ -86,9 +88,22 @@ function stationChipLabel(
 }
 
 /**
+ * Compute progress bar color based on alliance shift state.
+ * Returns a CSS color string for the progress bar.
+ */
+function getProgressBarColor(inactiveAlliance: Alliance | null): string {
+  if (inactiveAlliance === 'red') return '#42a5f5'; // Blue's goal active → blue bar
+  if (inactiveAlliance === 'blue') return '#ef5350'; // Red's goal active → red bar
+  return '#4caf50'; // Both active → neutral green
+}
+
+/**
  * Match control panel.
  * - With `station` prop: per-station view with join/leave/ready buttons (for station pages)
- * - Without `station` prop: master overview with global controls (for main page)
+ * - Without `station` prop: master overview (for main page)
+ *
+ * NOTE: Start/Pause/Resume/Abandon are NOT available from station views.
+ * Those controls are only on the /match controller page.
  */
 export function MatchPanel({ station }: { station?: StationName }) {
   const matchState = useMatchState();
@@ -96,14 +111,13 @@ export function MatchPanel({ station }: { station?: StationName }) {
 
   const { phase, remainingTime, totalMatchTime, config, stationStates } = matchState;
 
-  const isActive = phase !== 'idle' && phase !== 'postMatch';
-  const isPaused = phase === 'paused';
+  const isActive = phase !== 'idle' && phase !== 'postMatch' && phase !== 'created';
   const isPostMatch = phase === 'postMatch';
+  const isCreated = phase === 'created';
 
   const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
     .filter(([, s]) => s?.joined)
     .map(([name]) => name);
-  const allReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
 
   // Per-station state (only when station prop is provided)
   const myState = station ? stationStates[station] : undefined;
@@ -112,27 +126,41 @@ export function MatchPanel({ station }: { station?: StationName }) {
 
   // Master view: any station joined means we show controls
   const anyJoined = joinedStations.length > 0;
-  const showConfigEditor = station ? joined && !isActive && !isPostMatch : anyJoined && !isActive && !isPostMatch;
+
+  // Compute shift state for progress bar coloring
+  const inactiveAlliance = useMemo(() => {
+    if (!matchState) return null;
+    return getAllianceShiftState(
+      matchState.phase,
+      matchState.remainingTime,
+      matchState.config.teleopDuration,
+      matchState.config.endgameDuration,
+      matchState.autoWinnerAlliance,
+    );
+  }, [matchState]);
 
   const countdownDuration = 3;
   const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
   const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
 
+  // Don't render at all if phase is idle (no match created)
+  if (phase === 'idle') return null;
+
   // Don't render the master panel at all if nothing is happening
-  if (!station && !anyJoined && !isActive && !isPostMatch) return null;
+  if (!station && !anyJoined && !isActive && !isPostMatch && !isCreated) return null;
 
   // Don't render per-station panel if no team is configured and no match is active
-  if (station && !myState?.teamNumber && !isActive && !isPostMatch) return null;
+  if (station && !myState?.teamNumber && !isActive && !isPostMatch && !isCreated) return null;
 
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
-        {/* Phase display when active */}
+        {/* Phase display when active or post-match */}
         {(isActive || isPostMatch) && (
           <>
             <Box sx={{ textAlign: 'center', mb: 1 }}>
               <Chip
-                label={phaseLabels[phase]}
+                label={matchState.awaitingAutoWinner ? 'Awaiting Auto Winner' : phaseLabels[phase]}
                 sx={{
                   fontSize: '1rem',
                   py: 2,
@@ -145,11 +173,41 @@ export function MatchPanel({ station }: { station?: StationName }) {
               />
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
-            <LinearProgress variant="determinate" value={progress} sx={{ mb: 2, height: 6, borderRadius: 3 }} />
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              sx={{
+                mb: 2,
+                height: 6,
+                borderRadius: 3,
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: getProgressBarColor(inactiveAlliance),
+                  transition: 'background-color 2s ease',
+                },
+              }}
+            />
           </>
         )}
 
-        {/* Idle / waiting: show who has joined */}
+        {/* Created state: show who has joined */}
+        {isCreated && (
+          <Box sx={{ textAlign: 'center', mb: 1 }}>
+            <Chip
+              label={phaseLabels.created}
+              sx={{
+                fontSize: '1rem',
+                py: 2,
+                px: 1.5,
+                fontWeight: 'bold',
+                color: phaseColors.created,
+                borderColor: phaseColors.created,
+              }}
+              variant="outlined"
+            />
+          </Box>
+        )}
+
+        {/* Idle/created/waiting: show who has joined */}
         {!isActive && !isPostMatch && (
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1.5 }}>
             {joinedStations.length === 0 && (
@@ -173,15 +231,15 @@ export function MatchPanel({ station }: { station?: StationName }) {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {station && (
             <>
-              {/* Not joined, not active: join button */}
-              {!joined && !isActive && (
+              {/* Not joined, match created: join button */}
+              {!joined && isCreated && (
                 <Button variant="contained" color="primary" onClick={() => sendStationJoin(station)}>
                   Join Match
                 </Button>
               )}
 
-              {/* Joined, not active: ready / leave */}
-              {joined && !isActive && !isPostMatch && (
+              {/* Joined, match created (not active): ready / leave */}
+              {joined && isCreated && (
                 <>
                   <Button
                     variant={ready ? 'outlined' : 'contained'}
@@ -196,6 +254,26 @@ export function MatchPanel({ station }: { station?: StationName }) {
                 </>
               )}
 
+              {/* Active match: self-service controls */}
+              {joined && isActive && (
+                <>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() => sendStationSelfDisable(station)}
+                    disabled={!myState?.enabled}
+                  >
+                    Disable
+                  </Button>
+                  <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
+                    E-Stop
+                  </Button>
+                  <Button variant="outlined" onClick={() => sendStationLeave(station)}>
+                    Leave Match
+                  </Button>
+                </>
+              )}
+
               {/* Post-match: leave to get control back */}
               {joined && isPostMatch && (
                 <Button variant="outlined" color="primary" onClick={() => sendStationLeave(station)}>
@@ -204,37 +282,10 @@ export function MatchPanel({ station }: { station?: StationName }) {
               )}
             </>
           )}
-
-          {/* Global controls: available in both master and station views */}
-          {/* Start button: shown when all ready (station view: only if joined) */}
-          {(!station || joined) && !isActive && !isPostMatch && allReady && (
-            <Button variant="contained" color="success" sx={{ fontWeight: 'bold' }} onClick={sendStationStartMatch}>
-              Start Match
-            </Button>
-          )}
-
-          {/* Active match: pause */}
-          {(!station || joined) && isActive && !isPaused && phase !== 'countdown' && phase !== 'autoPause' && (
-            <Button variant="outlined" color="warning" onClick={sendStationPauseMatch}>
-              Pause
-            </Button>
-          )}
-
-          {/* Paused: resume / abandon */}
-          {(!station || joined) && isPaused && (
-            <>
-              <Button variant="contained" color="success" onClick={sendStationResumeMatch}>
-                Resume
-              </Button>
-              <Button variant="outlined" color="error" onClick={sendStationAbandonMatch}>
-                Abandon
-              </Button>
-            </>
-          )}
         </Box>
 
-        {/* Match timing config — visual timeline */}
-        {showConfigEditor && <MatchTimeline config={config} />}
+        {/* Match timing config — visual timeline (only during created phase when joined) */}
+        {isCreated && (station ? joined : anyJoined) && <MatchTimeline config={config} />}
       </CardContent>
     </Card>
   );
@@ -257,6 +308,9 @@ function controlChipLabel(station: StationName, state: StationControlState | und
  * Team-centric match panel for the /<ssid> page.
  * Shows "Join Red" / "Join Blue" buttons instead of "Join Match".
  * Does not reference station names like "Blue 1" or "Red 2".
+ *
+ * NOTE: Start/Pause/Resume/Abandon are NOT available here.
+ * Those controls are only on the /match controller page.
  */
 export function MatchPanelForControl({ station }: { station: StationName; ssid: string }) {
   const matchState = useMatchState();
@@ -264,28 +318,40 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
 
   const { phase, remainingTime, totalMatchTime, config, stationStates } = matchState;
 
-  const isActive = phase !== 'idle' && phase !== 'postMatch';
-  const isPaused = phase === 'paused';
+  const isActive = phase !== 'idle' && phase !== 'postMatch' && phase !== 'created';
   const isPostMatch = phase === 'postMatch';
+  const isCreated = phase === 'created';
 
   const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
     .filter(([, s]) => s?.joined)
     .map(([name]) => name);
-  const allReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
 
   const myState = stationStates[station];
   const joined = myState?.joined ?? false;
   const ready = myState?.ready ?? false;
   const myAlliance = myState?.alliance ?? null;
 
-  const showConfigEditor = joined && !isActive && !isPostMatch;
+  // Compute shift state for progress bar coloring
+  const inactiveAlliance = useMemo(() => {
+    if (!matchState) return null;
+    return getAllianceShiftState(
+      matchState.phase,
+      matchState.remainingTime,
+      matchState.config.teleopDuration,
+      matchState.config.endgameDuration,
+      matchState.autoWinnerAlliance,
+    );
+  }, [matchState]);
 
   const countdownDuration = 3;
   const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
   const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
 
+  // Don't render at all if phase is idle (no match created)
+  if (phase === 'idle') return null;
+
   // Don't render if no team is configured and no match is active
-  if (!myState?.teamNumber && !isActive && !isPostMatch) return null;
+  if (!myState?.teamNumber && !isActive && !isPostMatch && !isCreated) return null;
 
   // Group joined stations by alliance for display
   const redStations = joinedStations.filter(s => stationStates[s]?.alliance === 'red');
@@ -299,7 +365,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
           <>
             <Box sx={{ textAlign: 'center', mb: 1 }}>
               <Chip
-                label={phaseLabels[phase]}
+                label={matchState.awaitingAutoWinner ? 'Awaiting Auto Winner' : phaseLabels[phase]}
                 sx={{
                   fontSize: '1rem',
                   py: 2,
@@ -320,12 +386,42 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               )}
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
-            <LinearProgress variant="determinate" value={progress} sx={{ mb: 2, height: 6, borderRadius: 3 }} />
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              sx={{
+                mb: 2,
+                height: 6,
+                borderRadius: 3,
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: getProgressBarColor(inactiveAlliance),
+                  transition: 'background-color 2s ease',
+                },
+              }}
+            />
           </>
         )}
 
-        {/* Idle / waiting: show who has joined, grouped by alliance */}
-        {!isActive && !isPostMatch && (
+        {/* Created state: header badge */}
+        {isCreated && (
+          <Box sx={{ textAlign: 'center', mb: 1 }}>
+            <Chip
+              label={phaseLabels.created}
+              sx={{
+                fontSize: '1rem',
+                py: 2,
+                px: 1.5,
+                fontWeight: 'bold',
+                color: phaseColors.created,
+                borderColor: phaseColors.created,
+              }}
+              variant="outlined"
+            />
+          </Box>
+        )}
+
+        {/* Pre-match / created: show who has joined, grouped by alliance */}
+        {isCreated && (
           <Box sx={{ mb: 1.5 }}>
             {joinedStations.length === 0 && !joined && (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -379,8 +475,8 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
 
         {/* Action buttons */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {/* Not joined, not active: Join Red / Join Blue buttons */}
-          {!joined && !isActive && (
+          {/* Not joined, match created: Join Red / Join Blue buttons */}
+          {!joined && isCreated && (
             <>
               <Button
                 variant="contained"
@@ -411,8 +507,8 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
             </>
           )}
 
-          {/* Joined, not active: ready / leave / switch alliance */}
-          {joined && !isActive && !isPostMatch && (
+          {/* Joined, match created: ready / leave / switch alliance */}
+          {joined && isCreated && (
             <>
               <Button
                 variant={ready ? 'outlined' : 'contained'}
@@ -443,42 +539,36 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
             </>
           )}
 
+          {/* Active match: self-service controls */}
+          {joined && isActive && (
+            <>
+              <Button
+                variant="outlined"
+                color="warning"
+                onClick={() => sendStationSelfDisable(station)}
+                disabled={!myState?.enabled}
+              >
+                Disable
+              </Button>
+              <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
+                E-Stop
+              </Button>
+              <Button variant="outlined" onClick={() => sendStationLeave(station)}>
+                Leave Match
+              </Button>
+            </>
+          )}
+
           {/* Post-match: leave */}
           {joined && isPostMatch && (
             <Button variant="outlined" color="primary" onClick={() => sendStationLeave(station)}>
               Leave Match
             </Button>
           )}
-
-          {/* Start button: shown when all ready and this station is joined */}
-          {joined && !isActive && !isPostMatch && allReady && (
-            <Button variant="contained" color="success" sx={{ fontWeight: 'bold' }} onClick={sendStationStartMatch}>
-              Start Match
-            </Button>
-          )}
-
-          {/* Active match: pause */}
-          {joined && isActive && !isPaused && phase !== 'countdown' && phase !== 'autoPause' && (
-            <Button variant="outlined" color="warning" onClick={sendStationPauseMatch}>
-              Pause
-            </Button>
-          )}
-
-          {/* Paused: resume / abandon */}
-          {joined && isPaused && (
-            <>
-              <Button variant="contained" color="success" onClick={sendStationResumeMatch}>
-                Resume
-              </Button>
-              <Button variant="outlined" color="error" onClick={sendStationAbandonMatch}>
-                Abandon
-              </Button>
-            </>
-          )}
         </Box>
 
-        {/* Match timing config — visual timeline */}
-        {showConfigEditor && <MatchTimeline config={config} />}
+        {/* Match timing config — visual timeline (created phase only, when joined) */}
+        {isCreated && joined && <MatchTimeline config={config} />}
       </CardContent>
     </Card>
   );

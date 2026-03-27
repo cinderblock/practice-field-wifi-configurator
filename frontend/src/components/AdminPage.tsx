@@ -54,6 +54,7 @@ import {
 
 const phaseColors: Record<MatchPhase, string> = {
   idle: 'text.secondary',
+  created: 'info.main',
   countdown: 'warning.main',
   auto: 'info.main',
   autoPause: 'text.disabled',
@@ -65,6 +66,7 @@ const phaseColors: Record<MatchPhase, string> = {
 
 const phaseLabels: Record<MatchPhase, string> = {
   idle: 'Idle',
+  created: 'Match Created',
   countdown: 'Countdown',
   auto: 'Autonomous',
   autoPause: 'Pause',

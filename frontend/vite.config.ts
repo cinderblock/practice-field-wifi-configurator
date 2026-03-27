@@ -44,6 +44,9 @@ function stationRoutes(): Plugin {
         if (url === '/test') {
           req.url = '/test.html';
         }
+        if (url === '/match') {
+          req.url = '/match.html';
+        }
         if (url === '/scores') {
           req.url = '/scores.html';
         }
@@ -95,6 +98,7 @@ export default defineConfig({
         route: 'route.html',
         test: 'test.html',
         scores: 'scores.html',
+        match: 'match.html',
         overview: 'overview.html',
       },
     },

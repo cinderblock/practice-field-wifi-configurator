@@ -37,6 +37,12 @@ import {
   isDismissPendingDevice,
   isScoreReset,
   isPortBridgeRequest,
+  isMatchCreate,
+  isMatchCancel,
+  isMatchSwapStation,
+  isMatchSetAutoWinner,
+  isStationSelfDisable,
+  isStationSelfEStop,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -388,6 +394,18 @@ export function setupWebSocket(
         matchEngine.stationDisable(data.station);
       } else if (isAdminClearEStop(data)) {
         matchEngine.clearEStop(data.station);
+      } else if (isMatchCreate(data)) {
+        matchEngine.createMatch();
+      } else if (isMatchCancel(data)) {
+        matchEngine.cancelMatch();
+      } else if (isMatchSwapStation(data)) {
+        matchEngine.swapStationAlliance(data.station);
+      } else if (isMatchSetAutoWinner(data)) {
+        matchEngine.setAutoWinner(data.winner);
+      } else if (isStationSelfDisable(data)) {
+        matchEngine.stationDisable(data.station);
+      } else if (isStationSelfEStop(data)) {
+        matchEngine.stationEStop(data.station);
       } else if (isApplyConfig(data)) {
         radioManager.commitConfiguration().catch(err => {
           appError('Error applying config: ' + err.message);

@@ -16,13 +16,10 @@ import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
-const MAX_PERIOD = 300;
-const MAX_PAUSE = 10;
 const POST_MATCH_DISPLAY_MS = 3000;
 
-// 2026 REBUILT match timing:
-// Auto: 20s, Pause: ~3s (scoring assessment), Teleop: 110s (10s transition + 4×25s shifts), Endgame: 30s
-const DEFAULT_CONFIG: MatchConfig = {
+// Official 2026 REBUILT match timing (fixed — not user-adjustable)
+const OFFICIAL_CONFIG: MatchConfig = {
   autoDuration: 20,
   teleopDuration: 110,
   endgameDuration: 30,
@@ -31,16 +28,12 @@ const DEFAULT_CONFIG: MatchConfig = {
   autoWinner: 'scores',
 };
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.round(value)));
-}
-
 export type TeamResolver = (station: StationName) => number | null;
 
 export class MatchEngine {
   private phase: MatchPhase = 'idle';
   private config: MatchConfig | null = null;
-  private pendingConfig: MatchConfig = { ...DEFAULT_CONFIG };
+  private pendingConfig: MatchConfig = { ...OFFICIAL_CONFIG };
   private remainingTime = 0;
   private totalMatchTime = 0;
   private tickTimer: NodeJS.Timeout | null = null;
@@ -125,6 +118,89 @@ export class MatchEngine {
     this.autoScoreResolver = resolver;
   }
 
+  // ── Match lifecycle (controller actions) ────────────────────────────
+
+  /** Create a new match — transitions to 'created' phase where stations can join. */
+  createMatch() {
+    if (this.phase !== 'idle' && this.phase !== 'postMatch') {
+      appWarn(`Cannot create match in phase ${this.phase}`);
+      return;
+    }
+    // Reset all station states
+    for (const state of this.stationStates.values()) {
+      state.joined = false;
+      state.ready = false;
+      state.alliance = null;
+      state.matchSlot = null;
+      state.enabled = false;
+      state.eStop = false;
+    }
+    this.pendingConfig = { ...OFFICIAL_CONFIG };
+    this.config = null;
+    this.portToSlot.clear();
+    this.autoWinnerAlliance = null;
+    this.endReason = undefined;
+    this.phase = 'created';
+    console.log('Match created — waiting for stations to join');
+    this.broadcast();
+  }
+
+  /** Cancel a created match — back to idle. */
+  cancelMatch() {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot cancel match in phase ${this.phase}`);
+      return;
+    }
+    for (const state of this.stationStates.values()) {
+      state.joined = false;
+      state.ready = false;
+      state.alliance = null;
+      state.matchSlot = null;
+    }
+    this.phase = 'idle';
+    console.log('Match cancelled');
+    this.broadcast();
+  }
+
+  /** Swap a station to the opposite alliance (controller only, pre-match). */
+  swapStationAlliance(station: StationName) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot swap station alliance in phase ${this.phase}`);
+      return;
+    }
+    const state = this.stationStates.get(station)!;
+    if (!state.joined || !state.alliance) {
+      appWarn(`Station ${station} is not joined to an alliance`);
+      return;
+    }
+    const newAlliance: Alliance = state.alliance === 'red' ? 'blue' : 'red';
+    // Enforce max 3 per alliance
+    const allianceCount = [...this.stationStates.values()].filter(s => s.joined && s.alliance === newAlliance).length;
+    if (allianceCount >= 3) {
+      appWarn(`Cannot swap ${station} to ${newAlliance}: alliance already has 3 stations`);
+      return;
+    }
+    state.alliance = newAlliance;
+    state.ready = false;
+    console.log(`Station ${station} swapped to ${newAlliance} alliance`);
+    this.broadcast();
+  }
+
+  /** Set the auto winner manually — used for 'pause' mode during autoPause or skip-auto pre-set. */
+  setAutoWinner(winner: Alliance) {
+    this.autoWinnerAlliance = winner;
+    console.log(`Auto winner set: ${winner}`);
+
+    // If we're in autoPause awaiting a winner, transition to teleop now
+    if (this.phase === 'autoPause' && this.config?.autoWinner === 'pause') {
+      this.phase = 'teleop';
+      this.remainingTime = this.config.teleopDuration;
+      this.enableParticipating('teleOp');
+      console.log('Teleop period started (auto winner selected)');
+    }
+    this.broadcast();
+  }
+
   // ── Station self-service ──────────────────────────────────────────
 
   /** @deprecated Use joinStationAlliance() instead. Kept for backward compatibility.
@@ -136,8 +212,9 @@ export class MatchEngine {
 
   /** Join a station to a specific alliance (decoupled from physical port). */
   joinStationAlliance(station: StationName, alliance: Alliance) {
-    if (this.isMatchActive()) {
-      appWarn(`Cannot join station ${station} during an active match`);
+    // Only allow joining during 'created' phase
+    if (this.phase !== 'created') {
+      appWarn(`Cannot join station ${station}: no match created (phase=${this.phase})`);
       return;
     }
     // Enforce max 3 per alliance
@@ -166,24 +243,38 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Leave the match. Allowed at any time — during active match, disables robot and returns to free-drive. */
   leaveStation(station: StationName) {
-    if (this.isMatchActive()) {
-      appWarn(`Cannot leave station ${station} during an active match`);
-      return;
-    }
     const state = this.stationStates.get(station)!;
     if (!state.joined) return;
+
+    const wasMatchActive = this.isMatchActive();
+
+    // If match is active, disable the robot immediately
+    if (wasMatchActive) {
+      state.enabled = false;
+      this.sendDSPacket(station);
+    }
+
     state.joined = false;
     state.ready = false;
     state.alliance = null;
     state.matchSlot = null;
-    console.log(`Station ${station} left match system`);
+    this.portToSlot.delete(station);
+    console.log(`Station ${station} left match${wasMatchActive ? ' (mid-match)' : ''}`);
+
+    // If all stations have left during an active match, end it automatically
+    if (wasMatchActive && this.getJoinedCount() === 0) {
+      this.endMatchEmpty();
+      return; // endMatchEmpty broadcasts
+    }
+
     this.broadcast();
   }
 
   setReady(station: StationName, ready: boolean) {
-    if (this.isMatchActive()) {
-      appWarn(`Cannot change ready state for ${station} during an active match`);
+    if (this.phase !== 'created') {
+      appWarn(`Cannot change ready state for ${station} in phase ${this.phase}`);
       return;
     }
     const state = this.stationStates.get(station)!;
@@ -196,17 +287,15 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Update match config — only skipAuto and autoWinner are user-settable. Durations are fixed. */
   updateMatchConfig(config: MatchConfig) {
-    if (this.isMatchActive()) {
-      appWarn('Cannot update match config during an active match');
+    if (this.phase !== 'created') {
+      appWarn(`Cannot update match config in phase ${this.phase}`);
       return;
     }
-    const teleopDuration = clamp(config.teleopDuration, 0, MAX_PERIOD);
+    // Only accept skipAuto and autoWinner — durations are official
     this.pendingConfig = {
-      autoDuration: clamp(config.autoDuration, 0, MAX_PERIOD),
-      teleopDuration,
-      endgameDuration: clamp(config.endgameDuration, 0, teleopDuration),
-      pauseDuration: clamp(config.pauseDuration, 0, MAX_PAUSE),
+      ...OFFICIAL_CONFIG,
       skipAuto: config.skipAuto ?? false,
       autoWinner: config.autoWinner ?? 'scores',
     };
@@ -219,7 +308,7 @@ export class MatchEngine {
   }
 
   startMatch() {
-    if (this.phase !== 'idle' && this.phase !== 'postMatch') {
+    if (this.phase !== 'created') {
       appWarn(`Cannot start match in phase ${this.phase}`);
       return;
     }
@@ -234,11 +323,32 @@ export class MatchEngine {
       return;
     }
 
+    // If skipAuto, auto winner must be pre-set
+    if (this.pendingConfig.skipAuto) {
+      if (
+        this.pendingConfig.autoWinner !== 'red' &&
+        this.pendingConfig.autoWinner !== 'blue' &&
+        !this.autoWinnerAlliance
+      ) {
+        appWarn('Cannot start match with skipAuto unless auto winner is set to red or blue');
+        return;
+      }
+      // Pre-set the auto winner for skip-auto
+      if (this.pendingConfig.autoWinner === 'red' || this.pendingConfig.autoWinner === 'blue') {
+        this.autoWinnerAlliance = this.pendingConfig.autoWinner;
+      }
+    }
+
     this.config = { ...this.pendingConfig };
     this.matchNumber++;
     this.totalMatchTime = 0;
     this.endReason = undefined;
-    this.autoWinnerAlliance = null;
+
+    // If auto winner was pre-set by 'red'/'blue' mode AND not skipping, clear it (will be computed after auto)
+    if (!this.config.skipAuto && (this.config.autoWinner === 'red' || this.config.autoWinner === 'blue')) {
+      // Pre-set auto winner is known at start — it'll be applied in computeAutoWinner()
+      this.autoWinnerAlliance = null;
+    }
 
     // Compute portToSlot mapping: assign each joined station to an alliance slot
     this.portToSlot.clear();
@@ -257,7 +367,6 @@ export class MatchEngine {
 
     // Handle skipAuto: if enabled, start directly in countdown → teleop
     const effectiveAutoDuration = this.config.skipAuto ? 0 : this.config.autoDuration;
-    const effectivePauseDuration = this.config.skipAuto ? 0 : this.config.pauseDuration;
 
     this.phase = 'countdown';
     this.remainingTime = 3;
@@ -282,7 +391,7 @@ export class MatchEngine {
   }
 
   stopMatch() {
-    if (this.phase === 'idle' || this.phase === 'postMatch') return;
+    if (!this.isMatchActive()) return;
     this.disableAll();
     this.endReason = 'stopped';
     this.phase = 'postMatch';
@@ -334,9 +443,10 @@ export class MatchEngine {
     this.portToSlot.clear();
     this.autoWinnerAlliance = null;
     for (const state of this.stationStates.values()) {
+      state.joined = false;
       state.ready = false;
+      state.alliance = null;
       state.matchSlot = null;
-      // joined + alliance stay as-is — teams must leave manually
     }
     console.log(`Match ${this.matchNumber} abandoned`);
     this.broadcast();
@@ -414,7 +524,7 @@ export class MatchEngine {
   }
 
   isMatchActive(): boolean {
-    return this.phase !== 'idle' && this.phase !== 'postMatch';
+    return this.phase !== 'idle' && this.phase !== 'created' && this.phase !== 'postMatch';
   }
 
   addStateListener(fn: (state: MatchState) => void): () => void {
@@ -429,10 +539,13 @@ export class MatchEngine {
     const stationStates: Partial<Record<StationName, StationControlState>> = {};
     for (const station of StationNameList) {
       const state = { ...this.stationStates.get(station)! };
-      // When idle, resolve live team numbers; during a match, use the snapshot
+      // When not in active match, resolve live team numbers; during a match, use the snapshot
       if (!this.isMatchActive()) state.teamNumber = this.teamResolver(station);
       stationStates[station] = state;
     }
+
+    const awaitingAutoWinner =
+      this.phase === 'autoPause' && this.config?.autoWinner === 'pause' && !this.autoWinnerAlliance;
 
     return {
       type: 'matchState',
@@ -446,10 +559,31 @@ export class MatchEngine {
       endReason: this.phase === 'postMatch' ? this.endReason : undefined,
       portToSlot: this.portToSlot.size > 0 ? Object.fromEntries(this.portToSlot) : undefined,
       autoWinnerAlliance: this.autoWinnerAlliance,
+      awaitingAutoWinner: awaitingAutoWinner || undefined,
     };
   }
 
   // ── Private ───────────────────────────────────────────────────────
+
+  private getJoinedCount(): number {
+    let count = 0;
+    for (const state of this.stationStates.values()) {
+      if (state.joined) count++;
+    }
+    return count;
+  }
+
+  /** End match because all stations left. */
+  private endMatchEmpty() {
+    this.disableAll();
+    this.endReason = 'abandoned';
+    this.phase = 'postMatch';
+    this.stopTick();
+    this.sendPacketsToAll();
+    console.log(`Match ${this.matchNumber} ended — all stations left`);
+    this.broadcast();
+    this.schedulePostMatchReset();
+  }
 
   private tick() {
     const now = Date.now();
@@ -496,11 +630,15 @@ export class MatchEngine {
         // Auto just ended — compute auto winner
         this.computeAutoWinner();
 
-        if (this.config.pauseDuration > 0) {
+        if (this.config.pauseDuration > 0 || this.config.autoWinner === 'pause') {
           this.phase = 'autoPause';
           this.remainingTime = this.config.pauseDuration;
           this.disableAll();
-          console.log('Auto-to-teleop pause');
+          console.log(
+            this.config.autoWinner === 'pause' && !this.autoWinnerAlliance
+              ? 'Auto pause — awaiting manual winner selection'
+              : 'Auto-to-teleop pause',
+          );
         } else {
           // Skip pause — go straight to teleop
           this.phase = 'teleop';
@@ -511,6 +649,11 @@ export class MatchEngine {
         break;
 
       case 'autoPause':
+        // If autoWinner === 'pause' and no winner set yet, stay in autoPause indefinitely
+        if (this.config.autoWinner === 'pause' && !this.autoWinnerAlliance) {
+          this.remainingTime = 1; // Keep ticking, don't go negative
+          return;
+        }
         this.phase = 'teleop';
         this.remainingTime = this.config.teleopDuration;
         this.enableParticipating('teleOp');
@@ -541,6 +684,9 @@ export class MatchEngine {
     } else if (mode === 'blue') {
       this.autoWinnerAlliance = 'blue';
       console.log('Auto winner: BLUE (manual override)');
+    } else if (mode === 'pause') {
+      // Don't compute — will be set manually by the match controller
+      console.log('Auto winner: awaiting manual selection');
     } else {
       // 'scores' mode — use scoring engine
       if (this.autoScoreResolver) {
@@ -576,9 +722,10 @@ export class MatchEngine {
       this.portToSlot.clear();
       this.autoWinnerAlliance = null;
       for (const state of this.stationStates.values()) {
+        state.joined = false;
         state.ready = false;
+        state.alliance = null;
         state.matchSlot = null;
-        // joined + alliance stay as-is — teams must leave manually to get free-drive back
       }
       console.log('Post-match reset complete');
       this.broadcast();

@@ -713,6 +713,32 @@ export function sendUpdateMatchConfig(config: MatchConfig) {
 
 // ── Admin Commands ──────────────────────────────────────────────────
 
+// ── Match Controller Commands ────────────────────────────────────────
+
+export function sendMatchCreate() {
+  ws?.send(JSON.stringify({ type: 'matchCreate' }));
+}
+
+export function sendMatchCancel() {
+  ws?.send(JSON.stringify({ type: 'matchCancel' }));
+}
+
+export function sendMatchSwapStation(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'matchSwapStation', station }));
+}
+
+export function sendMatchSetAutoWinner(winner: Alliance) {
+  ws?.send(JSON.stringify({ type: 'matchSetAutoWinner', winner }));
+}
+
+export function sendStationSelfDisable(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationSelfDisable', station }));
+}
+
+export function sendStationSelfEStop(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationSelfEStop', station }));
+}
+
 export function sendAdminStopMatch() {
   ws?.send(JSON.stringify({ type: 'adminStopMatch' }));
 }

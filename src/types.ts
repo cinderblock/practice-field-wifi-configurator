@@ -413,9 +413,18 @@ export function isInternetToggle(msg: unknown): msg is InternetToggle {
 
 export type Mode = 'teleOp' | 'test' | 'auto';
 
-export type MatchPhase = 'idle' | 'countdown' | 'auto' | 'autoPause' | 'paused' | 'teleop' | 'endgame' | 'postMatch';
+export type MatchPhase =
+  | 'idle'
+  | 'created'
+  | 'countdown'
+  | 'auto'
+  | 'autoPause'
+  | 'paused'
+  | 'teleop'
+  | 'endgame'
+  | 'postMatch';
 
-export type AutoWinnerMode = 'red' | 'blue' | 'scores';
+export type AutoWinnerMode = 'red' | 'blue' | 'scores' | 'pause';
 
 export type MatchConfig = {
   autoDuration: number;
@@ -468,6 +477,8 @@ export type MatchState = {
   portToSlot?: Partial<Record<StationName, MatchSlot>>;
   /** Which alliance won the auto period (set after auto ends, null before or if not determined) */
   autoWinnerAlliance?: Alliance | null;
+  /** True when in autoPause waiting for manual auto-winner selection ('pause' mode) */
+  awaitingAutoWinner?: boolean;
 };
 
 export function isMatchState(msg: unknown): msg is MatchState {
@@ -546,7 +557,8 @@ export function isUpdateMatchConfig(msg: unknown): msg is UpdateMatchConfig {
   if (typeof m.config.endgameDuration !== 'number') return false;
   if (typeof m.config.pauseDuration !== 'number') return false;
   if (m.config.skipAuto !== undefined && typeof m.config.skipAuto !== 'boolean') return false;
-  if (m.config.autoWinner !== undefined && !['red', 'blue', 'scores'].includes(m.config.autoWinner)) return false;
+  if (m.config.autoWinner !== undefined && !['red', 'blue', 'scores', 'pause'].includes(m.config.autoWinner))
+    return false;
   return true;
 }
 
@@ -599,6 +611,50 @@ export function isAdminClearEStop(msg: unknown): msg is AdminClearEStop {
   if (m.type !== 'adminClearEStop') return false;
   if (m.station !== undefined && !StationNameRegex.test(m.station)) return false;
   return true;
+}
+
+// ── Match Controller messages (from /match page) ────────────────────
+
+export type MatchCreate = { type: 'matchCreate' };
+export function isMatchCreate(msg: unknown): msg is MatchCreate {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MatchCreate).type === 'matchCreate';
+}
+
+export type MatchCancel = { type: 'matchCancel' };
+export function isMatchCancel(msg: unknown): msg is MatchCancel {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MatchCancel).type === 'matchCancel';
+}
+
+export type MatchSwapStation = { type: 'matchSwapStation'; station: StationName };
+export function isMatchSwapStation(msg: unknown): msg is MatchSwapStation {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchSwapStation;
+  return m.type === 'matchSwapStation' && StationNameRegex.test(m.station);
+}
+
+export type MatchSetAutoWinner = { type: 'matchSetAutoWinner'; winner: Alliance };
+export function isMatchSetAutoWinner(msg: unknown): msg is MatchSetAutoWinner {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchSetAutoWinner;
+  return m.type === 'matchSetAutoWinner' && (m.winner === 'red' || m.winner === 'blue');
+}
+
+// ── Station self-service during match ────────────────────────────────
+
+export type StationSelfDisable = { type: 'stationSelfDisable'; station: StationName };
+export function isStationSelfDisable(msg: unknown): msg is StationSelfDisable {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationSelfDisable;
+  return m.type === 'stationSelfDisable' && StationNameRegex.test(m.station);
+}
+
+export type StationSelfEStop = { type: 'stationSelfEStop'; station: StationName };
+export function isStationSelfEStop(msg: unknown): msg is StationSelfEStop {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationSelfEStop;
+  return m.type === 'stationSelfEStop' && StationNameRegex.test(m.station);
 }
 
 // ── Robot Telemetry ─────────────────────────────────────────────────
