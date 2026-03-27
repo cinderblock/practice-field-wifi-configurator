@@ -460,6 +460,7 @@ function RobotRow({
 }) {
   const [showTakeover, setShowTakeover] = useState(false);
   const [pendingDrive, setPendingDrive] = useState(false);
+  const [showEnableHint, setShowEnableHint] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
   const canTakeover = !isActive && !availableStation && disconnectedStations.length > 0;
 
@@ -467,6 +468,11 @@ function RobotRow({
   useEffect(() => {
     if (routePreference === activeStation || !isMultiRobot) setPendingDrive(false);
   }, [routePreference, activeStation, isMultiRobot]);
+
+  // Clear the enable hint once the robot becomes active
+  useEffect(() => {
+    if (isActive) setShowEnableHint(false);
+  }, [isActive]);
 
   const handleEnable = (stage: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -491,7 +497,7 @@ function RobotRow({
   return (
     <>
       <Box
-        onClick={onSelect}
+        onClick={isActive ? onSelect : () => setShowEnableHint(true)}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -589,6 +595,12 @@ function RobotRow({
           onSelect={(station, stage) => handleTakeover(station, stage)}
           onCancel={() => setShowTakeover(false)}
         />
+      )}
+
+      {showEnableHint && !isActive && (
+        <Alert severity="info" sx={{ mx: 2, mb: 0.5 }} onClose={() => setShowEnableHint(false)}>
+          Enable this robot first to view its status.
+        </Alert>
       )}
     </>
   );
