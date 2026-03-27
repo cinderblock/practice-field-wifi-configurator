@@ -116,6 +116,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const latest = useLatest();
   const matchState = useMatchState();
+  const routeState = useRoutePreferenceState();
+  const yourIp = routeState?.yourIp;
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const stagedChanges = useBackendStagedChanges();
   const hasStagedChange = (s: StationName) => s in stagedChanges;
@@ -211,16 +213,40 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
       {full && <MatchPanel station={station} />}
       <RoutePreferenceBanner station={station} />
       {matchState?.connectedStations[station]?.blockedDsIps &&
-        matchState.connectedStations[station]!.blockedDsIps!.length > 0 && (
-          <Alert
-            severity="error"
-            sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
-          >
-            MULTIPLE DRIVER STATIONS DETECTED — {matchState.connectedStations[station]!.blockedDsIps!.join(', ')}{' '}
-            blocked. Close the extra Driver Station
-            {matchState.connectedStations[station]!.blockedDsIps!.length > 1 ? 's' : ''}.
-          </Alert>
-        )}
+        matchState.connectedStations[station]!.blockedDsIps!.length > 0 &&
+        (() => {
+          const blocked = matchState.connectedStations[station]!.blockedDsIps!;
+          const activeIp = matchState.connectedStations[station]!.ip;
+          return (
+            <Alert
+              severity="error"
+              sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
+            >
+              MULTIPLE DRIVER STATIONS DETECTED
+              <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
+                <li>
+                  <strong>{activeIp}</strong>
+                  {activeIp === yourIp && (
+                    <Chip label="YOU" size="small" color="info" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
+                  )}
+                  {' — active'}
+                </li>
+                {blocked.map(ip => (
+                  <li key={ip}>
+                    <strong>{ip}</strong>
+                    {ip === yourIp && (
+                      <Chip label="YOU" size="small" color="error" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
+                    )}
+                    {' — blocked'}
+                  </li>
+                ))}
+              </Box>
+              <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 400 }}>
+                Close the extra Driver Station{blocked.length > 1 ? 's' : ''}.
+              </Typography>
+            </Alert>
+          );
+        })()}
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',

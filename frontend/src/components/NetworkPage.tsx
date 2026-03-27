@@ -25,7 +25,13 @@ import {
   StationSubnetScan,
 } from '../../../src/types';
 import { describeIp, formatAge, formatBytes, formatDuration, prettyStationName } from '../../../src/utils';
-import { useMatchState, useMdnsActivity, useNetworkStats, useSubnetScan } from '../hooks/useBackend';
+import {
+  useMatchState,
+  useMdnsActivity,
+  useNetworkStats,
+  useRoutePreferenceState,
+  useSubnetScan,
+} from '../hooks/useBackend';
 
 const PULSE_STYLES = {
   '@keyframes ds-pulse': {
@@ -41,12 +47,15 @@ export function StationNetworkCard({
   mdns,
   dsInfo,
   hideStationLabel,
+  yourIp,
 }: {
   station: StationName;
   stats?: StationNetworkStats;
   scan?: StationSubnetScan;
   mdns?: StationMdnsActivity;
   dsInfo?: DSConnectionInfo;
+  /** The current browser client's IP address (for labeling DS IPs with "YOU"). */
+  yourIp?: string;
   /** Hide the station name header and alliance-colored border (for team-facing pages). */
   hideStationLabel?: boolean;
 }) {
@@ -94,8 +103,18 @@ export function StationNetworkCard({
         {dsInfo?.blockedDsIps && dsInfo.blockedDsIps.length > 0 && (
           <Alert severity="warning" sx={{ mb: 1, py: 0, fontSize: '0.8rem' }}>
             {dsInfo.blockedDsIps.length === 1 ? 'Second' : `${dsInfo.blockedDsIps.length} extra`} DS blocked:{' '}
-            <strong>{dsInfo.blockedDsIps.join(', ')}</strong> — only {dsInfo.ip} can control this station. Close the
-            other Driver Station{dsInfo.blockedDsIps.length > 1 ? 's' : ''}.
+            <strong>
+              {dsInfo.blockedDsIps.map((ip, i) => (
+                <span key={ip}>
+                  {i > 0 && ', '}
+                  {ip}
+                  {ip === yourIp && ' (YOU)'}
+                </span>
+              ))}
+            </strong>{' '}
+            — only {dsInfo.ip}
+            {dsInfo.ip === yourIp && ' (YOU)'} can control this station. Close the other Driver Station
+            {dsInfo.blockedDsIps.length > 1 ? 's' : ''}.
           </Alert>
         )}
 
@@ -265,6 +284,8 @@ export function NetworkPage() {
   const subnetScan = useSubnetScan();
   const matchState = useMatchState();
   const mdnsActivity = useMdnsActivity();
+  const routeState = useRoutePreferenceState();
+  const yourIp = routeState?.yourIp;
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
@@ -282,6 +303,7 @@ export function NetworkPage() {
               scan={subnetScan?.stations[s]}
               mdns={mdnsActivity?.stations[s]}
               dsInfo={matchState?.connectedStations[s]}
+              yourIp={yourIp}
             />
           ))}
         </Grid>
@@ -294,6 +316,7 @@ export function NetworkPage() {
               scan={subnetScan?.stations[s]}
               mdns={mdnsActivity?.stations[s]}
               dsInfo={matchState?.connectedStations[s]}
+              yourIp={yourIp}
             />
           ))}
         </Grid>

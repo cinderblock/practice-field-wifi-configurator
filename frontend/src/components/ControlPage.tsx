@@ -884,6 +884,8 @@ function StationExperience({ station, showCharts = true }: { station: StationNam
   const subnetScan = useSubnetScan();
   const mdnsActivity = useMdnsActivity();
   const multipleDsWarning = useDebouncedMultipleDsWarning(station);
+  const routeState = useRoutePreferenceState();
+  const yourIp = routeState?.yourIp;
 
   // Always register the chart data collection handler
   useUpdateCallback(handleStatusUpdate);
@@ -921,11 +923,19 @@ function StationExperience({ station, showCharts = true }: { station: StationNam
           MULTIPLE DRIVER STATIONS DETECTED
           <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
             <li>
-              <strong>{multipleDsWarning.acceptedIp}</strong> — active
+              <strong>{multipleDsWarning.acceptedIp}</strong>
+              {multipleDsWarning.acceptedIp === yourIp && (
+                <Chip label="YOU" size="small" color="info" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
+              )}
+              {' — active'}
             </li>
             {multipleDsWarning.blockedIps.map(ip => (
               <li key={ip}>
-                <strong>{ip}</strong> — blocked
+                <strong>{ip}</strong>
+                {ip === yourIp && (
+                  <Chip label="YOU" size="small" color="error" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
+                )}
+                {' — blocked'}
               </li>
             ))}
           </Box>
@@ -1451,6 +1461,7 @@ function StationExperience({ station, showCharts = true }: { station: StationNam
         mdns={mdnsActivity?.stations[station]}
         dsInfo={matchState?.connectedStations[station]}
         hideStationLabel
+        yourIp={yourIp}
       />
     </>
   );
