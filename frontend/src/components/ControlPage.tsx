@@ -526,16 +526,24 @@ function RobotRow({
               {suffix ?? config.ssid}
             </Typography>
             {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
-            {isActive &&
-              isMultiRobot &&
-              (routePreference === activeStation || pendingDrive ? (
-                <Chip
-                  label="Driving"
-                  color={pendingDrive && routePreference !== activeStation ? 'default' : 'info'}
-                  size="small"
-                  sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
-                />
-              ) : (
+            {isActive && isMultiRobot && (routePreference === activeStation || pendingDrive) && (
+              <Chip
+                label="Driving"
+                color={pendingDrive && routePreference !== activeStation ? 'default' : 'info'}
+                size="small"
+                sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
+              />
+            )}
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Last used {formatAge(config.lastUsedAt)}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {isActive ? (
+            <>
+              {isMultiRobot && routePreference !== activeStation && !pendingDrive && (
                 <Button
                   size="small"
                   variant="contained"
@@ -545,24 +553,16 @@ function RobotRow({
                     sendRoutePreference(activeStation!);
                     onSelect();
                   }}
-                  sx={{ height: 22, fontSize: '0.7rem', textTransform: 'none', minWidth: 0, px: 1.5 }}
                 >
                   Drive
                 </Button>
-              ))}
-          </Box>
-          <Typography variant="caption" color="text.secondary">
-            Last used {formatAge(config.lastUsedAt)}
-          </Typography>
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {isActive ? (
-            <Tooltip title="Release this robot's radio slot">
-              <Button size="small" variant="outlined" color="warning" onClick={e => handleRelease(e)}>
-                Release
-              </Button>
-            </Tooltip>
+              )}
+              <Tooltip title="Release this robot's radio slot">
+                <Button size="small" variant="outlined" color="warning" onClick={e => handleRelease(e)}>
+                  Release
+                </Button>
+              </Tooltip>
+            </>
           ) : availableStation ? (
             <>
               <Button size="small" variant="outlined" onClick={e => handleEnable(true, e)}>
