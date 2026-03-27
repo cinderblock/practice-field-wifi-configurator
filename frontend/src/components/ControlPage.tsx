@@ -316,6 +316,8 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
         availableStation={availableStation}
         selectedSsid={currentSsid}
         onSelectRobot={handleSelectRobot}
+        routePreference={routePreference}
+        isMultiRobot={isMultiRobot}
       />
 
       {/* All active robots' station experiences — charts only for selected */}
@@ -352,6 +354,8 @@ function RobotList({
   availableStation,
   selectedSsid,
   onSelectRobot,
+  routePreference,
+  isMultiRobot,
 }: {
   teamNumber: number;
   teamConfigs: SavedTeamConfig[];
@@ -359,6 +363,8 @@ function RobotList({
   availableStation: StationName | null;
   selectedSsid: string;
   onSelectRobot: (ssid: string) => void;
+  routePreference: StationName | null;
+  isMultiRobot: boolean;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const disconnectedStations = useFindDisconnectedStations();
@@ -413,6 +419,8 @@ function RobotList({
                 availableStation={availableStation}
                 disconnectedStations={disconnectedStations}
                 onSelect={() => onSelectRobot(config.ssid)}
+                routePreference={routePreference}
+                isMultiRobot={isMultiRobot}
               />
             ))}
           </Box>
@@ -437,6 +445,8 @@ function RobotRow({
   availableStation,
   disconnectedStations,
   onSelect,
+  routePreference,
+  isMultiRobot,
 }: {
   config: SavedTeamConfig;
   isActive: boolean;
@@ -445,6 +455,8 @@ function RobotRow({
   availableStation: StationName | null;
   disconnectedStations: DisconnectedStation[];
   onSelect: () => void;
+  routePreference: StationName | null;
+  isMultiRobot: boolean;
 }) {
   const [showTakeover, setShowTakeover] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
@@ -495,6 +507,29 @@ function RobotRow({
               {suffix ?? config.ssid}
             </Typography>
             {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
+            {isActive &&
+              isMultiRobot &&
+              (routePreference === activeStation ? (
+                <Chip
+                  label="Driving"
+                  color="info"
+                  size="small"
+                  sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
+                />
+              ) : (
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={e => {
+                    e.stopPropagation();
+                    sendRoutePreference(activeStation!);
+                    onSelect();
+                  }}
+                  sx={{ height: 22, fontSize: '0.7rem', textTransform: 'none', minWidth: 0, px: 1.5 }}
+                >
+                  Drive
+                </Button>
+              ))}
           </Box>
           <Typography variant="caption" color="text.secondary">
             Last used {formatAge(config.lastUsedAt)}
