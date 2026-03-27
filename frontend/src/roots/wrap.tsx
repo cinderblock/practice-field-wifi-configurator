@@ -11,7 +11,16 @@ import { StatusBar } from '../components/StatusBar';
 
 const EstimatedReconfigurationTime = 40; // seconds
 
-export function WrapAll({ children }: { children: React.ReactNode }) {
+export function WrapAll({
+  children,
+  showReconfigOverlay = true,
+}: {
+  children: React.ReactNode;
+  /** Whether to show the full-screen reconfiguration backdrop. Default true.
+   *  Set to false on pages (e.g. team selection) that should remain interactive
+   *  while the radio is reconfiguring. */
+  showReconfigOverlay?: boolean;
+}) {
   const latest = useLatest();
   // .slice() to avoid mutating the state array — .reverse() is in-place and
   // would cause lastActive to oscillate between the first and last ACTIVE
@@ -80,37 +89,42 @@ export function WrapAll({ children }: { children: React.ReactNode }) {
             <StatusBar />
             <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
           </Box>
-          <Backdrop open={isConfiguring} sx={{ zIndex: 9999 }}>
-            <Grid
-              container
-              direction="column"
-              justifyContent="center"
-              alignItems="center"
-              sx={{ height: '100%', userSelect: 'none' }}
-            >
-              <Typography variant="h4" sx={{ mb: 2 }}>
-                Reconfiguration in progress...
-              </Typography>
+          {showReconfigOverlay && (
+            <Backdrop open={isConfiguring} sx={{ zIndex: 9999 }}>
+              <Grid
+                container
+                direction="column"
+                justifyContent="center"
+                alignItems="center"
+                sx={{ height: '100%', userSelect: 'none' }}
+              >
+                <Typography variant="h4" sx={{ mb: 2 }}>
+                  Reconfiguration in progress...
+                </Typography>
 
-              {reconfigStart && (
-                <>
-                  <Typography variant="h1" sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                    {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
-                  </Typography>
-                  <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
-                    {elapsedSec < EstimatedReconfigurationTime
-                      ? 'seconds remaining'
-                      : 'Reconfiguration taking longer than expected...'}
-                  </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(100, (elapsedSec / EstimatedReconfigurationTime) * 100)}
-                    sx={{ width: '100%', maxWidth: 500, height: 10, borderRadius: 5 }}
-                  />
-                </>
-              )}
-            </Grid>
-          </Backdrop>
+                {reconfigStart && (
+                  <>
+                    <Typography
+                      variant="h1"
+                      sx={{ fontSize: '8rem', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}
+                    >
+                      {Math.max(0, Math.ceil(EstimatedReconfigurationTime - elapsedSec))}
+                    </Typography>
+                    <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
+                      {elapsedSec < EstimatedReconfigurationTime
+                        ? 'seconds remaining'
+                        : 'Reconfiguration taking longer than expected...'}
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min(100, (elapsedSec / EstimatedReconfigurationTime) * 100)}
+                      sx={{ width: '100%', maxWidth: 500, height: 10, borderRadius: 5 }}
+                    />
+                  </>
+                )}
+              </Grid>
+            </Backdrop>
+          )}
           <Snackbar open={serverResponse !== null} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
             <Alert severity={serverResponse?.severity ?? 'info'} variant="filled" sx={{ width: '100%' }}>
               {serverResponse?.message}

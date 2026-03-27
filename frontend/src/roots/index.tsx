@@ -3,7 +3,7 @@ import { MainPage } from '../components/MainPage';
 import { WrapAll } from './wrap';
 
 createRoot(document.getElementById('root')!).render(
-  <WrapAll>
+  <WrapAll showReconfigOverlay={false}>
     <MainPage />
   </WrapAll>,
 );
