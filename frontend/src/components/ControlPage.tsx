@@ -37,10 +37,6 @@ import { createHash } from './cryptoUtils';
 import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { CopyToClipboard } from './CopyToClipboard';
 import IconButton from '@mui/material/IconButton';
-import Select from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import FormControl from '@mui/material/FormControl';
-import InputLabel from '@mui/material/InputLabel';
 import EthernetIcon from '@mui/icons-material/SettingsEthernet';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import PublicIcon from '@mui/icons-material/Public';
@@ -343,7 +339,7 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
                 {isSelected && (
                   <>
                     <MatchPanelForControl station={station} ssid={ssid} />
-                    <PortSelector station={station} />
+                    <PortSelector station={station} ssid={ssid} />
                   </>
                 )}
                 <StationExperience station={station} showCharts={isSelected} networkOnly={!isSelected} />
@@ -835,7 +831,7 @@ function PassphraseChecker({ teamConfigs }: { teamConfigs: SavedTeamConfig[] }) 
   const [matchedSsid, setMatchedSsid] = useState<string | null>(null);
 
   const handleCheck = useCallback(
-    async (value: string) => {
+    (value: string) => {
       setCheckValue(value);
 
       if (value.length < 8) {
@@ -846,7 +842,7 @@ function PassphraseChecker({ teamConfigs }: { teamConfigs: SavedTeamConfig[] }) 
       // Check against all team configs
       for (const config of teamConfigs) {
         if (!config.wpaKeyHash) continue;
-        const hash = await createHash(config.ssid + value);
+        const hash = createHash(config.ssid + value);
         if (hash === config.wpaKeyHash) {
           setMatchedSsid(config.ssid);
           return;
@@ -1578,71 +1574,82 @@ function StationExperience({
 /**
  * Port selector — lets a team bridge a physical Ethernet port to their station.
  * Only rendered when FIELD_PORTS is configured on the server.
+ *
+ * Shows a row of buttons, one per port:
+ * - Bridged to THIS station: active/selected, clickable to disconnect
+ * - Bridged to another station: disabled, shows the other team's SSID
+ * - Free: clickable to bridge to this station
  */
-function PortSelector({ station }: { station: StationName }) {
+function PortSelector({ station, ssid }: { station: StationName; ssid: string }) {
   const portState = usePortBridgeState();
+  const latest = useLatest();
 
   // Don't render if port bridging is not configured
   if (!portState || portState.ports.length === 0) return null;
 
-  // Find which port (if any) is currently bridged to this station
-  const currentPortVlanId = Object.entries(portState.activeBridges).find(([, s]) => s === station)?.[0];
-  const currentPort = currentPortVlanId ? portState.ports.find(p => p.vlanId === Number(currentPortVlanId)) : null;
-
-  // Build list of available ports (not bridged to another station)
-  const usedVlanIds = new Set(
-    Object.entries(portState.activeBridges)
-      .filter(([, s]) => s !== station)
-      .map(([vlanId]) => Number(vlanId)),
-  );
-  const availablePorts = portState.ports.filter(p => !usedVlanIds.has(p.vlanId));
-
-  const handleChange = (value: string) => {
-    if (value === '') {
-      // Disconnect
-      sendPortBridge(station, null);
-    } else {
-      sendPortBridge(station, Number(value));
-    }
-  };
+  const stationStatuses = latest?.radioUpdate?.stationStatuses;
 
   return (
     <Card sx={{ mb: 1 }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <EthernetIcon sx={{ color: currentPort ? 'success.main' : 'text.secondary', fontSize: 20 }} />
-          <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
-            <InputLabel id={`port-select-${station}`}>Ethernet Port</InputLabel>
-            <Select
-              labelId={`port-select-${station}`}
-              label="Ethernet Port"
-              value={currentPortVlanId ?? ''}
-              onChange={e => handleChange(e.target.value as string)}
-            >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {availablePorts.map(port => (
-                <MenuItem key={port.vlanId} value={String(port.vlanId)}>
-                  {port.name}
-                </MenuItem>
-              ))}
-              {/* Show the currently selected port even if it's "used" (by this station) */}
-              {currentPort && !availablePorts.find(p => p.vlanId === currentPort.vlanId) && (
-                <MenuItem key={currentPort.vlanId} value={String(currentPort.vlanId)}>
-                  {currentPort.name}
-                </MenuItem>
-              )}
-            </Select>
-          </FormControl>
-          {currentPort && (
-            <Chip
-              label={`Connected to ${currentPort.name}`}
-              color="success"
-              size="small"
-              sx={{ fontSize: '0.75rem' }}
-            />
-          )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <EthernetIcon sx={{ color: 'text.secondary', fontSize: 20, flexShrink: 0 }} />
+          {portState.ports.map(port => {
+            const bridgedToStation = portState.activeBridges[port.vlanId] ?? null;
+            const isMine = bridgedToStation === station;
+            const isOther = bridgedToStation !== null && !isMine;
+
+            // Find the SSID on the other station using this port
+            const otherSsid = isOther ? (stationStatuses?.[bridgedToStation!]?.ssid ?? bridgedToStation) : null;
+
+            const handleClick = () => {
+              if (isMine) {
+                // Toggle off — disconnect this port
+                sendPortBridge(station, null);
+              } else if (!isOther) {
+                // Free port — connect it
+                sendPortBridge(station, port.vlanId);
+              }
+              // isOther: disabled, no action
+            };
+
+            return (
+              <Tooltip
+                key={port.vlanId}
+                title={
+                  isMine
+                    ? `Disconnect ${port.name}`
+                    : isOther
+                      ? `In use by ${otherSsid}`
+                      : `Connect ${port.name} to ${ssid}`
+                }
+              >
+                <span>
+                  <Button
+                    size="small"
+                    variant={isMine ? 'contained' : 'outlined'}
+                    color={isMine ? 'success' : 'primary'}
+                    disabled={isOther}
+                    onClick={handleClick}
+                    sx={{
+                      minWidth: 0,
+                      px: 1.5,
+                      fontSize: '0.75rem',
+                      textTransform: 'none',
+                      fontWeight: isMine ? 700 : 400,
+                    }}
+                  >
+                    {port.name}
+                    {isOther && otherSsid && (
+                      <Typography component="span" sx={{ fontSize: '0.65rem', ml: 0.5, opacity: 0.8 }}>
+                        ({otherSsid})
+                      </Typography>
+                    )}
+                  </Button>
+                </span>
+              </Tooltip>
+            );
+          })}
         </Box>
       </CardContent>
     </Card>
