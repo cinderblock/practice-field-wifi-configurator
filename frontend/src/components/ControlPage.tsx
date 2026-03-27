@@ -459,8 +459,14 @@ function RobotRow({
   isMultiRobot: boolean;
 }) {
   const [showTakeover, setShowTakeover] = useState(false);
+  const [pendingDrive, setPendingDrive] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
   const canTakeover = !isActive && !availableStation && disconnectedStations.length > 0;
+
+  // Clear pending state once the server confirms (or the situation changes)
+  useEffect(() => {
+    if (routePreference === activeStation || !isMultiRobot) setPendingDrive(false);
+  }, [routePreference, activeStation, isMultiRobot]);
 
   const handleEnable = (stage: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -509,10 +515,10 @@ function RobotRow({
             {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
             {isActive &&
               isMultiRobot &&
-              (routePreference === activeStation ? (
+              (routePreference === activeStation || pendingDrive ? (
                 <Chip
                   label="Driving"
-                  color="info"
+                  color={pendingDrive && routePreference !== activeStation ? 'default' : 'info'}
                   size="small"
                   sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
                 />
@@ -522,6 +528,7 @@ function RobotRow({
                   variant="contained"
                   onClick={e => {
                     e.stopPropagation();
+                    setPendingDrive(true);
                     sendRoutePreference(activeStation!);
                     onSelect();
                   }}
