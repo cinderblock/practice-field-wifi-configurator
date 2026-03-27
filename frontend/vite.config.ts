@@ -17,8 +17,16 @@ function stationRoutes(): Plugin {
           return;
         }
 
-        // Control page: /control/<ssid> → control.html
-        if (url?.startsWith('/control')) {
+        // Legacy /control/<ssid> → redirect to /<ssid>
+        if (url?.startsWith('/control/')) {
+          const ssid = url.slice('/control/'.length);
+          res.writeHead(302, { Location: `/${ssid}` });
+          res.end();
+          return;
+        }
+
+        // Team control page: /<teamNumber> or /<teamNumber-suffix> → control.html
+        if (url?.match(/^\/\d/)) {
           req.url = '/control.html';
         }
         if (url === '/admin') {

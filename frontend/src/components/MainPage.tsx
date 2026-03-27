@@ -15,28 +15,9 @@ import { getTeamNumberCookie, setTeamNumberCookie } from '../utils/cookies';
 /**
  * Main landing page — team number entry.
  *
- * If a team number cookie exists, redirect immediately to the control page.
- * Otherwise, show the entry dialog.
+ * If a team number cookie exists, prefill the input.
  */
 export function MainPage() {
-  const savedTeam = getTeamNumberCookie();
-
-  useEffect(() => {
-    if (savedTeam) {
-      window.location.href = `/control/${encodeURIComponent(savedTeam)}`;
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (savedTeam) {
-    return (
-      <Container>
-        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>
-          Redirecting to team {savedTeam}...
-        </Typography>
-      </Container>
-    );
-  }
-
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
       <TeamEntryDialog />
@@ -45,7 +26,7 @@ export function MainPage() {
 }
 
 function TeamEntryDialog() {
-  const [teamNumber, setTeamNumber] = useState('');
+  const [teamNumber, setTeamNumber] = useState(getTeamNumberCookie() ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -58,7 +39,7 @@ function TeamEntryDialog() {
     e?.preventDefault();
     if (!isValid) return;
     setTeamNumberCookie(teamNumber);
-    window.location.href = `/control/${encodeURIComponent(teamNumber)}`;
+    window.location.href = `/${encodeURIComponent(teamNumber)}`;
   };
 
   return (

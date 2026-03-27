@@ -3,10 +3,9 @@ import { ControlPage } from '../components/ControlPage';
 import { WrapAll } from './wrap';
 import { clearTeamNumberCookie } from '../utils/cookies';
 
-// Extract the SSID from the URL path: /control/<ssid>
+// Extract the SSID from the URL path: /<ssid>
 // The SSID is either a bare team number (e.g. "1234") or team-suffix (e.g. "1234-beta").
-const pathParts = window.location.pathname.split('/');
-const raw = decodeURIComponent(pathParts[2] ?? '');
+const raw = decodeURIComponent(window.location.pathname.slice(1));
 
 // Parse team number from the SSID prefix (digits before the first hyphen)
 const teamNumber = parseInt(raw.split('-', 2)[0], 10);

@@ -211,14 +211,14 @@ function useFindDisconnectedStations(): DisconnectedStation[] {
 
 /**
  * The main control page component.
- * URL: /control/<ssid>
+ * URL: /<ssid>
  *
  * Shows a robot management dashboard for a single team:
  * - List of saved robot configs for this team (always visible)
  * - Add new robot form
  * - Selected robot's status and match controls
  *
- * Each DS laptop opens /control/<ssid> for the specific robot it drives.
+ * Each DS laptop opens /<ssid> for the specific robot it drives.
  * Selecting a different robot updates the URL via replaceState.
  */
 export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; selectedSsid: string }) {
@@ -242,7 +242,7 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
   const handleSelectRobot = useCallback(
     (ssid: string) => {
       setCurrentSsid(ssid);
-      window.history.replaceState(null, '', `/control/${encodeURIComponent(ssid)}`);
+      window.history.replaceState(null, '', `/${encodeURIComponent(ssid)}`);
 
       const station = activeStations.get(ssid);
       if (station && activeStations.size > 1) {
@@ -301,7 +301,7 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
           <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
             Each Driver Station laptop should open{' '}
             <strong>
-              /control/<em>SSID</em>
+              /<em>SSID</em>
             </strong>{' '}
             for the robot it drives.
           </Typography>

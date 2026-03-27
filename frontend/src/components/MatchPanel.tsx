@@ -254,7 +254,7 @@ function controlChipLabel(station: StationName, state: StationControlState | und
 }
 
 /**
- * Team-centric match panel for the /control/<ssid> page.
+ * Team-centric match panel for the /<ssid> page.
  * Shows "Join Red" / "Join Blue" buttons instead of "Join Match".
  * Does not reference station names like "Blue 1" or "Red 2".
  */
