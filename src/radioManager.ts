@@ -375,6 +375,18 @@ class RadioManager {
     }
   }
 
+  /** Cancel a staged change for a station, leaving activeConfig untouched. */
+  cancelStagedChange(stationId: StationName): void {
+    if (this.stagedChanges[stationId] === undefined) return;
+    delete this.stagedChanges[stationId];
+    this.saveStagedConfig();
+    // If no staged changes remain, clear the pending flag
+    if (Object.keys(this.stagedChanges).length === 0) {
+      this.setPendingCommit(false);
+    }
+    this.notifyConfigChange();
+  }
+
   /** Whether there are config changes that haven't been committed to the radio yet. */
   get pendingCommit(): boolean {
     return this._pendingCommit;

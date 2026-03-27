@@ -28,6 +28,7 @@ import {
   isCastReceiverSwap,
   isRadioConfigureRequest,
   isRemoveSavedTeam,
+  isSaveSavedTeam,
   isCreateApiKey,
   isRevokeApiKey,
   isReactivateApiKey,
@@ -297,13 +298,24 @@ export function setupWebSocket(
           ws.send(JSON.stringify({ error: 'Cannot reconfigure stations during an active match' }));
         } else {
           const current = radioManager.getStationConfig(data.station);
-          const radioUnchanged = current && current.ssid === data.ssid && current.wpaKey === data.wpaKey;
+          const staged = radioManager.getStagedConfig(data.station);
+          const hasStagedChange = staged !== undefined; // null = staged clear, object = staged config
+          const activeMatchesRequest = current && current.ssid === data.ssid && current.wpaKey === data.wpaKey;
           const internetChanged = current && !!current.internetAccess !== !!data.internetAccess;
 
-          if (radioUnchanged && !internetChanged) {
+          if (activeMatchesRequest && !internetChanged && !hasStagedChange) {
             // Nothing changed at all
             ws.send(JSON.stringify({ info: 'No changes detected — configuration already active' }));
-          } else if (radioUnchanged && internetChanged) {
+          } else if (activeMatchesRequest && hasStagedChange) {
+            // Active config already matches — just cancel the staged change (e.g. undo a pending release)
+            radioManager.cancelStagedChange(data.station);
+            if (internetChanged) {
+              radioManager.toggleInternetAccess(data.station, !!data.internetAccess).catch(err => {
+                appError('Error toggling internet access: ' + err.message);
+                ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
+              });
+            }
+          } else if (activeMatchesRequest && internetChanged) {
             // Only internet access changed — toggle it without reconfiguring the radio
             radioManager.toggleInternetAccess(data.station, !!data.internetAccess).catch(err => {
               appError('Error toggling internet access: ' + err.message);
@@ -417,6 +429,10 @@ export function setupWebSocket(
             });
             break; // SSIDs are unique across stations
           }
+        }
+      } else if (isSaveSavedTeam(data)) {
+        if (savedTeamStore) {
+          savedTeamStore.saveTeam(data.ssid, data.wpaKey);
         }
       } else if (isCastReceiverSwap(data)) {
         // Find the target receiver and send it the swap command
