@@ -14,6 +14,7 @@ import {
   useMatchState,
   useSavedTeams,
   sendNewConfig,
+  sendSaveTeam,
   sendInternetToggle,
   sendRemoveSavedTeam,
   useLatestTelemetry,
@@ -703,6 +704,13 @@ function AddRobotForm({
     onDone();
   };
 
+  const handleSaveForLater = () => {
+    if (!isValid || isDuplicate) return;
+    sendSaveTeam(ssid, passphrase);
+    onSelectRobot(ssid);
+    onDone();
+  };
+
   return (
     <Card variant="outlined" sx={{ mb: 2, p: 2 }}>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -769,6 +777,9 @@ function AddRobotForm({
             </span>
           </Tooltip>
         )}
+        <Button variant="outlined" size="small" disabled={!isValid || isDuplicate} onClick={handleSaveForLater}>
+          Save for Later
+        </Button>
         <Button size="small" onClick={onDone}>
           Cancel
         </Button>

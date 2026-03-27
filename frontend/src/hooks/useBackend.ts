@@ -673,6 +673,11 @@ export function sendStationJoinAlliance(station: StationName, alliance: Alliance
   ws?.send(JSON.stringify({ type: 'stationJoinAlliance', station, alliance }));
 }
 
+/** Save a team config to the server without assigning it to a station. */
+export function sendSaveTeam(ssid: string, wpaKey: string) {
+  ws?.send(JSON.stringify({ type: 'saveSavedTeam', ssid, wpaKey }));
+}
+
 /** Remove a saved team config from the server. */
 export function sendRemoveSavedTeam(ssid: string) {
   ws?.send(JSON.stringify({ type: 'removeSavedTeam', ssid }));

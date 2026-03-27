@@ -829,6 +829,14 @@ export function isRemoveSavedTeam(msg: unknown): msg is RemoveSavedTeam {
   return m.type === 'removeSavedTeam' && typeof m.ssid === 'string';
 }
 
+/** Client request to save a team config without assigning it to a station. */
+export type SaveSavedTeam = { type: 'saveSavedTeam'; ssid: string; wpaKey: string };
+export function isSaveSavedTeam(msg: unknown): msg is SaveSavedTeam {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as SaveSavedTeam;
+  return m.type === 'saveSavedTeam' && typeof m.ssid === 'string' && typeof m.wpaKey === 'string';
+}
+
 // ── mDNS Reflector Activity ─────────────────────────────────────────
 
 export interface MdnsResolvedName {
