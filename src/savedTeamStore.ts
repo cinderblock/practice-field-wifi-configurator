@@ -123,7 +123,9 @@ export class SavedTeamStore {
 
   private persist(): void {
     try {
-      const data = JSON.stringify(this.getTeams(), null, 2);
+      // Exclude wpaKeyHash — it's a derived value recomputed on load
+      const teams = this.getTeams().map(({ wpaKeyHash: _, ...rest }) => rest);
+      const data = JSON.stringify(teams, null, 2);
       writeFileSync(this.filePath, data, 'utf-8');
     } catch (err) {
       console.error(`Failed to save teams to ${this.filePath}:`, (err as Error).message);
