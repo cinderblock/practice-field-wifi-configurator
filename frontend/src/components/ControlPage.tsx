@@ -16,7 +16,6 @@ import {
   sendNewConfig,
   sendSaveTeam,
   sendInternetToggle,
-  sendRemoveSavedTeam,
   useLatestTelemetry,
   useUpdateCallback,
   useTelemetryCallback,
@@ -46,7 +45,7 @@ import EthernetIcon from '@mui/icons-material/SettingsEthernet';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import InputAdornment from '@mui/material/InputAdornment';
 import AddIcon from '@mui/icons-material/Add';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -574,18 +573,6 @@ function RobotRow({
               </span>
             </Tooltip>
           )}
-          <Tooltip title="Remove saved robot">
-            <IconButton
-              size="small"
-              onClick={e => {
-                e.stopPropagation();
-                sendRemoveSavedTeam(config.ssid);
-              }}
-              sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}
-            >
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
         </Box>
       </Box>
 
@@ -727,6 +714,17 @@ function AddRobotForm({
         fullWidth
         size="small"
         sx={{ mb: 1 }}
+        InputProps={
+          suffix
+            ? {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Typography sx={{ fontFamily: 'monospace' }}>{teamNumber}-</Typography>
+                  </InputAdornment>
+                ),
+              }
+            : undefined
+        }
       />
       <TextField
         label="Passphrase"
