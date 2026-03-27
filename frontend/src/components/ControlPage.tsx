@@ -59,14 +59,14 @@ function formatNumberWithThinSpace(num: number | undefined): string {
 
 /**
  * Collect all SSIDs currently active or staged across ALL stations.
- * Used to prevent configuring the same SSID on multiple stations.
+ * Returns a Map of ssid → stationName so callers can find which station owns an SSID.
  */
-function useAllActiveSSIDs(): Set<string> {
+function useAllActiveSSIDs(): Map<string, StationName> {
   const latest = useLatest();
   const stagedChanges = useBackendStagedChanges();
 
   return useMemo(() => {
-    const ssids = new Set<string>();
+    const ssids = new Map<string, StationName>();
     const stationStatuses = latest?.radioUpdate?.stationStatuses;
 
     for (const station of StationNameList) {
@@ -76,14 +76,14 @@ function useAllActiveSSIDs(): Set<string> {
       // Staged config takes precedence
       const staged = stagedChanges[station];
       if (staged?.ssid) {
-        ssids.add(staged.ssid);
+        ssids.set(staged.ssid, station);
         continue;
       }
 
       if (hasStagedClear) continue;
 
       const ssid = stationStatuses?.[station]?.ssid;
-      if (ssid) ssids.add(ssid);
+      if (ssid) ssids.set(ssid, station);
     }
     return ssids;
   }, [latest, stagedChanges]);
@@ -699,18 +699,25 @@ function AddRobotForm({
   const ssid = suffix ? `${teamNumber}-${suffix}` : `${teamNumber}`;
   const passphraseRegex = /^[a-zA-Z0-9]{8,16}$/;
   const isValid = passphraseRegex.test(passphrase);
-  const isDuplicate = allActiveSSIDs.has(ssid);
+  const duplicateStation = allActiveSSIDs.get(ssid) ?? null;
   const canTakeover = !availableStation && disconnectedStations.length > 0;
 
   const handleSubmit = (stage: boolean) => {
-    if (!isValid || !availableStation || isDuplicate) return;
+    if (!isValid || !availableStation) return;
     sendNewConfig(availableStation, ssid, passphrase, stage);
     onSelectRobot(ssid); // Auto-select the newly added robot
     onDone();
   };
 
+  const handleReplace = (stage: boolean) => {
+    if (!isValid || !duplicateStation) return;
+    sendNewConfig(duplicateStation, ssid, passphrase, stage);
+    onSelectRobot(ssid);
+    onDone();
+  };
+
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
-    if (!isValid || isDuplicate) return;
+    if (!isValid) return;
     sendNewConfig(targetStation, '', '', true);
     sendNewConfig(targetStation, ssid, passphrase, stage);
     onSelectRobot(ssid); // Auto-select the newly added robot
@@ -718,7 +725,7 @@ function AddRobotForm({
   };
 
   const handleSaveForLater = () => {
-    if (!isValid || isDuplicate) return;
+    if (!isValid) return;
     sendSaveTeam(ssid, passphrase);
     onSelectRobot(ssid);
     onDone();
@@ -729,9 +736,9 @@ function AddRobotForm({
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         New Robot
       </Typography>
-      <Typography variant="body2" color={isDuplicate ? 'error' : 'text.secondary'} sx={{ mb: 1 }}>
+      <Typography variant="body2" color={duplicateStation ? 'warning.main' : 'text.secondary'} sx={{ mb: 1 }}>
         SSID: <strong>{ssid}</strong>
-        {isDuplicate && ' — already active'}
+        {duplicateStation && ` — active on ${duplicateStation}`}
       </Typography>
       <TextField
         label="Suffix (optional)"
@@ -763,22 +770,33 @@ function AddRobotForm({
         sx={{ mb: 2 }}
       />
       <Box sx={{ display: 'flex', gap: 1 }}>
-        {availableStation ? (
+        {duplicateStation ? (
           <>
             <Button
               variant="outlined"
               size="small"
-              disabled={!isValid || isDuplicate}
-              onClick={() => handleSubmit(true)}
+              color="warning"
+              disabled={!isValid}
+              onClick={() => handleReplace(true)}
             >
-              Stage
+              Stage Replace
             </Button>
             <Button
               variant="contained"
               size="small"
-              disabled={!isValid || isDuplicate}
-              onClick={() => handleSubmit(false)}
+              color="warning"
+              disabled={!isValid}
+              onClick={() => handleReplace(false)}
             >
+              Replace Now
+            </Button>
+          </>
+        ) : availableStation ? (
+          <>
+            <Button variant="outlined" size="small" disabled={!isValid} onClick={() => handleSubmit(true)}>
+              Stage
+            </Button>
+            <Button variant="contained" size="small" disabled={!isValid} onClick={() => handleSubmit(false)}>
               Apply Now
             </Button>
           </>
@@ -787,7 +805,7 @@ function AddRobotForm({
             variant="outlined"
             size="small"
             color="warning"
-            disabled={!isValid || isDuplicate}
+            disabled={!isValid}
             onClick={() => setShowTakeover(!showTakeover)}
           >
             Take Over Slot
@@ -801,7 +819,7 @@ function AddRobotForm({
             </span>
           </Tooltip>
         )}
-        <Button variant="outlined" size="small" disabled={!isValid || isDuplicate} onClick={handleSaveForLater}>
+        <Button variant="outlined" size="small" disabled={!isValid} onClick={handleSaveForLater}>
           Save for Later
         </Button>
         <Button size="small" onClick={onDone}>
