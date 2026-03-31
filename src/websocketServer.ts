@@ -20,6 +20,7 @@ import {
   isStationAbandonMatch,
   isUpdateMatchConfig,
   isRoutePreferenceMsg,
+  isDriveAction,
   isApplyConfig,
   isRunTeamChecks,
   isFirmwareUpdateRequest,
@@ -92,6 +93,12 @@ export type RadioConfigureCallback = (
   ssidSuffix: string | undefined,
 ) => void;
 
+/**
+ * Called when a client sends a 'drive' message to start or stop driving a station.
+ * dsIp is the client's IP, station is null to stop driving.
+ */
+export type DriveActionCallback = (dsIp: string, station: StationName | null) => void;
+
 export function setupWebSocket(
   radioManager: RadioManager,
   matchEngine: MatchEngine,
@@ -105,6 +112,7 @@ export function setupWebSocket(
   apiKeyStore?: ApiKeyStore,
   scoringEngine?: ScoringEngine,
   portBridgeManager?: PortBridgeManager,
+  onDriveAction?: DriveActionCallback,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -345,7 +353,38 @@ export function setupWebSocket(
             ws.send(JSON.stringify({ error: 'Failed to toggle internet access', details: err.message }));
           });
         }
+      } else if (isDriveAction(data)) {
+        if (clientIp === 'unknown') {
+          ws.send(JSON.stringify({ error: 'Cannot drive: client IP could not be determined' }));
+        } else if (data.station === null) {
+          // Stop driving: clear forward path (ip rule) and reverse path (DNAT)
+          clearRoutePreference(clientIp)
+            .then(() => {
+              sendRouteState(ws, clientIp);
+              onDriveAction?.(clientIp, null);
+            })
+            .catch(err => {
+              appError('Error stopping drive: ' + err.message);
+            });
+        } else {
+          const team = radioManager.getTeamForStation(data.station);
+          if (team === null) {
+            ws.send(JSON.stringify({ error: 'Station has no team assigned' }));
+          } else {
+            // Start driving: set forward path (ip rule) and reverse path (DNAT)
+            setRoutePreference(clientIp, data.station, team)
+              .then(() => {
+                sendRouteState(ws, clientIp);
+                onDriveAction?.(clientIp, data.station);
+              })
+              .catch(err => {
+                appError('Error starting drive: ' + err.message);
+              });
+          }
+        }
       } else if (isRoutePreferenceMsg(data)) {
+        // Legacy: route preference only sets the forward path (ip rule), not DNAT.
+        // New clients should use 'drive' instead.
         if (clientIp === 'unknown') {
           ws.send(JSON.stringify({ error: 'Cannot set route preference: client IP could not be determined' }));
         } else if (data.station === null) {

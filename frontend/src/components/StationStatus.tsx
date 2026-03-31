@@ -29,7 +29,7 @@ import {
   useSubnetScan,
   useMdnsActivity,
   useRoutePreferenceState,
-  sendRoutePreference,
+  sendDrive,
 } from '../hooks/useBackend';
 import { MatchPanel } from './MatchPanel';
 import { StationNetworkCard } from './NetworkPage';
@@ -86,16 +86,16 @@ function RoutePreferenceBanner({ station }: { station: StationName }) {
         >
           <Typography variant="body2" sx={{ flex: 1 }}>
             Team {team} is on {stations.length} stations
-            {otherSelected && ` (routed to ${prettyStationName(routeState.preference!)})`}
+            {otherSelected && ` (driving ${prettyStationName(routeState.preference!)})`}
           </Typography>
           <Button
             size="small"
             variant="contained"
             color={isSelected ? 'inherit' : 'primary'}
-            onClick={() => sendRoutePreference(isSelected ? null : station)}
+            onClick={() => sendDrive(isSelected ? null : station)}
             sx={isSelected ? { color: 'success.main' } : {}}
           >
-            {isSelected ? 'Clear preference' : 'Prefer this station'}
+            {isSelected ? 'Stop driving' : 'Drive this robot'}
           </Button>
         </Box>
       ))}

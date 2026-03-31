@@ -52,6 +52,7 @@ import {
   PortBridgeState,
   PortBridgeRequest,
   RoutePreferenceMsg,
+  DriveAction,
   RunTeamChecks,
   StationName,
   StationUpdate,
@@ -779,6 +780,15 @@ export function useRoutePreferenceState(): RoutePreferenceState | null {
 
 export function sendRoutePreference(station: RoutePreferenceMsg['station']) {
   ws?.send(JSON.stringify({ type: 'routePreference', station } satisfies RoutePreferenceMsg));
+}
+
+/**
+ * Send a "drive" action to the server to start or stop driving a station's robot.
+ * Unlike sendRoutePreference (which only sets the forward ip rule), this sets up
+ * both the forward path (ip rule) AND the reverse path (DNAT).
+ */
+export function sendDrive(station: DriveAction['station']) {
+  ws?.send(JSON.stringify({ type: 'drive', station } satisfies DriveAction));
 }
 
 // ── Pending Commit ──────────────────────────────────────────────────

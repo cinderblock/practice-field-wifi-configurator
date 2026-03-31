@@ -759,7 +759,7 @@ export function isAppLogMessage(msg: unknown): msg is AppLogMessage {
   return (msg as AppLogMessage).type === 'appLog';
 }
 
-// ── Route Preferences ───────────────────────────────────────────────
+// ── Route Preferences / Drive ───────────────────────────────────────
 
 /** Sent from client to server to set or clear a routing preference */
 export type RoutePreferenceMsg = {
@@ -772,6 +772,26 @@ export function isRoutePreferenceMsg(msg: unknown): msg is RoutePreferenceMsg {
   if (typeof msg !== 'object' || !msg) return false;
   const m = msg as RoutePreferenceMsg;
   if (m.type !== 'routePreference') return false;
+  if (m.station !== null && !StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
+/**
+ * Sent from client to server to start or stop driving a station's robot.
+ * Unlike routePreference (which only sets the forward ip rule), this sets up
+ * both the forward path (ip rule) AND the reverse path (DNAT) so the DS can
+ * communicate bidirectionally with the robot.
+ */
+export type DriveAction = {
+  type: 'drive';
+  /** Which station to drive, or null to stop driving */
+  station: StationName | null;
+};
+
+export function isDriveAction(msg: unknown): msg is DriveAction {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as DriveAction;
+  if (m.type !== 'drive') return false;
   if (m.station !== null && !StationNameRegex.test(m.station)) return false;
   return true;
 }

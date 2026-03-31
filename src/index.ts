@@ -11,7 +11,6 @@ import { toCidr } from './utils.js';
 import { MatchEngine } from './matchEngine.js';
 import {
   stopAllDHCP,
-  resolveStationByNeighbor,
   vlanMap,
   bridgeName,
   restorePreviousStations,
@@ -21,6 +20,8 @@ import {
   onConfigChange as onRouteConfigChange,
   cleanupAllPreferences,
   restorePreferencesFromKernel,
+  setRoutePreference,
+  clearRoutePreference,
 } from './routePreferenceManager.js';
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast } from './appLogger.js';
@@ -224,8 +225,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Auto-switch scoring mode based on match state
   matchEngine.addStateListener(state => scoringEngine.onMatchStateChange(state));
 
-  // Initialize WebSocket server (onRunTeamChecks callback is set below after teamChecker is created)
+  // Initialize WebSocket server (callbacks are set below after subsystems are created)
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
+  let onDriveAction: ((dsIp: string, station: StationName | null) => void) | undefined;
   const { wss, broadcast, broadcastRouteState } = setupWebSocket(
     radioManager,
     matchEngine,
@@ -255,6 +257,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     apiKeyStore,
     scoringEngine,
     portBridgeManager,
+    (dsIp, station) => onDriveAction?.(dsIp, station),
   );
   setBroadcast(broadcast);
 
@@ -740,11 +743,15 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       console.log(`DNAT rule removed: ${station}`);
     }
 
-    // Clean up DNAT and blocked DS rules when stations are deconfigured or team changes
+    // Clean up DNAT, route preferences, and blocked DS rules when stations are deconfigured or team changes
     radioManager.addConfigChangeListener(() => {
       for (const [station, existing] of [...activeDnatRules]) {
         const team = radioManager.getTeamForStation(station);
         if (team === null || teamGatewayIp(team) !== existing.gatewayIp) {
+          // Clear route preference for the DS that was driving this station
+          clearRoutePreference(existing.dsIp).catch(err => {
+            console.error(`Failed to clear route preference for ${existing.dsIp}:`, err);
+          });
           removeDnatRule(station).catch(err => {
             console.error(`Failed to remove DNAT rule for ${station}:`, err);
           });
@@ -757,6 +764,70 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
     });
 
+    /**
+     * Unified "drive" action: sets up both the forward path (ip rule) and
+     * reverse path (DNAT) so a DS laptop can communicate bidirectionally
+     * with a specific station's robot. Also registers the DS with the match engine.
+     */
+    async function startDrive(dsIp: string, station: StationName, team: number) {
+      if (!trySetDSAddress(station, dsIp)) return; // Blocked as duplicate
+
+      // Forward path: ip rule so DS→robot traffic uses the correct VLAN routing table
+      await setRoutePreference(dsIp, station, team);
+
+      // Reverse path: DNAT so robot→gateway UDP gets rewritten to the DS's guest WiFi IP
+      await addDnatRule(station, dsIp);
+
+      console.log(`Drive started: ${dsIp} → ${station} (team ${team})`);
+      broadcastRouteState();
+    }
+
+    /**
+     * Stop driving: tear down both the forward path (ip rule) and reverse path (DNAT)
+     * for whichever station this DS was driving.
+     */
+    async function stopDrive(dsIp: string) {
+      // Find the station this DS was driving (by DNAT rule)
+      for (const [station, rule] of activeDnatRules) {
+        if (rule.dsIp === dsIp) {
+          await clearRoutePreference(dsIp);
+          await removeDnatRule(station);
+          acceptedDsForStation.delete(station);
+          matchEngine.clearDSAddress(station);
+          console.log(`Drive stopped: ${dsIp} (was on ${station})`);
+          broadcastRouteState();
+          return;
+        }
+      }
+      // Not driving via DNAT — still clear any route preference
+      await clearRoutePreference(dsIp);
+      broadcastRouteState();
+    }
+
+    // Wire up the drive action callback from WebSocket clients
+    onDriveAction = (dsIp, station) => {
+      if (station === null) {
+        stopDrive(dsIp).catch(err => {
+          console.error('Failed to stop drive:', err);
+        });
+      } else {
+        const team = radioManager.getTeamForStation(station);
+        if (!team) return;
+        // If already driving a different station, stop the old one first
+        for (const [oldStation, rule] of activeDnatRules) {
+          if (rule.dsIp === dsIp && oldStation !== station) {
+            stopDrive(dsIp)
+              .then(() => startDrive(dsIp, station, team))
+              .catch(err => console.error('Failed to switch drive:', err));
+            return;
+          }
+        }
+        startDrive(dsIp, station, team).catch(err => {
+          console.error('Failed to start drive:', err);
+        });
+      }
+    };
+
     runFMS().then(fms => {
       if (!fms) return;
 
@@ -766,12 +837,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // Clean up blocked/primary DS state when a DS disconnects
         for (const [station, rule] of [...activeDnatRules]) {
           if (rule.dsIp === address) {
-            // Primary DS disconnected — clear accepted state and unblock all.
+            // Primary DS disconnected — clear accepted state, route preference, and unblock all.
             // Blocked DSes will compete on their next heartbeat via trySetDSAddress.
+            clearRoutePreference(address).catch(err => {
+              console.error(`Failed to clear route preference for ${address}:`, err);
+            });
             acceptedDsForStation.delete(station);
             unblockAllDS(station).catch(err => {
               console.error(`Failed to unblock DSes for ${station}:`, err);
             });
+            broadcastRouteState();
           }
         }
         for (const [station, stationBlocks] of [...blockedDsRules]) {
@@ -832,7 +907,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           }
         }
 
-        // Auto-discover DS addresses for the match engine.
+        // Auto-discover DS addresses and set up drive sessions.
         // Match on any message carrying teamNumber — TCP 0x18 and UDP both do.
         if ('teamNumber' in msg.data) {
           const { teamNumber } = msg.data;
@@ -845,27 +920,28 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
             .then(isRobotNetwork => {
               if (isRobotNetwork) return;
 
-              if (VlanInterface && radioManager.isTeamDuplicated(teamNumber)) {
-                // Same team on multiple stations — use the kernel neighbor (ARP) table
-                // to determine which VLAN interface (and thus station) the packet came from.
-                resolveStationByNeighbor(address, VlanInterface)
-                  .then(station => {
-                    station ??= radioManager.getStationForTeam(teamNumber);
-                    if (station) {
-                      if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
-                      addDnatRule(station, address);
-                    }
-                  })
-                  .catch(err => {
-                    console.error('DS address discovery failed:', err);
-                  });
-              } else {
-                // Common case: unique team numbers — direct lookup, no subprocess needed
-                const station = radioManager.getStationForTeam(teamNumber);
-                if (station) {
-                  if (!trySetDSAddress(station, address)) return; // Blocked as duplicate
-                  addDnatRule(station, address);
+              // If this DS is already driving a station for this team, just refresh.
+              for (const [station, rule] of activeDnatRules) {
+                if (rule.dsIp === address && radioManager.getTeamForStation(station) === teamNumber) {
+                  // Already driving — refresh match engine liveness
+                  trySetDSAddress(station, address);
+                  return;
                 }
+              }
+
+              if (radioManager.isTeamDuplicated(teamNumber)) {
+                // Same team on multiple stations — do NOT auto-assign. The DS must
+                // explicitly pick which robot to drive via the "Drive" button in the UI.
+                // No DNAT, no route preference — just let the FMS track the connection.
+                return;
+              }
+
+              // Common case: unique team on one station — auto-drive (full setup)
+              const station = radioManager.getStationForTeam(teamNumber);
+              if (station) {
+                startDrive(address, station, teamNumber).catch(err => {
+                  console.error('Auto-drive failed:', err);
+                });
               }
             })
             .catch(err => console.error('DS processing error:', err));

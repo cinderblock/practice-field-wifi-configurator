@@ -8,7 +8,7 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import { StationName } from '../../../src/types';
 import { prettyStationName } from '../../../src/utils';
-import { useRoutePreferenceState, sendRoutePreference } from '../hooks/useBackend';
+import { useRoutePreferenceState, sendDrive } from '../hooks/useBackend';
 
 function ConflictingTeamCard({
   team,
@@ -31,7 +31,7 @@ function ConflictingTeamCard({
             return (
               <Button
                 key={station}
-                onClick={() => sendRoutePreference(selected ? null : station)}
+                onClick={() => sendDrive(selected ? null : station)}
                 variant={selected ? 'contained' : 'outlined'}
                 color={selected ? 'primary' : 'inherit'}
               >
@@ -43,10 +43,10 @@ function ConflictingTeamCard({
         {currentPreference && stations.includes(currentPreference) && (
           <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Routed to:
+              Driving:
             </Typography>
             <Chip label={prettyStationName(currentPreference)} size="small" color="primary" />
-            <Button size="small" onClick={() => sendRoutePreference(null)} sx={{ ml: 'auto' }}>
+            <Button size="small" onClick={() => sendDrive(null)} sx={{ ml: 'auto' }}>
               Clear
             </Button>
           </Box>
@@ -69,7 +69,7 @@ export function RoutePage() {
       </Typography>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        When a team has two robots on the field, choose which one your laptop connects to.
+        When a team has two robots on the field, choose which one your laptop drives.
       </Typography>
 
       {state && (

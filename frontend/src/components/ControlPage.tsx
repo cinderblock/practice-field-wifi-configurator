@@ -24,7 +24,7 @@ import {
   useMdnsActivity,
   useBackendStagedChanges,
   useLastLinked,
-  sendRoutePreference,
+  sendDrive,
   useRoutePreferenceState,
   usePortBridgeState,
   sendPortBridge,
@@ -233,19 +233,12 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
     });
   }, [savedTeams, teamNumber]);
 
-  // Selection handler — updates URL, and sets route preference when team has multiple robots
-  const handleSelectRobot = useCallback(
-    (ssid: string) => {
-      setCurrentSsid(ssid);
-      window.history.replaceState(null, '', `/${encodeURIComponent(ssid)}`);
-
-      const station = activeStations.get(ssid);
-      if (station && activeStations.size > 1) {
-        sendRoutePreference(station);
-      }
-    },
-    [activeStations],
-  );
+  // Selection handler — updates URL for viewing, but does NOT start driving.
+  // The team must explicitly click "Drive" to set up the DNAT/routing.
+  const handleSelectRobot = useCallback((ssid: string) => {
+    setCurrentSsid(ssid);
+    window.history.replaceState(null, '', `/${encodeURIComponent(ssid)}`);
+  }, []);
 
   // Auto-select: if the current SSID is not active but another robot for this team is,
   // switch to the first active one.
@@ -534,7 +527,7 @@ function RobotRow({
                 onDelete={e => {
                   e.stopPropagation();
                   setPendingDrive(false);
-                  sendRoutePreference(null);
+                  sendDrive(null);
                 }}
               />
             )}
@@ -554,7 +547,7 @@ function RobotRow({
                   onClick={e => {
                     e.stopPropagation();
                     setPendingDrive(true);
-                    sendRoutePreference(activeStation!);
+                    sendDrive(activeStation!);
                     onSelect();
                   }}
                 >
