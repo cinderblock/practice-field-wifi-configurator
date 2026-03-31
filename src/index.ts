@@ -834,24 +834,16 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       fms.on('dsConnected', ({ address }) => connectedDsIps.add(address));
       fms.on('dsDisconnected', ({ address }) => {
         connectedDsIps.delete(address);
-        // Clean up blocked/primary DS state when a DS disconnects
-        for (const [station, rule] of [...activeDnatRules]) {
-          if (rule.dsIp === address) {
-            // Primary DS disconnected — clear accepted state, route preference, and unblock all.
-            // Blocked DSes will compete on their next heartbeat via trySetDSAddress.
-            clearRoutePreference(address).catch(err => {
-              console.error(`Failed to clear route preference for ${address}:`, err);
-            });
-            acceptedDsForStation.delete(station);
-            unblockAllDS(station).catch(err => {
-              console.error(`Failed to unblock DSes for ${station}:`, err);
-            });
-            broadcastRouteState();
-          }
-        }
+        // Drive sessions (DNAT, route preference, accepted DS) are NOT cleaned up here.
+        // DS TCP flaps every ~6s — cleaning up would destroy the drive session each cycle.
+        // Drive sessions are torn down by:
+        //   - Explicit "stop driving" from the user (sendDrive(null))
+        //   - Station reconfiguration (config change listener)
+        //   - stopDrive() called from onDriveAction
+
+        // Clean up blocked DS FORWARD DROP rules when a blocked DS disconnects
         for (const [station, stationBlocks] of [...blockedDsRules]) {
           if (stationBlocks.has(address)) {
-            // Blocked DS disconnected — clean up its FORWARD DROP rule
             unblockDS(station, address).catch(err => {
               console.error(`Failed to unblock DS ${address} for ${station}:`, err);
             });
@@ -939,10 +931,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
               // Common case: unique team on one station — auto-drive (full setup)
               const station = radioManager.getStationForTeam(teamNumber);
               if (station) {
-                // If another DS is already driving this station, don't auto-drive.
-                // The first DS wins; additional DSes must wait for it to disconnect.
-                const currentDriver = acceptedDsForStation.get(station);
-                if (currentDriver && currentDriver !== address && connectedDsIps.has(currentDriver)) {
+                // If another DS already has a drive session (DNAT rule) for this station,
+                // don't auto-drive. Check the DNAT rule, not TCP state, because TCP flaps
+                // every ~6s and we don't want a second DS sneaking in during the gap.
+                const existingDnat = activeDnatRules.get(station);
+                if (existingDnat && existingDnat.dsIp !== address) {
                   return;
                 }
                 startDrive(address, station, teamNumber).catch(err => {
