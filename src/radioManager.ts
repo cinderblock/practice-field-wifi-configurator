@@ -361,7 +361,11 @@ class RadioManager {
       // null means "clear this station" when committed
       this.stagedChanges[stationId] = config ?? null;
       this.saveStagedConfig();
-      this.setPendingCommit(true);
+      if (!this._pendingCommit) {
+        this.setPendingCommit(true); // transition false → true (broadcasts)
+      } else {
+        this.broadcastPendingState(); // already pending, but staged changes updated
+      }
     } else {
       // Immediate: apply to activeConfig and commit
       if (config) this.activeConfig[stationId] = config;
@@ -380,9 +384,12 @@ class RadioManager {
     if (this.stagedChanges[stationId] === undefined) return;
     delete this.stagedChanges[stationId];
     this.saveStagedConfig();
-    // If no staged changes remain, clear the pending flag
-    if (Object.keys(this.stagedChanges).length === 0) {
+    // If no staged changes remain (and no deferred commit), clear the pending flag
+    const hasStagedChanges = StationNameList.some(s => this.stagedChanges[s] !== undefined);
+    if (!hasStagedChanges && !this._deferredCommit) {
       this.setPendingCommit(false);
+    } else {
+      this.broadcastPendingState(); // staged changes updated
     }
     this.notifyConfigChange();
   }
@@ -395,9 +402,22 @@ class RadioManager {
   private setPendingCommit(value: boolean) {
     if (this._pendingCommit === value) return;
     this._pendingCommit = value;
+    this.notifyPendingCommitListeners();
+  }
+
+  /**
+   * Broadcast pending commit state to all listeners unconditionally.
+   * Use this when staged changes have been added/removed but the pending
+   * boolean hasn't changed (e.g. staging a second release while already pending).
+   */
+  private broadcastPendingState() {
+    this.notifyPendingCommitListeners();
+  }
+
+  private notifyPendingCommitListeners() {
     for (const listener of this.pendingCommitListeners) {
       try {
-        listener(value);
+        listener(this._pendingCommit);
       } catch (err) {
         console.error('Error in pendingCommit listener:', err);
       }
@@ -457,20 +477,34 @@ class RadioManager {
     this.commitConfiguration();
   }
 
+  /**
+   * Apply user-staged changes and commit the resulting configuration to the radio.
+   * This is the ONLY path that merges stagedChanges into activeConfig — call it
+   * when the user explicitly clicks "Apply pending changes."
+   */
+  applyPendingChanges(): Promise<void> {
+    this.applyStagedChanges();
+    return this.commitConfiguration();
+  }
+
   commitConfiguration(): Promise<void> {
     if (this.shouldDefer?.()) {
       if (!this._deferredCommit) {
         console.log('Radio configuration deferred: robots enabled or match active');
       }
       this._deferredCommit = true;
-      this.setPendingCommit(true);
+      this.broadcastPendingState();
       return Promise.resolve();
     }
-    // Merge staged changes into activeConfig before committing
-    this.applyStagedChanges();
-    // All staged changes have been merged — clear pending flags
+    // DO NOT merge staged changes here — they require an explicit "Apply" action
+    // via applyPendingChanges(). This method only commits what is already in activeConfig.
     this._deferredCommit = false;
-    this.setPendingCommit(false);
+    const hasStagedChanges = StationNameList.some(s => this.stagedChanges[s] !== undefined);
+    if (hasStagedChanges) {
+      this.broadcastPendingState(); // still pending due to staged changes
+    } else {
+      this.setPendingCommit(false);
+    }
     // Serialize concurrent calls — each queues after the previous one so
     // previousStations in networkManager is never read mid-update.
     this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
@@ -550,7 +584,14 @@ class RadioManager {
     jobs.push(this.configureRadio(config));
 
     await Promise.all(jobs);
-    this.setPendingCommit(false);
+    // Re-check pending state — staged changes may still exist even though this
+    // commit is done (staged changes are only merged by explicit "Apply" action).
+    const hasStagedChanges = StationNameList.some(s => this.stagedChanges[s] !== undefined);
+    if (hasStagedChanges || this._deferredCommit) {
+      this.broadcastPendingState();
+    } else {
+      this.setPendingCommit(false);
+    }
     this.notifyCommitComplete();
   }
 

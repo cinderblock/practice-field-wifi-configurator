@@ -410,7 +410,7 @@ export function setupWebSocket(
       } else if (isStationSelfEStop(data)) {
         matchEngine.stationEStop(data.station);
       } else if (isApplyConfig(data)) {
-        radioManager.commitConfiguration().catch(err => {
+        radioManager.applyPendingChanges().catch(err => {
           appError('Error applying config: ' + err.message);
           ws.send(JSON.stringify({ error: 'Failed to apply configuration', details: err.message }));
         });
