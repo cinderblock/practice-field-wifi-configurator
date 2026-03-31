@@ -98,7 +98,8 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
   const autoDuration = config.autoDuration; // 20 s
   const pauseDuration = config.pauseDuration; // 3 s
   const teleopTotal = config.teleopDuration; // 140 s
-  const barTotal = autoDuration + pauseDuration + teleopTotal;
+  // Total updates when auto is skipped
+  const matchTotal = skipAuto ? teleopTotal : autoDuration + pauseDuration + teleopTotal;
 
   // Font size adapts to bar height
   const fontSize = isProgressMode ? '0.65rem' : '0.75rem';
@@ -122,9 +123,9 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         { value: 'blue', label: 'Blue', color: '#1565c0' },
       ]
     : [
-        { value: 'scores', label: 'Scores' },
         { value: 'red', label: 'Red', color: '#d32f2f' },
         { value: 'blue', label: 'Blue', color: '#1565c0' },
+        { value: 'scores', label: 'Scores' },
         { value: 'pause', label: 'Pause' },
       ];
 
@@ -155,9 +156,14 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
               alignItems: 'center',
               justifyContent: 'center',
               opacity: skipAuto ? 0.6 : 1,
+              transition: 'background-color 0.4s ease, opacity 0.4s ease',
             }}
           >
-            <Typography sx={{ ...phaseLabelSx, fontSize, opacity: skipAuto ? 0.7 : 1 }}>AUTO</Typography>
+            <Typography
+              sx={{ ...phaseLabelSx, fontSize, opacity: skipAuto ? 0.7 : 1, transition: 'opacity 0.4s ease' }}
+            >
+              AUTO
+            </Typography>
           </Box>
         </Tooltip>
 
@@ -169,6 +175,7 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
               minWidth: pauseDuration > 0 ? 8 : 0,
               backgroundColor: skipAuto ? SKIPPED_COLOR : PAUSE_COLOR,
               opacity: skipAuto ? 0.6 : 1,
+              transition: 'background-color 0.4s ease, opacity 0.4s ease',
             }}
           />
         </Tooltip>
@@ -206,6 +213,7 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  transition: 'background-color 0.4s ease, background 0.4s ease',
                 }}
               >
                 <Typography sx={{ ...phaseLabelSx, fontSize }}>S{i + 1}</Typography>
@@ -247,11 +255,22 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         )}
       </Box>
 
-      {/* ── Duration labels ──────────────────────────────────────── */}
+      {/* ── Duration labels — flex row mirrors bar proportions ──── */}
       {!isProgressMode && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          Total: {formatDuration(barTotal)} &middot; Teleop: {formatDuration(teleopTotal)}
-        </Typography>
+        <Box sx={{ display: 'flex', mt: 0.5 }}>
+          {/* Auto+pause spacer (same flex ratio as bar) — holds the Total label */}
+          <Box sx={{ flex: autoDuration + pauseDuration, minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              Total: {formatDuration(matchTotal)}
+            </Typography>
+          </Box>
+          {/* Teleop label left-aligned with the teleop section start */}
+          <Box sx={{ flex: teleopTotal, minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              Teleop: {formatDuration(teleopTotal)}
+            </Typography>
+          </Box>
+        </Box>
       )}
 
       {/* ── Controls (config mode only) ──────────────────────────── */}
