@@ -939,6 +939,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
               // Common case: unique team on one station — auto-drive (full setup)
               const station = radioManager.getStationForTeam(teamNumber);
               if (station) {
+                // If another DS is already driving this station, don't auto-drive.
+                // The first DS wins; additional DSes must wait for it to disconnect.
+                const currentDriver = acceptedDsForStation.get(station);
+                if (currentDriver && currentDriver !== address && connectedDsIps.has(currentDriver)) {
+                  return;
+                }
                 startDrive(address, station, teamNumber).catch(err => {
                   console.error('Auto-drive failed:', err);
                 });
