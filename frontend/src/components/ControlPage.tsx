@@ -532,6 +532,11 @@ function RobotRow({
                 color={pendingDrive && routePreference !== activeStation ? 'default' : 'info'}
                 size="small"
                 sx={{ height: 20, fontSize: '0.7rem', fontWeight: 700 }}
+                onDelete={e => {
+                  e.stopPropagation();
+                  setPendingDrive(false);
+                  sendRoutePreference(null);
+                }}
               />
             )}
           </Box>
@@ -543,7 +548,7 @@ function RobotRow({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {isActive ? (
             <>
-              {isMultiRobot && routePreference !== activeStation && !pendingDrive && (
+              {isMultiRobot && !routePreference && !pendingDrive && (
                 <Button
                   size="small"
                   variant="contained"
