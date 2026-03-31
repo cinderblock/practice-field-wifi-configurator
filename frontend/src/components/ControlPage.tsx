@@ -37,7 +37,6 @@ import { createHash } from './cryptoUtils';
 import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { CopyToClipboard } from './CopyToClipboard';
 import IconButton from '@mui/material/IconButton';
-import EthernetIcon from '@mui/icons-material/SettingsEthernet';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
@@ -1615,8 +1614,10 @@ function PortSelector({ station, ssid }: { station: StationName; ssid: string })
   return (
     <Card sx={{ mb: 1 }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <EthernetIcon sx={{ color: 'text.secondary', fontSize: 20, flexShrink: 0 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary', flexShrink: 0, fontSize: '0.8rem' }}>
+            Connect to:
+          </Typography>
           {portState.ports.map(port => {
             const bridgedToStation = portState.activeBridges[port.vlanId] ?? null;
             const isMine = bridgedToStation === station;
@@ -1643,11 +1644,11 @@ function PortSelector({ station, ssid }: { station: StationName; ssid: string })
                   isMine
                     ? `Disconnect ${port.name}`
                     : isOther
-                      ? `In use by ${otherSsid}`
+                      ? `${port.name} — in use by ${otherSsid}`
                       : `Connect ${port.name} to ${ssid}`
                 }
               >
-                <span>
+                <span style={{ flex: 1, display: 'flex' }}>
                   <Button
                     size="small"
                     variant={isMine ? 'contained' : 'outlined'}
@@ -1655,19 +1656,15 @@ function PortSelector({ station, ssid }: { station: StationName; ssid: string })
                     disabled={isOther}
                     onClick={handleClick}
                     sx={{
+                      flex: 1,
                       minWidth: 0,
-                      px: 1.5,
+                      px: 1,
                       fontSize: '0.75rem',
                       textTransform: 'none',
                       fontWeight: isMine ? 700 : 400,
                     }}
                   >
-                    {port.name}
-                    {isOther && otherSsid && (
-                      <Typography component="span" sx={{ fontSize: '0.65rem', ml: 0.5, opacity: 0.8 }}>
-                        ({otherSsid})
-                      </Typography>
-                    )}
+                    {isOther ? (otherSsid ?? port.name) : port.name}
                   </Button>
                 </span>
               </Tooltip>
