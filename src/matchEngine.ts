@@ -193,12 +193,12 @@ export class MatchEngine {
     this.autoWinnerAlliance = winner;
     console.log(`Auto winner set: ${winner}`);
 
-    // If we're in autoPause awaiting a winner, transition to teleop now
+    // If we're in autoPause awaiting a winner, resume the pause countdown
     if (this.phase === 'autoPause' && this.config?.autoWinner === 'pause') {
-      this.phase = 'teleop';
-      this.remainingTime = this.config.teleopDuration;
-      this.enableParticipating('teleOp');
-      console.log('Teleop period started (auto winner selected)');
+      // The tick was frozen while waiting — restart it so the pause countdown runs
+      this.lastTickTime = Date.now();
+      this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
+      console.log(`Auto pause countdown resumed (${this.remainingTime.toFixed(1)}s remaining)`);
     }
     this.broadcast();
   }
@@ -647,11 +647,14 @@ export class MatchEngine {
           this.phase = 'autoPause';
           this.remainingTime = this.config.pauseDuration;
           this.disableAll();
-          console.log(
-            this.config.autoWinner === 'pause' && !this.autoWinnerAlliance
-              ? 'Auto pause — awaiting manual winner selection'
-              : 'Auto-to-teleop pause',
-          );
+
+          // If awaiting manual winner selection, freeze the countdown
+          if (this.config.autoWinner === 'pause' && !this.autoWinnerAlliance) {
+            this.stopTick();
+            console.log('Auto pause — awaiting manual winner selection (countdown frozen)');
+          } else {
+            console.log('Auto-to-teleop pause');
+          }
         } else {
           // Skip pause — go straight to teleop
           this.phase = 'teleop';
@@ -662,11 +665,6 @@ export class MatchEngine {
         break;
 
       case 'autoPause':
-        // If autoWinner === 'pause' and no winner set yet, stay in autoPause indefinitely
-        if (this.config.autoWinner === 'pause' && !this.autoWinnerAlliance) {
-          this.remainingTime = 1; // Keep ticking, don't go negative
-          return;
-        }
         this.phase = 'teleop';
         this.remainingTime = this.config.teleopDuration;
         this.enableParticipating('teleOp');
