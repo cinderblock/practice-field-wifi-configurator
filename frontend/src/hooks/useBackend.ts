@@ -723,6 +723,10 @@ export function sendMatchCancel() {
   ws?.send(JSON.stringify({ type: 'matchCancel' }));
 }
 
+export function sendMatchClear() {
+  ws?.send(JSON.stringify({ type: 'matchClear' }));
+}
+
 export function sendMatchSwapStation(station: StationName) {
   ws?.send(JSON.stringify({ type: 'matchSwapStation', station }));
 }

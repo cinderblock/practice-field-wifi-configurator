@@ -5,14 +5,13 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { Alliance, MatchPhase, StationName, StationControlState } from '../../../src/types';
-import { prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   sendMatchCreate,
   sendMatchCancel,
+  sendMatchClear,
   sendMatchSwapStation,
   sendMatchSetAutoWinner,
   sendStationStartMatch,
@@ -25,7 +24,8 @@ import {
   sendAdminClearEStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
-import { getAllianceShiftState } from '../utils/shiftState';
+
+// ── Phase display helpers ───────────────────────────────────────────
 
 const phaseColors: Record<MatchPhase, string> = {
   idle: 'text.secondary',
@@ -51,10 +51,14 @@ const phaseLabels: Record<MatchPhase, string> = {
   postMatch: 'Post-Match',
 };
 
+// ── Timer with ceil rounding ────────────────────────────────────────
+// Auto starts at 0:20 and shows 0:20 for the first second.
+// When the displayed number hits 0:00, that moment is the end.
+
 function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: MatchPhase }) {
-  const clamped = Math.max(0, remainingTime);
-  const minutes = Math.floor(clamped / 60);
-  const seconds = Math.floor(clamped % 60);
+  const display = Math.ceil(Math.max(0, remainingTime));
+  const minutes = Math.floor(display / 60);
+  const seconds = display % 60;
   return (
     <Typography
       variant="h1"
@@ -71,17 +75,30 @@ function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: Ma
   );
 }
 
-function getProgressBarColor(inactiveAlliance: Alliance | null): string {
-  if (inactiveAlliance === 'red') return '#42a5f5';
-  if (inactiveAlliance === 'blue') return '#ef5350';
-  return '#4caf50';
+// ── Station label — uses team number, never exposes slot/radio ids ──
+
+function teamLabel(state: StationControlState | undefined): string {
+  const team = state?.teamNumber;
+  if (team) return String(team);
+  return '(no team)';
 }
 
-function stationLabel(station: StationName, state: StationControlState | undefined): string {
-  const team = state?.teamNumber;
-  const pretty = prettyStationName(station);
-  return team ? `${pretty} (${team})` : pretty;
+// ── Progress computation ────────────────────────────────────────────
+
+function computeBarProgress(
+  totalMatchTime: number,
+  config: { autoDuration: number; pauseDuration: number; teleopDuration: number; skipAuto?: boolean },
+): number {
+  const countdownDuration = 3;
+  const autoDur = config.skipAuto ? 0 : config.autoDuration;
+  const pauseDur = config.skipAuto ? 0 : config.pauseDuration;
+  const barTotal = autoDur + pauseDur + config.teleopDuration;
+  if (barTotal <= 0) return 0;
+  const barElapsed = Math.max(0, totalMatchTime - countdownDuration);
+  return Math.min(1, barElapsed / barTotal);
 }
+
+// ── Root component ──────────────────────────────────────────────────
 
 /**
  * The dedicated match controller page at /match.
@@ -130,7 +147,8 @@ export function MatchControlPage() {
   );
 }
 
-/** Idle state — big Create Match button */
+// ── Idle view ───────────────────────────────────────────────────────
+
 function IdleView() {
   return (
     <Card>
@@ -152,7 +170,8 @@ function IdleView() {
   );
 }
 
-/** Created state — pre-match setup with participants, config, and start controls */
+// ── Created view — pre-match setup ──────────────────────────────────
+
 function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof useMatchState>> }) {
   const { config, stationStates } = matchState;
 
@@ -264,7 +283,7 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
           )}
           {joinedStations.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
-              At least one team must join before starting.
+              At least one team must join and &lsquo;Ready Up&rsquo; before starting.
             </Typography>
           )}
         </CardContent>
@@ -275,7 +294,6 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
 
 /** A single participant row in the pre-match setup */
 function ParticipantRow({
-  station,
   state,
   onSwap,
 }: {
@@ -298,7 +316,7 @@ function ParticipantRow({
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {stationLabel(station, state)}
+          {teamLabel(state)}
         </Typography>
         {state?.ready && <Chip label="Ready" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
       </Box>
@@ -309,7 +327,8 @@ function ParticipantRow({
   );
 }
 
-/** Active match — timer, progress bar, robot controls */
+// ── Active match view ───────────────────────────────────────────────
+
 function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<typeof useMatchState>> }) {
   const { phase, remainingTime, totalMatchTime, config, stationStates, awaitingAutoWinner } = matchState;
 
@@ -322,19 +341,7 @@ function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<ty
   const redStations = joinedStations.filter(s => stationStates[s]?.alliance === 'red');
   const blueStations = joinedStations.filter(s => stationStates[s]?.alliance === 'blue');
 
-  const inactiveAlliance = useMemo(() => {
-    return getAllianceShiftState(
-      matchState.phase,
-      matchState.remainingTime,
-      matchState.config.teleopDuration,
-      matchState.config.endgameDuration,
-      matchState.autoWinnerAlliance,
-    );
-  }, [matchState]);
-
-  const countdownDuration = 3;
-  const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
-  const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
+  const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
 
   return (
     <>
@@ -356,18 +363,7 @@ function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<ty
             />
           </Box>
           <MatchTimer remainingTime={remainingTime} phase={phase} />
-          <LinearProgress
-            variant="determinate"
-            value={progress}
-            sx={{
-              height: 10,
-              borderRadius: 5,
-              '& .MuiLinearProgress-bar': {
-                backgroundColor: getProgressBarColor(inactiveAlliance),
-                transition: 'background-color 2s ease',
-              },
-            }}
-          />
+          <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
         </CardContent>
       </Card>
 
@@ -518,7 +514,7 @@ function ActiveParticipantRow({ station, state }: { station: StationName; state:
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {stationLabel(station, state)}
+          {teamLabel(state)}
         </Typography>
         {isEStopped && (
           <Chip
@@ -561,11 +557,24 @@ function ActiveParticipantRow({ station, state }: { station: StationName; state:
   );
 }
 
-/** Post-match view — results summary and create new match button */
+// ── Post-match view ─────────────────────────────────────────────────
+
 function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<typeof useMatchState>> }) {
-  const { endReason, autoWinnerAlliance } = matchState;
+  const { remainingTime, totalMatchTime, config, stationStates, endReason, autoWinnerAlliance } = matchState;
+
+  const isCounting = remainingTime > 0;
+
+  const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
+    .filter(([, s]) => s?.joined)
+    .map(([name]) => name);
+
+  const redStations = joinedStations.filter(s => stationStates[s]?.alliance === 'red');
+  const blueStations = joinedStations.filter(s => stationStates[s]?.alliance === 'blue');
+
+  const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
 
   const endReasonLabels: Record<string, string> = {
+    normal: 'Match Completed',
     completed: 'Match Completed',
     stopped: 'Match Stopped',
     estop: 'Emergency Stopped',
@@ -574,33 +583,99 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
   };
 
   return (
-    <Card>
-      <CardContent sx={{ textAlign: 'center', py: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-          {endReasonLabels[endReason ?? ''] ?? 'Post-Match'}
-        </Typography>
-        {autoWinnerAlliance && (
-          <Typography
-            variant="body1"
-            sx={{
-              color: autoWinnerAlliance === 'red' ? 'error.main' : 'info.main',
-              fontWeight: 700,
-              mb: 2,
-            }}
-          >
-            Auto Winner: {autoWinnerAlliance === 'red' ? 'Red' : 'Blue'}
-          </Typography>
-        )}
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          onClick={sendMatchCreate}
-          sx={{ px: 6, py: 1.5, fontSize: '1.1rem', fontWeight: 'bold' }}
-        >
-          Create New Match
-        </Button>
-      </CardContent>
-    </Card>
+    <>
+      {/* Result header + timeline */}
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Box sx={{ textAlign: 'center', mb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+              {isCounting ? 'Counting...' : (endReasonLabels[endReason ?? ''] ?? 'Post-Match')}
+            </Typography>
+            {isCounting && <MatchTimer remainingTime={remainingTime} phase="postMatch" />}
+            {autoWinnerAlliance && (
+              <Typography
+                variant="body1"
+                sx={{
+                  color: autoWinnerAlliance === 'red' ? 'error.main' : 'info.main',
+                  fontWeight: 700,
+                }}
+              >
+                Auto Winner: {autoWinnerAlliance === 'red' ? 'Red' : 'Blue'}
+              </Typography>
+            )}
+          </Box>
+
+          {/* Timeline bar at 100% (or near if still counting) */}
+          <MatchTimeline config={config} progress={Math.min(1, progress)} autoWinnerAlliance={autoWinnerAlliance} />
+        </CardContent>
+      </Card>
+
+      {/* Participants — still in the match */}
+      {joinedStations.length > 0 && (
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Participants
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {redStations.length > 0 && (
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 700, mb: 0.5 }}>
+                    Red Alliance
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {redStations.map(s => (
+                      <Box key={s} sx={{ px: 1.5, py: 0.5, borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {teamLabel(stationStates[s])}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {blueStations.length > 0 && (
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <Typography variant="subtitle2" sx={{ color: 'info.main', fontWeight: 700, mb: 0.5 }}>
+                    Blue Alliance
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {blueStations.map(s => (
+                      <Box key={s} sx={{ px: 1.5, py: 0.5, borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {teamLabel(stationStates[s])}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Actions — only when counting period is done */}
+      {!isCounting && (
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={sendMatchCreate}
+                sx={{ px: 4, py: 1.5, fontSize: '1.1rem', fontWeight: 'bold' }}
+              >
+                Create New Match
+              </Button>
+              <Button variant="outlined" onClick={sendMatchClear}>
+                Clear Match
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }

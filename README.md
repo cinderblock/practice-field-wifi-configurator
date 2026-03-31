@@ -34,7 +34,8 @@ npm install
 | Path                | Description                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
 | `/`                 | Home — station configuration form (assign teams to stations)                        |
-| `/slot[1-6]`        | Station page — per-station view with match controls                                 |
+| `/slot[1-6]`        | Station page — per-station view with self-service match controls                    |
+| `/match`            | Match control — dedicated controller page for match lifecycle                       |
 | `/admin`            | Admin page — global/per-station e-stop, match status, force stop                    |
 | `/network`          | Network page — discovered devices, VLAN status, network stats                       |
 | `/route`            | Route page — choose which robot to talk to when a team has duplicate stations       |
@@ -45,19 +46,21 @@ npm install
 
 ## Features
 
-### Self-Service Match System
+### Match System
 
-Stations manage their own match participation — no admin required to start a match:
+Matches follow the 2026 REBUILT official timing (20 s auto, 5 s pause, 110 s teleop with 30 s endgame) and are managed from the dedicated `/match` controller page:
 
-1. **Join** — a station joins the match system. The FMS begins sending heartbeat packets (robot disabled).
-2. **Ready** — the station marks itself ready. When all joined stations are ready, any can start.
-3. **Start** — any joined station starts the match. Phases run automatically: countdown → auto → pause → teleop → endgame → post-match.
-4. **Pause/Resume/Abandon** — any joined station can pause during auto/teleop/endgame. From paused, resume or abandon.
-5. **Leave** — after a match (or while idle), the station leaves. FMS stops sending packets; the DS returns to free-drive.
+1. **Create** — the match controller creates a match, allowing teams to join from their station pages.
+2. **Join & Ready** — teams choose an alliance (Red/Blue) from their station page and mark themselves ready.
+3. **Start** — the match controller starts the match once all joined teams are ready. Phases run automatically: countdown → auto → pause → teleop → endgame → post-match.
+4. **Controls** — only the match controller can pause/resume/abandon. Teams can self-service disable, e-stop, or leave mid-match.
+5. **Post-match** — a 5-second counting period runs after the buzzer (balls in flight). The match stays in post-match until the controller manually clears it or creates a new match.
 
 Stations that have **not** joined receive no FMS packets and operate in free-drive mode.
 
-Match timing (auto, teleop, endgame, pause durations) is configurable from any joined station's page. Changing timing clears all ready states.
+The auto winner (which alliance's goal goes inactive first during teleop shifts) can be set to scores-based, pre-selected (red/blue), or manually chosen during a pause between auto and teleop.
+
+The match timeline visualises the full match structure with shift colouring: when the auto winner is known, solid red/blue sections show which alliance is active during each 25-second shift. When unknown, diagonal stripes indicate uncertainty.
 
 The admin page provides safety overrides: global e-stop, per-station e-stop/disable, and force stop.
 

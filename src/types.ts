@@ -657,6 +657,12 @@ export function isStationSelfEStop(msg: unknown): msg is StationSelfEStop {
   return m.type === 'stationSelfEStop' && StationNameRegex.test(m.station);
 }
 
+export type MatchClear = { type: 'matchClear' };
+export function isMatchClear(msg: unknown): msg is MatchClear {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MatchClear).type === 'matchClear';
+}
+
 // ── Robot Telemetry ─────────────────────────────────────────────────
 
 export interface TelemetryUpdate {

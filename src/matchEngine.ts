@@ -16,14 +16,15 @@ import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
-const POST_MATCH_DISPLAY_MS = 3000;
+/** Post-match counting period for balls in flight */
+const POST_MATCH_COUNT_SECONDS = 5;
 
 // Official 2026 REBUILT match timing (fixed — not user-adjustable)
 const OFFICIAL_CONFIG: MatchConfig = {
   autoDuration: 20,
   teleopDuration: 110,
   endgameDuration: 30,
-  pauseDuration: 3,
+  pauseDuration: 5,
   skipAuto: false,
   autoWinner: 'scores',
 };
@@ -395,11 +396,11 @@ export class MatchEngine {
     this.disableAll();
     this.endReason = 'stopped';
     this.phase = 'postMatch';
+    this.remainingTime = 0;
     this.stopTick();
     this.sendPacketsToAll();
     console.log(`Match ${this.matchNumber} stopped early`);
     this.broadcast();
-    this.schedulePostMatchReset();
   }
 
   pauseMatch() {
@@ -460,6 +461,7 @@ export class MatchEngine {
     }
     this.endReason = 'estop';
     this.phase = 'postMatch';
+    this.remainingTime = 0;
     this.stopTick();
     // Send e-stop packets to ALL stations with known DS addresses, not just joined
     for (const station of StationNameList) {
@@ -467,7 +469,6 @@ export class MatchEngine {
     }
     console.log('Global E-Stop triggered');
     this.broadcast();
-    this.schedulePostMatchReset();
   }
 
   stationEStop(station: StationName) {
@@ -539,8 +540,8 @@ export class MatchEngine {
     const stationStates: Partial<Record<StationName, StationControlState>> = {};
     for (const station of StationNameList) {
       const state = { ...this.stationStates.get(station)! };
-      // When not in active match, resolve live team numbers; during a match, use the snapshot
-      if (!this.isMatchActive()) state.teamNumber = this.teamResolver(station);
+      // When not in active match or postMatch, resolve live team numbers; during a match, use the snapshot
+      if (!this.isMatchActive() && this.phase !== 'postMatch') state.teamNumber = this.teamResolver(station);
       stationStates[station] = state;
     }
 
@@ -578,11 +579,11 @@ export class MatchEngine {
     this.disableAll();
     this.endReason = 'abandoned';
     this.phase = 'postMatch';
+    this.remainingTime = 0;
     this.stopTick();
     this.sendPacketsToAll();
     console.log(`Match ${this.matchNumber} ended — all stations left`);
     this.broadcast();
-    this.schedulePostMatchReset();
   }
 
   private tick() {
@@ -600,6 +601,17 @@ export class MatchEngine {
 
   private transition() {
     if (!this.config) return;
+
+    // Handle postMatch counting period (balls in flight)
+    if (this.phase === 'postMatch') {
+      if (this.remainingTime <= 0) {
+        this.remainingTime = 0;
+        this.stopTick();
+        console.log('Post-match counting period complete');
+      }
+      return;
+    }
+
     if (this.remainingTime > 0) {
       // Check for endgame transition (within teleop)
       if (this.phase === 'teleop' && this.remainingTime <= this.config.endgameDuration) {
@@ -664,11 +676,10 @@ export class MatchEngine {
       case 'endgame':
         this.endReason = 'normal';
         this.phase = 'postMatch';
-        this.remainingTime = 0;
+        this.remainingTime = POST_MATCH_COUNT_SECONDS;
         this.disableAll();
-        this.stopTick();
-        console.log('Match complete');
-        this.schedulePostMatchReset();
+        // Keep tick running for the counting period
+        console.log(`Match complete — ${POST_MATCH_COUNT_SECONDS}s counting period`);
         break;
     }
   }
@@ -714,22 +725,27 @@ export class MatchEngine {
     }
   }
 
-  private schedulePostMatchReset() {
-    setTimeout(() => {
-      if (this.phase !== 'postMatch') return;
-      this.config = null;
-      this.phase = 'idle';
-      this.portToSlot.clear();
-      this.autoWinnerAlliance = null;
-      for (const state of this.stationStates.values()) {
-        state.joined = false;
-        state.ready = false;
-        state.alliance = null;
-        state.matchSlot = null;
-      }
-      console.log('Post-match reset complete');
-      this.broadcast();
-    }, POST_MATCH_DISPLAY_MS);
+  /** Manually clear the match — transitions from postMatch → idle. */
+  clearMatch() {
+    if (this.phase !== 'postMatch') {
+      appWarn(`Cannot clear match in phase ${this.phase}`);
+      return;
+    }
+    this.stopTick(); // In case counting period is still running
+    this.config = null;
+    this.phase = 'idle';
+    this.remainingTime = 0;
+    this.portToSlot.clear();
+    this.autoWinnerAlliance = null;
+    this.endReason = undefined;
+    for (const state of this.stationStates.values()) {
+      state.joined = false;
+      state.ready = false;
+      state.alliance = null;
+      state.matchSlot = null;
+    }
+    console.log('Match cleared');
+    this.broadcast();
   }
 
   private sendJoinedHeartbeat() {

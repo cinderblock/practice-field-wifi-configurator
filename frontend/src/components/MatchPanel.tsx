@@ -7,7 +7,6 @@ import Chip from '@mui/material/Chip';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { Alliance, MatchPhase, StationName, StationControlState } from '../../../src/types';
-import { prettyStationName } from '../../../src/utils';
 import {
   useMatchState,
   sendStationJoin,
@@ -45,9 +44,9 @@ const phaseLabels: Record<MatchPhase, string> = {
 };
 
 function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: MatchPhase }) {
-  const clamped = Math.max(0, remainingTime);
-  const minutes = Math.floor(clamped / 60);
-  const seconds = Math.floor(clamped % 60);
+  const display = Math.ceil(Math.max(0, remainingTime));
+  const minutes = Math.floor(display / 60);
+  const seconds = display % 60;
   return (
     <Typography
       variant="h2"
@@ -64,15 +63,14 @@ function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: Ma
   );
 }
 
-/** Build a display label for a joined station chip, including team number and duplicate suffix. */
+/** Build a display label for a joined station chip, using team number. */
 function stationChipLabel(
   station: StationName,
   state: StationControlState | undefined,
   allStates: Partial<Record<StationName, StationControlState>>,
 ) {
-  const pretty = prettyStationName(station);
   const team = state?.teamNumber;
-  if (!team) return pretty;
+  if (!team) return 'No Team';
 
   // Check if another joined station shares the same team number
   const sameTeamStations = (Object.entries(allStates) as [StationName, StationControlState | undefined][]).filter(
@@ -81,10 +79,12 @@ function stationChipLabel(
 
   const suffix = state?.ready ? ' \u2713' : '';
   if (sameTeamStations > 0) {
-    const tag = station[0].toUpperCase() + station.replace(/[a-z]+/g, '');
-    return `${pretty} (${team}-${tag})${suffix}`;
+    // Disambiguate with alliance tag
+    const alliance = state?.alliance;
+    const tag = alliance ? (alliance === 'red' ? 'R' : 'B') : '?';
+    return `${team}-${tag}${suffix}`;
   }
-  return `${pretty} (${team})${suffix}`;
+  return `${team}${suffix}`;
 }
 
 /**
@@ -293,15 +293,15 @@ export function MatchPanel({ station }: { station?: StationName }) {
 
 /**
  * Build a display label for a joined station chip in the control page context.
- * Uses team number / SSID instead of station name like "Red 1".
+ * Uses team number — never exposes physical slot / radio identifiers.
  */
-function controlChipLabel(station: StationName, state: StationControlState | undefined) {
+function controlChipLabel(_station: StationName, state: StationControlState | undefined) {
   const team = state?.teamNumber;
   const readySuffix = state?.ready ? ' \u2713' : '';
   const alliance = state?.alliance;
   const allianceTag = alliance ? `${alliance === 'red' ? 'R' : 'B'}` : '';
   if (team) return `${allianceTag} ${team}${readySuffix}`;
-  return `${prettyStationName(station)}${readySuffix}`;
+  return `No Team${readySuffix}`;
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   isPortBridgeRequest,
   isMatchCreate,
   isMatchCancel,
+  isMatchClear,
   isMatchSwapStation,
   isMatchSetAutoWinner,
   isStationSelfDisable,
@@ -398,6 +399,8 @@ export function setupWebSocket(
         matchEngine.createMatch();
       } else if (isMatchCancel(data)) {
         matchEngine.cancelMatch();
+      } else if (isMatchClear(data)) {
+        matchEngine.clearMatch();
       } else if (isMatchSwapStation(data)) {
         matchEngine.swapStationAlliance(data.station);
       } else if (isMatchSetAutoWinner(data)) {
