@@ -24,38 +24,23 @@ import {
   sendAdminClearEStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
+import { MatchTimer, PHASE_HEX, getActiveColor } from './MatchTimer';
 import { getAllianceShiftState } from '../utils/shiftState';
 
 // ── Phase display helpers ───────────────────────────────────────────
 
-// Concrete hex colours that match the MatchTimeline segment colours
-const PHASE_HEX: Record<MatchPhase, string> = {
-  idle: '#9e9e9e',
-  created: '#42a5f5',
-  countdown: '#ffa726',
-  auto: '#66bb6a',
-  autoPause: '#9e9e9e',
-  paused: '#ffa726',
-  teleop: '#66bb6a',
-  endgame: '#66bb6a',
-  postMatch: '#9e9e9e',
-};
-
-// Muted (low-alpha) versions for the page background
+// Muted versions for the page background
 const PHASE_BG: Record<MatchPhase, string> = {
   idle: 'transparent',
-  created: 'rgba(66,165,245,0.06)',
-  countdown: 'rgba(255,167,38,0.08)',
-  auto: 'rgba(102,187,106,0.08)',
-  autoPause: 'rgba(158,158,158,0.06)',
-  paused: 'rgba(255,167,38,0.08)',
-  teleop: 'rgba(102,187,106,0.06)',
-  endgame: 'rgba(102,187,106,0.08)',
+  created: 'rgba(66,165,245,0.10)',
+  countdown: 'rgba(255,167,38,0.12)',
+  auto: 'rgba(102,187,106,0.12)',
+  autoPause: 'rgba(158,158,158,0.08)',
+  paused: 'rgba(255,167,38,0.12)',
+  teleop: 'rgba(102,187,106,0.10)',
+  endgame: 'rgba(102,187,106,0.12)',
   postMatch: 'transparent',
 };
-
-const RED_HEX = '#ef5350';
-const BLUE_HEX = '#42a5f5';
 
 const phaseLabels: Record<MatchPhase, string> = {
   idle: 'Idle',
@@ -69,29 +54,6 @@ const phaseLabels: Record<MatchPhase, string> = {
   postMatch: 'Post-Match',
 };
 
-/**
- * Compute the active colour for the timer/chip based on the current match phase
- * and which alliance's shift is active during teleop.
- */
-function getActiveColor(matchState: MatchState): string {
-  const { phase } = matchState;
-
-  // During teleop shifts, colour by which alliance is scoring
-  if (phase === 'teleop' || phase === 'endgame') {
-    const inactive = getAllianceShiftState(
-      phase,
-      matchState.remainingTime,
-      matchState.config.teleopDuration,
-      matchState.config.endgameDuration,
-      matchState.autoWinnerAlliance,
-    );
-    if (inactive === 'red') return BLUE_HEX; // Blue is scoring
-    if (inactive === 'blue') return RED_HEX; // Red is scoring
-  }
-
-  return PHASE_HEX[phase];
-}
-
 /** Muted page background; during teleop shifts, tint by alliance colour. */
 function getPageBg(matchState: MatchState): string {
   const { phase } = matchState;
@@ -104,39 +66,11 @@ function getPageBg(matchState: MatchState): string {
       matchState.config.endgameDuration,
       matchState.autoWinnerAlliance,
     );
-    if (inactive === 'red') return 'rgba(66,165,245,0.06)';
-    if (inactive === 'blue') return 'rgba(239,83,80,0.06)';
+    if (inactive === 'red') return 'rgba(66,165,245,0.10)';
+    if (inactive === 'blue') return 'rgba(239,83,80,0.10)';
   }
 
   return PHASE_BG[phase];
-}
-
-// ── Timer with ceil rounding ────────────────────────────────────────
-
-function MatchTimer({ remainingTime, color, pulse }: { remainingTime: number; color: string; pulse?: boolean }) {
-  const display = Math.ceil(Math.max(0, remainingTime));
-  const minutes = Math.floor(display / 60);
-  const seconds = display % 60;
-  return (
-    <Typography
-      variant="h1"
-      sx={{
-        fontFamily: 'monospace',
-        textAlign: 'center',
-        color,
-        lineHeight: 1,
-        mb: 2,
-        transition: 'color 1s ease',
-        '@keyframes timerPulse': {
-          '0%, 100%': { opacity: 1 },
-          '50%': { opacity: 0.4 },
-        },
-        animation: pulse ? 'timerPulse 1s ease-in-out infinite' : 'none',
-      }}
-    >
-      {minutes}:{seconds.toString().padStart(2, '0')}
-    </Typography>
-  );
 }
 
 // ── Station label — uses team number, never exposes slot/radio ids ──
@@ -424,9 +358,38 @@ function ActiveMatchView({
 
   const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
 
-  // Pulse the timer in the last 3 seconds of active periods
-  const isActivePeriod = phase === 'auto' || phase === 'teleop' || phase === 'endgame' || phase === 'countdown';
-  const shouldPulse = isActivePeriod && remainingTime > 0 && remainingTime <= 3;
+  // Pulse the timer in the last 3 seconds of each game period
+  const shouldPulse = useMemo(() => {
+    if (remainingTime <= 0) return false;
+
+    // Auto / countdown: pulse at end of the phase
+    if (phase === 'auto' || phase === 'countdown') return remainingTime <= 3;
+
+    // During teleop/endgame: pulse at the end of each sub-period boundary
+    if (phase === 'teleop' || phase === 'endgame') {
+      const teleopDur = config.teleopDuration; // 140
+      // Period boundaries are at these remainingTime values:
+      // TS ends:        130  (elapsed 10)
+      // S1 ends:        105  (elapsed 35)
+      // S2 ends:         80  (elapsed 60)
+      // S3 ends:         55  (elapsed 85)
+      // S4 ends:         30  (elapsed 110)
+      // End Game ends:    0  (elapsed 140)
+      const boundaries = [
+        teleopDur - 10, // 130 — end of transition
+        teleopDur - 35, // 105 — end of S1
+        teleopDur - 60, //  80 — end of S2
+        teleopDur - 85, //  55 — end of S3
+        teleopDur - 110, // 30 — end of S4
+        0, //               0 — end of endgame
+      ];
+      for (const b of boundaries) {
+        if (remainingTime > b && remainingTime <= b + 3) return true;
+      }
+    }
+
+    return false;
+  }, [phase, remainingTime, config.teleopDuration]);
 
   return (
     <>
@@ -448,7 +411,9 @@ function ActiveMatchView({
               variant="outlined"
             />
           </Box>
-          <MatchTimer remainingTime={remainingTime} color={activeColor} pulse={shouldPulse} />
+          <Box sx={{ mb: 2 }}>
+            <MatchTimer remainingTime={remainingTime} color={activeColor} pulse={shouldPulse} />
+          </Box>
           <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
         </CardContent>
       </Card>
