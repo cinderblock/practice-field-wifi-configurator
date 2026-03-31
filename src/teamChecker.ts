@@ -110,8 +110,10 @@ function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promi
     });
 
     sock.on('message', msg => {
-      // Parse DNS response — look for an A record (type 1) in the answers section
-      const ip = parseARecord(msg);
+      // Parse DNS response — only accept A records whose name matches our query.
+      // This prevents cross-contamination when concurrent mDNS queries (e.g.
+      // radio.local and roboRIO-TEAM-FRC.local) share the same port on a VLAN.
+      const ip = parseARecord(msg, hostname);
       if (ip) {
         clearTimeout(timer);
         sock.close();
@@ -156,38 +158,63 @@ function buildMdnsQuery(hostname: string): Buffer {
   return Buffer.concat([header, name, qtype]);
 }
 
-/** Parse the first A record from a DNS response. Returns the IP string or null. */
-function parseARecord(msg: Buffer): string | null {
+/**
+ * Read a DNS name from the packet at the given offset, handling label
+ * compression pointers (RFC 1035 §4.1.4).  Returns the dotted name and
+ * the offset immediately after the name field in the original packet.
+ */
+function readDnsName(buf: Buffer, offset: number): { name: string; endOffset: number } {
+  const labels: string[] = [];
+  let pos = offset;
+  let endOffset = -1;
+
+  while (pos < buf.length) {
+    const len = buf[pos];
+    if (len === 0) {
+      if (endOffset === -1) endOffset = pos + 1;
+      break;
+    }
+    // Compression pointer: top 2 bits set → remaining 14 bits are an offset
+    if ((len & 0xc0) === 0xc0) {
+      if (pos + 1 >= buf.length) break;
+      if (endOffset === -1) endOffset = pos + 2;
+      pos = ((len & 0x3f) << 8) | buf[pos + 1];
+      continue;
+    }
+    if (pos + 1 + len > buf.length) break;
+    labels.push(buf.subarray(pos + 1, pos + 1 + len).toString('ascii'));
+    pos += 1 + len;
+  }
+
+  if (endOffset === -1) endOffset = pos;
+  return { name: labels.join('.'), endOffset };
+}
+
+/**
+ * Parse the first A record from a DNS response.  When `expectedName` is
+ * provided, only A records whose name matches (case-insensitive) are
+ * accepted — this prevents cross-contamination when multiple mDNS queries
+ * share the same socket/port on a VLAN.
+ */
+function parseARecord(msg: Buffer, expectedName?: string): string | null {
   if (msg.length < 12) return null;
   const qdcount = msg.readUInt16BE(4);
   const ancount = msg.readUInt16BE(6);
   if (ancount === 0) return null;
 
+  const expected = expectedName?.toLowerCase();
+
   // Skip the question section
   let offset = 12;
   for (let i = 0; i < qdcount && offset < msg.length; i++) {
-    while (offset < msg.length && msg[offset] !== 0) {
-      if ((msg[offset] & 0xc0) === 0xc0) {
-        offset += 2;
-        break;
-      }
-      offset += msg[offset] + 1;
-    }
-    if (offset < msg.length && msg[offset] === 0) offset++; // null terminator
-    offset += 4; // qtype + qclass
+    const { endOffset } = readDnsName(msg, offset);
+    offset = endOffset + 4; // skip QTYPE (2) + QCLASS (2)
   }
 
   // Parse answer records
   for (let i = 0; i < ancount && offset < msg.length; i++) {
-    // Skip name (may be compressed)
-    while (offset < msg.length && msg[offset] !== 0) {
-      if ((msg[offset] & 0xc0) === 0xc0) {
-        offset += 2;
-        break;
-      }
-      offset += msg[offset] + 1;
-    }
-    if (offset < msg.length && msg[offset] === 0) offset++;
+    const { name, endOffset } = readDnsName(msg, offset);
+    offset = endOffset;
 
     if (offset + 10 > msg.length) break;
     const rtype = msg.readUInt16BE(offset);
@@ -195,7 +222,9 @@ function parseARecord(msg: Buffer): string | null {
     offset += 10;
 
     if (rtype === 1 && rdlength === 4 && offset + 4 <= msg.length) {
-      return `${msg[offset]}.${msg[offset + 1]}.${msg[offset + 2]}.${msg[offset + 3]}`;
+      if (!expected || name.toLowerCase() === expected) {
+        return `${msg[offset]}.${msg[offset + 1]}.${msg[offset + 2]}.${msg[offset + 3]}`;
+      }
     }
     offset += rdlength;
   }
@@ -623,17 +652,16 @@ export class TeamChecker {
     const hosts = this.getAliveHosts(station);
     const extraIps = hosts.filter(h => h.alive && !h.ip.endsWith('.1') && !h.ip.endsWith('.254')).map(h => h.ip);
     const sourceIp = this.vlanHostOctet ? `${teamSubnet(team)}.${this.vlanHostOctet}` : undefined;
-    const [radioChecks, rioChecks, mdnsChecks] = await Promise.all([
-      checkRadio(team),
-      checkRoboRIO(team, extraIps),
-      checkMdns('roboRIO mDNS', `roboRIO-${team}-FRC.local`, expectedIP(team), sourceIp),
+    const [radioChecks, rioChecks] = await Promise.all([
+      checkRadio(team, sourceIp),
+      checkRoboRIO(team, extraIps, sourceIp),
     ]);
     return {
       type: 'teamCheckResults',
       station,
       team,
       timestamp: Date.now(),
-      checks: [...radioChecks, ...rioChecks, ...mdnsChecks],
+      checks: [...radioChecks, ...rioChecks],
     };
   }
 }
