@@ -3,16 +3,16 @@ import type { Alliance } from '../../../src/types';
 /**
  * REBUILT alliance shift timing.
  * After auto period ends, teleop begins with a 10-second Transition where both
- * hubs are active. Then the auto winner's goal goes inactive in Shifts 1 & 3,
- * and active in Shifts 2 & 4. Each shift is 25 seconds.
+ * hubs are active. The auto loser scores first: their hub is active (winner's
+ * hub INACTIVE) in Shifts 1 & 3. The winner scores in Shifts 2 & 4.
  *
- * Teleop timeline (from teleop start, total 110s teleop + 30s endgame):
+ * Teleop timeline (from teleop start, total 140s including endgame):
  * - Transition: 0-10s     (both active)
- * - Shift 1:    10-35s    (auto winner's goal INACTIVE)
- * - Shift 2:    35-60s    (auto winner's goal ACTIVE, loser INACTIVE)
- * - Shift 3:    60-85s    (auto winner's goal INACTIVE)
- * - Shift 4:    85-110s   (auto winner's goal ACTIVE, loser INACTIVE)
- * - Endgame:    110s+     (both active)
+ * - Shift 1:    10-35s    (auto winner's hub INACTIVE → loser scores)
+ * - Shift 2:    35-60s    (auto loser's hub INACTIVE → winner scores)
+ * - Shift 3:    60-85s    (auto winner's hub INACTIVE → loser scores)
+ * - Shift 4:    85-110s   (auto loser's hub INACTIVE → winner scores)
+ * - Endgame:    110-140s  (both active, climbing emphasis)
  *
  * Returns which alliance's goal is currently inactive, or null if both are active.
  */

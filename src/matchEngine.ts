@@ -16,15 +16,16 @@ import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
-/** Post-match counting period for balls in flight */
-const POST_MATCH_COUNT_SECONDS = 5;
+/** Post-match scoring delay for balls in flight (up to 3s per rules) */
+const POST_MATCH_COUNT_SECONDS = 3;
 
 // Official 2026 REBUILT match timing (fixed — not user-adjustable)
+// Teleop = transition (10s) + 4 shifts (25s each) + endgame (30s) = 140s
 const OFFICIAL_CONFIG: MatchConfig = {
   autoDuration: 20,
-  teleopDuration: 110,
+  teleopDuration: 140,
   endgameDuration: 30,
-  pauseDuration: 5,
+  pauseDuration: 3,
   skipAuto: false,
   autoWinner: 'scores',
 };

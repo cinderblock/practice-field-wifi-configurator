@@ -46,11 +46,11 @@ function getShiftStyle(shiftIndex: number, winner: Alliance | null): React.CSSPr
       background: `repeating-linear-gradient(${angle}deg, ${RED_SOLID} 0px, ${RED_SOLID} 6px, ${BLUE_SOLID} 6px, ${BLUE_SOLID} 12px)`,
     };
   }
-  // Known winner: shifts 0,2 (1st,3rd) = winner; shifts 1,3 (2nd,4th) = loser
-  const isWinnerShift = shiftIndex % 2 === 0;
+  // Auto loser scores first: shifts 0,2 (1st,3rd) = loser; shifts 1,3 (2nd,4th) = winner
+  const isLoserShift = shiftIndex % 2 === 0;
   const winnerColor = winner === 'red' ? RED_SOLID : BLUE_SOLID;
   const loserColor = winner === 'red' ? BLUE_SOLID : RED_SOLID;
-  return { backgroundColor: isWinnerShift ? winnerColor : loserColor };
+  return { backgroundColor: isLoserShift ? loserColor : winnerColor };
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -72,11 +72,11 @@ interface MatchTimelineProps {
  * Match timeline visualisation.
  *
  * Shows the official 2026 REBUILT match structure as a proportional bar:
- *   Auto (20 s) │ Pause (5 s) │ Teleop (110 s, with shift colouring)
+ *   Auto (20 s) │ Pause (3 s) │ Teleop (140 s with shift colouring)
  *
  * Teleop is subdivided into:
- *   10 s transition │ 25 s shift 1 │ 25 s shift 2 │ 25 s shift 3 │ 25 s shift 4
- * with an endgame marker at the appropriate position.
+ *   Transition (10 s) │ Shift 1 (25 s, loser) │ Shift 2 (25 s, winner) │
+ *   Shift 3 (25 s, loser) │ Shift 4 (25 s, winner) │ Endgame (30 s, both)
  *
  * When `progress` is supplied, the bar acts as a live progress indicator.
  * Otherwise it shows the static plan with Skip-Auto / Auto-Winner controls.
@@ -108,11 +108,9 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
   const hasAuto = !skipAuto;
   const autoDuration = hasAuto ? config.autoDuration : 0;
   const pauseDuration = hasAuto ? config.pauseDuration : 0;
-  const teleopTotal = config.teleopDuration; // 110 s (includes endgame)
+  const teleopTotal = config.teleopDuration; // 140 s (transition + 4 shifts + endgame)
   const barTotal = autoDuration + pauseDuration + teleopTotal;
-
-  // Endgame marker position (seconds into teleop section)
-  const endgameStartInTeleop = teleopTotal - config.endgameDuration;
+  const endgameDuration = config.endgameDuration; // 30 s
 
   // ── Handlers ────────────────────────────────────────────────────
   const handleSkipAutoChange = (checked: boolean) => {
@@ -214,7 +212,7 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
           </Tooltip>
         )}
 
-        {/* Teleop section — contains shift sub-segments */}
+        {/* Teleop section — contains shift sub-segments + endgame */}
         <Tooltip title={`Teleoperated: ${formatDuration(teleopTotal)}`} arrow>
           <Box
             sx={{
@@ -227,16 +225,19 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
             {/* Transition (both active) */}
             <Box sx={{ flex: TRANSITION_DURATION, backgroundColor: NEUTRAL_COLOR }} />
 
-            {/* 4 shifts */}
+            {/* 4 shifts — loser scores in shifts 1,3; winner in shifts 2,4 */}
             {[0, 1, 2, 3].map(i => (
               <Box key={i} sx={{ flex: SHIFT_DURATION, ...getShiftStyle(i, visualWinner) }} />
             ))}
 
-            {/* "Teleop" label centred over the section */}
+            {/* Endgame (both active) */}
+            <Box sx={{ flex: endgameDuration, backgroundColor: NEUTRAL_COLOR }} />
+
+            {/* "Teleop" label centred over the shift portion */}
             <Typography
               sx={{
                 position: 'absolute',
-                left: '50%',
+                left: `${((TRANSITION_DURATION + SHIFT_DURATION * 2) / teleopTotal) * 100}%`,
                 top: '50%',
                 transform: 'translate(-50%, -50%)',
                 color: '#fff',
@@ -247,14 +248,14 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
                 pointerEvents: 'none',
               }}
             >
-              Teleop {formatDuration(teleopTotal)}
+              Teleop
             </Typography>
 
-            {/* Endgame marker line */}
+            {/* Endgame marker + label at shift 4 / endgame boundary */}
             <Box
               sx={{
                 position: 'absolute',
-                left: `${(endgameStartInTeleop / teleopTotal) * 100}%`,
+                left: `${((teleopTotal - endgameDuration) / teleopTotal) * 100}%`,
                 top: 0,
                 bottom: 0,
                 width: 2,
