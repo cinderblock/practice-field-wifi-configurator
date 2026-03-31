@@ -128,6 +128,11 @@ function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promi
       } catch {
         // May fail if already a member
       }
+      // Must set the outgoing multicast interface explicitly — otherwise the
+      // OS sends on the default-route interface (main network) and the query
+      // never reaches the team VLAN where the roboRIO lives.
+      sock.setMulticastInterface(sourceIp);
+      sock.setMulticastTTL(255); // mDNS spec requires TTL=255
       const query = buildMdnsQuery(hostname);
       sock.send(query, 0, query.length, 5353, '224.0.0.251');
     });
