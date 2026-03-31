@@ -14,13 +14,14 @@ import { sendUpdateMatchConfig } from '../hooks/useBackend';
 // ── Colors ──────────────────────────────────────────────────────────
 const RED_SOLID = '#ef5350';
 const BLUE_SOLID = '#42a5f5';
-const AUTO_COLOR = '#2196f3';
+const NEUTRAL_COLOR = '#66bb6a'; // Both hubs active (auto, transition, endgame)
 const PAUSE_COLOR = '#9e9e9e';
-const NEUTRAL_COLOR = '#66bb6a'; // Transition / endgame (both active)
+const SKIPPED_COLOR = '#bdbdbd'; // Greyed-out auto when skipped
 
 // ── REBUILT shift timing within teleop ──────────────────────────────
-const TRANSITION_DURATION = 10; // Both goals active
-const SHIFT_DURATION = 25; // Each of 4 shifts
+const TRANSITION_DURATION = 10;
+const SHIFT_DURATION = 25;
+const ENDGAME_DURATION = 30;
 
 function formatDuration(seconds: number): string {
   if (seconds >= 60) {
@@ -31,13 +32,24 @@ function formatDuration(seconds: number): string {
   return `${seconds}s`;
 }
 
+/** Shared text style for phase labels inside the bar. */
+const phaseLabelSx = {
+  color: '#fff',
+  fontWeight: 700,
+  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  px: 0.5,
+  lineHeight: 1,
+} as const;
+
 /**
  * CSS background for a shift sub-segment.
  *
- * - Winner known: solid red or blue
- *   Odd shifts (1, 3) = winner's color, even shifts (2, 4) = loser's color.
- * - Winner unknown: diagonal red/blue stripes, alternating direction at each
- *   shift boundary so consecutive shifts form a chevron pattern.
+ * - Winner known: solid colour.
+ *   Shifts 0,2 (1st,3rd) = loser; shifts 1,3 (2nd,4th) = winner.
+ * - Winner unknown: diagonal red/blue stripes, alternating direction.
  */
 function getShiftStyle(shiftIndex: number, winner: Alliance | null): React.CSSProperties {
   if (!winner) {
@@ -46,7 +58,6 @@ function getShiftStyle(shiftIndex: number, winner: Alliance | null): React.CSSPr
       background: `repeating-linear-gradient(${angle}deg, ${RED_SOLID} 0px, ${RED_SOLID} 6px, ${BLUE_SOLID} 6px, ${BLUE_SOLID} 12px)`,
     };
   }
-  // Auto loser scores first: shifts 0,2 (1st,3rd) = loser; shifts 1,3 (2nd,4th) = winner
   const isLoserShift = shiftIndex % 2 === 0;
   const winnerColor = winner === 'red' ? RED_SOLID : BLUE_SOLID;
   const loserColor = winner === 'red' ? BLUE_SOLID : RED_SOLID;
@@ -58,33 +69,14 @@ function getShiftStyle(shiftIndex: number, winner: Alliance | null): React.CSSPr
 interface MatchTimelineProps {
   config: MatchConfig;
   disabled?: boolean;
-  /** Actual auto winner alliance (set after auto period ends). */
   autoWinnerAlliance?: Alliance | null;
-  /**
-   * When provided (0-1), the timeline doubles as a progress bar:
-   * a dark mask covers the future portion and a white cursor marks the
-   * current position.  Controls are hidden in progress mode.
-   */
+  /** 0-1 progress; when set, the bar acts as a live progress indicator. */
   progress?: number;
 }
 
-/**
- * Match timeline visualisation.
- *
- * Shows the official 2026 REBUILT match structure as a proportional bar:
- *   Auto (20 s) │ Pause (3 s) │ Teleop (140 s with shift colouring)
- *
- * Teleop is subdivided into:
- *   Transition (10 s) │ Shift 1 (25 s, loser) │ Shift 2 (25 s, winner) │
- *   Shift 3 (25 s, loser) │ Shift 4 (25 s, winner) │ Endgame (30 s, both)
- *
- * When `progress` is supplied, the bar acts as a live progress indicator.
- * Otherwise it shows the static plan with Skip-Auto / Auto-Winner controls.
- */
 export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }: MatchTimelineProps) {
   const isProgressMode = progress !== undefined;
 
-  // ── Local state for controls ────────────────────────────────────
   const [skipAuto, setSkipAuto] = useState(config.skipAuto ?? false);
   const [autoWinner, setAutoWinner] = useState<AutoWinnerMode>(config.autoWinner ?? 'scores');
 
@@ -93,9 +85,6 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
     setAutoWinner(config.autoWinner ?? 'scores');
   }, [config.skipAuto, config.autoWinner]);
 
-  // ── Visual winner ───────────────────────────────────────────────
-  // During progress mode: use actual auto winner.
-  // During config mode: infer from selected mode.
   const visualWinner: Alliance | null = useMemo(() => {
     if (autoWinnerAlliance) return autoWinnerAlliance;
     const mode = config.autoWinner ?? 'scores';
@@ -105,12 +94,14 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
   }, [autoWinnerAlliance, config.autoWinner]);
 
   // ── Durations ───────────────────────────────────────────────────
-  const hasAuto = !skipAuto;
-  const autoDuration = hasAuto ? config.autoDuration : 0;
-  const pauseDuration = hasAuto ? config.pauseDuration : 0;
-  const teleopTotal = config.teleopDuration; // 140 s (transition + 4 shifts + endgame)
+  // Auto + pause are always in the bar (greyed when skipped, not hidden)
+  const autoDuration = config.autoDuration; // 20 s
+  const pauseDuration = config.pauseDuration; // 3 s
+  const teleopTotal = config.teleopDuration; // 140 s
   const barTotal = autoDuration + pauseDuration + teleopTotal;
-  const endgameDuration = config.endgameDuration; // 30 s
+
+  // Font size adapts to bar height
+  const fontSize = isProgressMode ? '0.65rem' : '0.75rem';
 
   // ── Handlers ────────────────────────────────────────────────────
   const handleSkipAutoChange = (checked: boolean) => {
@@ -137,7 +128,6 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         { value: 'pause', label: 'Pause' },
       ];
 
-  // ── Render ──────────────────────────────────────────────────────
   return (
     <Box sx={{ mb: isProgressMode ? 0 : 2 }}>
       {/* ── Timeline bar ─────────────────────────────────────────── */}
@@ -154,134 +144,90 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
           position: 'relative',
         }}
       >
-        {/* Auto section */}
-        {hasAuto && (
-          <Tooltip title={`Autonomous: ${formatDuration(autoDuration)}`} arrow>
-            <Box
-              sx={{
-                flex: autoDuration,
-                minWidth: 32,
-                backgroundColor: AUTO_COLOR,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Typography
-                sx={{
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.4)',
-                  whiteSpace: 'nowrap',
-                  px: 0.5,
-                }}
-              >
-                Auto {formatDuration(autoDuration)}
-              </Typography>
-            </Box>
-          </Tooltip>
-        )}
-
-        {/* Pause section */}
-        {hasAuto && (
-          <Tooltip title={`Pause: ${formatDuration(pauseDuration)}`} arrow>
-            <Box
-              sx={{
-                flex: pauseDuration,
-                minWidth: pauseDuration > 0 ? 20 : 0,
-                backgroundColor: PAUSE_COLOR,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {!isProgressMode && (
-                <Typography
-                  sx={{
-                    color: '#fff',
-                    fontWeight: 700,
-                    fontSize: '0.65rem',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.4)',
-                  }}
-                >
-                  {formatDuration(pauseDuration)}
-                </Typography>
-              )}
-            </Box>
-          </Tooltip>
-        )}
-
-        {/* Teleop section — contains shift sub-segments + endgame */}
-        <Tooltip title={`Teleoperated: ${formatDuration(teleopTotal)}`} arrow>
+        {/* AUTO — green (greyed out when skipped) */}
+        <Tooltip title={`Autonomous: ${formatDuration(autoDuration)}`} arrow>
           <Box
             sx={{
-              flex: teleopTotal,
+              flex: autoDuration,
+              minWidth: 32,
+              backgroundColor: skipAuto ? SKIPPED_COLOR : NEUTRAL_COLOR,
               display: 'flex',
-              position: 'relative',
-              minWidth: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: skipAuto ? 0.6 : 1,
             }}
           >
-            {/* Transition (both active) */}
-            <Box sx={{ flex: TRANSITION_DURATION, backgroundColor: NEUTRAL_COLOR }} />
-
-            {/* 4 shifts — loser scores in shifts 1,3; winner in shifts 2,4 */}
-            {[0, 1, 2, 3].map(i => (
-              <Box key={i} sx={{ flex: SHIFT_DURATION, ...getShiftStyle(i, visualWinner) }} />
-            ))}
-
-            {/* Endgame (both active) */}
-            <Box sx={{ flex: endgameDuration, backgroundColor: NEUTRAL_COLOR }} />
-
-            {/* "Teleop" label centred over the shift portion */}
-            <Typography
-              sx={{
-                position: 'absolute',
-                left: `${((TRANSITION_DURATION + SHIFT_DURATION * 2) / teleopTotal) * 100}%`,
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: isProgressMode ? '0.75rem' : '0.85rem',
-                textShadow: '0 1px 3px rgba(0,0,0,0.7)',
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-              }}
-            >
-              Teleop
-            </Typography>
-
-            {/* Endgame marker + label at shift 4 / endgame boundary */}
-            <Box
-              sx={{
-                position: 'absolute',
-                left: `${((teleopTotal - endgameDuration) / teleopTotal) * 100}%`,
-                top: 0,
-                bottom: 0,
-                width: 2,
-                backgroundColor: 'rgba(255,255,255,0.45)',
-                pointerEvents: 'none',
-              }}
-            >
-              {!isProgressMode && (
-                <Typography
-                  sx={{
-                    position: 'absolute',
-                    bottom: 2,
-                    left: 4,
-                    color: 'rgba(255,255,255,0.85)',
-                    fontSize: '0.55rem',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  Endgame
-                </Typography>
-              )}
-            </Box>
+            <Typography sx={{ ...phaseLabelSx, fontSize, opacity: skipAuto ? 0.7 : 1 }}>AUTO</Typography>
           </Box>
         </Tooltip>
+
+        {/* Pause — no text label */}
+        <Tooltip title={`Scoring Delay: ${formatDuration(pauseDuration)}`} arrow>
+          <Box
+            sx={{
+              flex: pauseDuration,
+              minWidth: pauseDuration > 0 ? 8 : 0,
+              backgroundColor: skipAuto ? SKIPPED_COLOR : PAUSE_COLOR,
+              opacity: skipAuto ? 0.6 : 1,
+            }}
+          />
+        </Tooltip>
+
+        {/* Teleop section — sub-segments with per-phase labels */}
+        <Box
+          sx={{
+            flex: teleopTotal,
+            display: 'flex',
+            minWidth: 0,
+          }}
+        >
+          {/* TS — Transition Shift */}
+          <Tooltip title="Transition Shift" arrow>
+            <Box
+              sx={{
+                flex: TRANSITION_DURATION,
+                backgroundColor: NEUTRAL_COLOR,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography sx={{ ...phaseLabelSx, fontSize }}>TS</Typography>
+            </Box>
+          </Tooltip>
+
+          {/* S1-S4 — shifts */}
+          {[0, 1, 2, 3].map(i => (
+            <Tooltip key={i} title={`Shift ${i + 1}: ${formatDuration(SHIFT_DURATION)}`} arrow>
+              <Box
+                sx={{
+                  flex: SHIFT_DURATION,
+                  ...getShiftStyle(i, visualWinner),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography sx={{ ...phaseLabelSx, fontSize }}>S{i + 1}</Typography>
+              </Box>
+            </Tooltip>
+          ))}
+
+          {/* END GAME */}
+          <Tooltip title={`End Game: ${formatDuration(ENDGAME_DURATION)}`} arrow>
+            <Box
+              sx={{
+                flex: ENDGAME_DURATION,
+                backgroundColor: NEUTRAL_COLOR,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography sx={{ ...phaseLabelSx, fontSize }}>END GAME</Typography>
+            </Box>
+          </Tooltip>
+        </Box>
 
         {/* ── Progress cursor & future mask ───────────────────────── */}
         {isProgressMode && (
@@ -301,17 +247,16 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         )}
       </Box>
 
-      {/* ── Total label ──────────────────────────────────────────── */}
+      {/* ── Duration labels ──────────────────────────────────────── */}
       {!isProgressMode && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          Total: {formatDuration(barTotal)}
+          Total: {formatDuration(barTotal)} &middot; Teleop: {formatDuration(teleopTotal)}
         </Typography>
       )}
 
       {/* ── Controls (config mode only) ──────────────────────────── */}
       {!isProgressMode && (
         <Box sx={{ display: 'flex', gap: 3, mt: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {/* Skip Auto checkbox */}
           <FormControlLabel
             control={
               <Checkbox
@@ -324,7 +269,6 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
             label={<Typography variant="body2">Skip Auto</Typography>}
           />
 
-          {/* Auto Winner selector */}
           <FormControl disabled={disabled}>
             <FormLabel sx={{ fontSize: '0.75rem' }}>
               <Tooltip title="Determines which alliance's goal goes inactive first (REBUILT game data)" arrow>

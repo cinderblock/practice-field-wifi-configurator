@@ -90,12 +90,16 @@ function computeBarProgress(
   config: { autoDuration: number; pauseDuration: number; teleopDuration: number; skipAuto?: boolean },
 ): number {
   const countdownDuration = 3;
-  const autoDur = config.skipAuto ? 0 : config.autoDuration;
-  const pauseDur = config.skipAuto ? 0 : config.pauseDuration;
-  const barTotal = autoDur + pauseDur + config.teleopDuration;
+  // The bar always shows auto + pause + teleop (even when skipped, they're greyed not hidden)
+  const barTotal = config.autoDuration + config.pauseDuration + config.teleopDuration;
   if (barTotal <= 0) return 0;
-  const barElapsed = Math.max(0, totalMatchTime - countdownDuration);
-  return Math.min(1, barElapsed / barTotal);
+  const elapsed = Math.max(0, totalMatchTime - countdownDuration);
+  if (config.skipAuto) {
+    // Auto/pause are skipped in real time but still shown in bar — offset progress past them
+    const skipOffset = config.autoDuration + config.pauseDuration;
+    return Math.min(1, (skipOffset + elapsed) / barTotal);
+  }
+  return Math.min(1, elapsed / barTotal);
 }
 
 // ── Root component ──────────────────────────────────────────────────
