@@ -339,7 +339,13 @@ export function ScoreboardPage() {
       {/* Match timeline progress bar */}
       {matchProgress !== null && matchState && (
         <Box sx={{ px: 3, pb: 2 }}>
-          <MatchTimeline config={matchState.config} progress={matchProgress} autoWinnerAlliance={autoWinner} />
+          <MatchTimeline
+            config={matchState.config}
+            progress={matchProgress}
+            autoWinnerAlliance={autoWinner}
+            phase={matchState.phase}
+            remainingTime={matchState.remainingTime}
+          />
         </Box>
       )}
     </Box>

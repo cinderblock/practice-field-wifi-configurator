@@ -164,7 +164,13 @@ export function MatchPanel({ station }: { station?: StationName }) {
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
             <Box sx={{ mb: 2 }}>
-              <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+              <MatchTimeline
+                config={config}
+                progress={progress}
+                autoWinnerAlliance={matchState.autoWinnerAlliance}
+                phase={matchState.phase}
+                remainingTime={matchState.remainingTime}
+              />
             </Box>
           </>
         )}
@@ -353,7 +359,13 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
             <Box sx={{ mb: 2 }}>
-              <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+              <MatchTimeline
+                config={config}
+                progress={progress}
+                autoWinnerAlliance={matchState.autoWinnerAlliance}
+                phase={matchState.phase}
+                remainingTime={matchState.remainingTime}
+              />
             </Box>
           </>
         )}

@@ -414,7 +414,13 @@ function ActiveMatchView({
           <Box sx={{ mb: 2 }}>
             <MatchTimer remainingTime={remainingTime} color={activeColor} pulse={shouldPulse} />
           </Box>
-          <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+          <MatchTimeline
+            config={config}
+            progress={progress}
+            autoWinnerAlliance={matchState.autoWinnerAlliance}
+            phase={matchState.phase}
+            remainingTime={matchState.remainingTime}
+          />
         </CardContent>
       </Card>
 
@@ -657,7 +663,13 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
           </Box>
 
           {/* Timeline bar at 100% (or near if still counting) */}
-          <MatchTimeline config={config} progress={Math.min(1, progress)} autoWinnerAlliance={autoWinnerAlliance} />
+          <MatchTimeline
+            config={config}
+            progress={Math.min(1, progress)}
+            autoWinnerAlliance={autoWinnerAlliance}
+            phase={matchState.phase}
+            remainingTime={matchState.remainingTime}
+          />
         </CardContent>
       </Card>
 

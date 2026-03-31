@@ -253,7 +253,13 @@ function MatchStatusSection() {
         <MatchTimer remainingTime={remainingTime} phase={phase} />
 
         <Box sx={{ my: 2 }}>
-          <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+          <MatchTimeline
+            config={config}
+            progress={progress}
+            autoWinnerAlliance={matchState.autoWinnerAlliance}
+            phase={matchState.phase}
+            remainingTime={matchState.remainingTime}
+          />
         </Box>
 
         {isActive && (

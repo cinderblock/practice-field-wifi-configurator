@@ -8,7 +8,7 @@ import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { Alliance, MatchConfig, AutoWinnerMode } from '../../../src/types';
+import { Alliance, MatchConfig, MatchPhase, AutoWinnerMode } from '../../../src/types';
 import { sendUpdateMatchConfig } from '../hooks/useBackend';
 
 // ── Colors ──────────────────────────────────────────────────────────
@@ -65,6 +65,85 @@ function getShiftStyle(shiftIndex: number, winner: Alliance | null): React.CSSPr
   return { backgroundColor: isLoserShift ? loserColor : winnerColor };
 }
 
+// ── Period time label computation ───────────────────────────────────
+
+/** Describes one period in the bar for the time-label row. */
+interface PeriodInfo {
+  id: string;
+  /** Flex weight (= duration in seconds). */
+  flex: number;
+  /** Total duration of this period. */
+  duration: number;
+}
+
+/** The fixed set of periods shown in the bar. */
+const PERIODS: PeriodInfo[] = [
+  { id: 'auto', flex: 20, duration: 20 },
+  { id: 'pause', flex: 3, duration: 3 },
+  { id: 'ts', flex: TRANSITION_DURATION, duration: TRANSITION_DURATION },
+  { id: 's1', flex: SHIFT_DURATION, duration: SHIFT_DURATION },
+  { id: 's2', flex: SHIFT_DURATION, duration: SHIFT_DURATION },
+  { id: 's3', flex: SHIFT_DURATION, duration: SHIFT_DURATION },
+  { id: 's4', flex: SHIFT_DURATION, duration: SHIFT_DURATION },
+  { id: 'endgame', flex: ENDGAME_DURATION, duration: ENDGAME_DURATION },
+];
+
+/**
+ * Given current match phase and remainingTime, return { activePeriodId, countdown }
+ * where countdown is seconds remaining within that sub-period (ceiled for display).
+ */
+function getActivePeriod(
+  phase: MatchPhase | undefined,
+  remainingTime: number,
+  teleopDuration: number,
+): { id: string; countdown: number } | null {
+  if (!phase) return null;
+
+  if (phase === 'auto') return { id: 'auto', countdown: Math.ceil(Math.max(0, remainingTime)) };
+  if (phase === 'autoPause') return { id: 'pause', countdown: Math.ceil(Math.max(0, remainingTime)) };
+  if (phase === 'countdown') return null; // countdown isn't a visible period
+
+  if (phase === 'teleop' || phase === 'endgame') {
+    const rt = Math.max(0, remainingTime);
+    // Period boundaries by remainingTime (teleopDuration = 140):
+    // TS:      140 → 130
+    // S1:      130 → 105
+    // S2:      105 →  80
+    // S3:       80 →  55
+    // S4:       55 →  30
+    // Endgame:  30 →   0
+    const boundaries: [string, number, number][] = [
+      ['ts', teleopDuration, teleopDuration - TRANSITION_DURATION],
+      ['s1', teleopDuration - TRANSITION_DURATION, teleopDuration - TRANSITION_DURATION - SHIFT_DURATION],
+      [
+        's2',
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION,
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 2,
+      ],
+      [
+        's3',
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 2,
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 3,
+      ],
+      [
+        's4',
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 3,
+        teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 4,
+      ],
+      ['endgame', teleopDuration - TRANSITION_DURATION - SHIFT_DURATION * 4, 0],
+    ];
+    for (const [id, top, bottom] of boundaries) {
+      if (rt > bottom && rt <= top) {
+        return { id, countdown: Math.ceil(rt - bottom) };
+      }
+    }
+    // At exactly 0
+    if (rt <= 0) return { id: 'endgame', countdown: 0 };
+  }
+
+  return null;
+}
+
 // ── Component ───────────────────────────────────────────────────────
 
 interface MatchTimelineProps {
@@ -73,9 +152,20 @@ interface MatchTimelineProps {
   autoWinnerAlliance?: Alliance | null;
   /** 0-1 progress; when set, the bar acts as a live progress indicator. */
   progress?: number;
+  /** Current match phase (for per-period countdown display). */
+  phase?: MatchPhase;
+  /** Remaining time in current engine phase (for per-period countdown). */
+  remainingTime?: number;
 }
 
-export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }: MatchTimelineProps) {
+export function MatchTimeline({
+  config,
+  disabled,
+  autoWinnerAlliance,
+  progress,
+  phase,
+  remainingTime,
+}: MatchTimelineProps) {
   const isProgressMode = progress !== undefined;
 
   const [skipAuto, setSkipAuto] = useState(config.skipAuto ?? false);
@@ -95,15 +185,19 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
   }, [autoWinnerAlliance, config.autoWinner]);
 
   // ── Durations ───────────────────────────────────────────────────
-  // Auto + pause are always in the bar (greyed when skipped, not hidden)
-  const autoDuration = config.autoDuration; // 20 s
-  const pauseDuration = config.pauseDuration; // 3 s
-  const teleopTotal = config.teleopDuration; // 140 s
-  // Total updates when auto is skipped
+  const autoDuration = config.autoDuration;
+  const pauseDuration = config.pauseDuration;
+  const teleopTotal = config.teleopDuration;
   const matchTotal = skipAuto ? teleopTotal : autoDuration + pauseDuration + teleopTotal;
 
-  // Font size adapts to bar height
   const fontSize = isProgressMode ? '0.65rem' : '0.75rem';
+  const timeLabelFontSize = isProgressMode ? '0.6rem' : '0.65rem';
+
+  // ── Active period (for countdown labels) ────────────────────────
+  const activePeriod = useMemo(
+    () => (isProgressMode ? getActivePeriod(phase, remainingTime ?? 0, teleopTotal) : null),
+    [isProgressMode, phase, remainingTime, teleopTotal],
+  );
 
   // ── Handlers ────────────────────────────────────────────────────
   const handleSkipAutoChange = (checked: boolean) => {
@@ -130,8 +224,43 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         { value: 'pause', label: 'Pause' },
       ];
 
+  // ── Per-period time label ───────────────────────────────────────
+  function periodTimeLabel(p: PeriodInfo): string {
+    if (activePeriod && activePeriod.id === p.id) {
+      return `${activePeriod.countdown}s`;
+    }
+    return formatDuration(p.duration);
+  }
+
   return (
     <Box sx={{ mb: isProgressMode ? 0 : 2 }}>
+      {/* ── Per-period time labels above the bar ─────────────────── */}
+      <Box sx={{ display: 'flex', mb: 0.25 }}>
+        {PERIODS.map(p => (
+          <Box
+            key={p.id}
+            sx={{
+              flex: p.flex,
+              minWidth: 0,
+              textAlign: 'center',
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: timeLabelFontSize,
+                fontFamily: 'monospace',
+                fontWeight: activePeriod?.id === p.id ? 700 : 400,
+                color: activePeriod?.id === p.id ? 'text.primary' : 'text.secondary',
+                opacity: p.id === 'pause' ? 0 : 1, // hide the tiny pause label
+                transition: 'color 0.3s ease, font-weight 0.3s ease',
+              }}
+            >
+              {periodTimeLabel(p)}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
       {/* ── Timeline bar ─────────────────────────────────────────── */}
       <Box
         sx={{
@@ -182,13 +311,7 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
         </Tooltip>
 
         {/* Teleop section — sub-segments with per-phase labels */}
-        <Box
-          sx={{
-            flex: teleopTotal,
-            display: 'flex',
-            minWidth: 0,
-          }}
-        >
+        <Box sx={{ flex: teleopTotal, display: 'flex', minWidth: 0 }}>
           {/* TS — Transition Shift */}
           <Tooltip title="Transition Shift" arrow>
             <Box
@@ -259,13 +382,11 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
       {/* ── Duration labels — flex row mirrors bar proportions ──── */}
       {!isProgressMode && (
         <Box sx={{ display: 'flex', mt: 0.5 }}>
-          {/* Auto+pause spacer (same flex ratio as bar) — holds the Total label */}
           <Box sx={{ flex: autoDuration + pauseDuration, minWidth: 0 }}>
             <Typography variant="caption" color="text.secondary" noWrap>
               Total: {formatDuration(matchTotal)}
             </Typography>
           </Box>
-          {/* Teleop label left-aligned with the teleop section start */}
           <Box sx={{ flex: teleopTotal, minWidth: 0 }}>
             <Typography variant="caption" color="text.secondary" noWrap>
               Teleop: {formatDuration(teleopTotal)}
