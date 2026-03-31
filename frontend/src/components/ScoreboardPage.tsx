@@ -6,6 +6,7 @@ import { useScoreState, useMatchState, sendCastReceiverRegister } from '../hooks
 import type { Alliance, ScoreBatch, StationControlState, StationName } from '../../../src/types';
 import { getAllianceShiftState } from '../utils/shiftState';
 import { MatchTimeline } from './MatchTimeline';
+import { MatchTimer, getActiveColor } from './MatchTimer';
 
 // Cast initialization happens in scores.html before this module loads.
 declare global {
@@ -115,6 +116,16 @@ export function ScoreboardPage() {
   const isMatchMode = score?.mode === 'match';
   const hasTeams = teamsByAlliance.red.length > 0 || teamsByAlliance.blue.length > 0;
 
+  // Timer colour and pulse for match mode
+  const activeColor = matchState ? getActiveColor(matchState) : '#9e9e9e';
+  const isActivePeriod =
+    matchState &&
+    (matchState.phase === 'auto' ||
+      matchState.phase === 'teleop' ||
+      matchState.phase === 'endgame' ||
+      matchState.phase === 'countdown');
+  const shouldPulse = !!(isActivePeriod && matchState && matchState.remainingTime > 0 && matchState.remainingTime <= 3);
+
   // Match timeline progress (0-1)
   const matchProgress = useMemo(() => {
     if (!matchState || !isMatchMode) return null;
@@ -211,10 +222,26 @@ export function ScoreboardPage() {
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <Typography
             variant="h6"
-            sx={{ color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 4, textAlign: 'center' }}
+            sx={{
+              color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: 4,
+              textAlign: 'center',
+              transition: 'color 1s ease',
+            }}
           >
             {score.mode === 'match' ? (score.matchPhase ?? 'Match') : 'Free Play'}
           </Typography>
+
+          {/* Match countdown timer */}
+          {isMatchMode && matchState && matchProgress !== null && (
+            <MatchTimer
+              remainingTime={matchState.remainingTime}
+              color={activeColor}
+              pulse={shouldPulse}
+              fontSize="clamp(2.5rem, 6vw, 5rem)"
+            />
+          )}
 
           {/* Auto winner badge */}
           {isMatchMode && autoWinner && (

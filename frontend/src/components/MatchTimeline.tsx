@@ -14,7 +14,8 @@ import { sendUpdateMatchConfig } from '../hooks/useBackend';
 // ── Colors ──────────────────────────────────────────────────────────
 const RED_SOLID = '#ef5350';
 const BLUE_SOLID = '#42a5f5';
-const NEUTRAL_COLOR = '#66bb6a'; // Both hubs active (auto, transition, endgame)
+const NEUTRAL_COLOR = '#66bb6a'; // Both hubs active (auto, transition)
+const ENDGAME_COLOR = '#ffa726'; // End game — gold/orange
 const PAUSE_COLOR = '#9e9e9e';
 const SKIPPED_COLOR = '#bdbdbd'; // Greyed-out auto when skipped
 
@@ -226,7 +227,7 @@ export function MatchTimeline({ config, disabled, autoWinnerAlliance, progress }
             <Box
               sx={{
                 flex: ENDGAME_DURATION,
-                backgroundColor: NEUTRAL_COLOR,
+                backgroundColor: ENDGAME_COLOR,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

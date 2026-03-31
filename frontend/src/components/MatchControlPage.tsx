@@ -38,7 +38,7 @@ const PHASE_BG: Record<MatchPhase, string> = {
   autoPause: 'rgba(158,158,158,0.08)',
   paused: 'rgba(255,167,38,0.12)',
   teleop: 'rgba(102,187,106,0.10)',
-  endgame: 'rgba(102,187,106,0.12)',
+  endgame: 'rgba(255,167,38,0.12)',
   postMatch: 'transparent',
 };
 

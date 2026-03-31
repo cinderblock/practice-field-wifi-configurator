@@ -113,7 +113,7 @@ export function WrapAll({
                     <Typography variant="h6" sx={{ mb: 3, minHeight: '2em' }}>
                       {elapsedSec < EstimatedReconfigurationTime
                         ? 'seconds remaining'
-                        : 'Reconfiguration taking longer than expected...'}
+                        : 'If this takes longer than 30 seconds, please report an issue'}
                     </Typography>
                     <LinearProgress
                       variant="determinate"
