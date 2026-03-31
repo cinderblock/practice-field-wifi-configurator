@@ -6,7 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
-import { Alliance, MatchPhase, StationName, StationControlState } from '../../../src/types';
+import { Alliance, MatchPhase, MatchState, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
   sendMatchCreate,
@@ -24,20 +24,38 @@ import {
   sendAdminClearEStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
+import { getAllianceShiftState } from '../utils/shiftState';
 
 // ── Phase display helpers ───────────────────────────────────────────
 
-const phaseColors: Record<MatchPhase, string> = {
-  idle: 'text.secondary',
-  created: 'info.main',
-  countdown: 'warning.main',
-  auto: 'info.main',
-  autoPause: 'text.disabled',
-  paused: 'warning.main',
-  teleop: 'success.main',
-  endgame: 'warning.main',
-  postMatch: 'text.secondary',
+// Concrete hex colours that match the MatchTimeline segment colours
+const PHASE_HEX: Record<MatchPhase, string> = {
+  idle: '#9e9e9e',
+  created: '#42a5f5',
+  countdown: '#ffa726',
+  auto: '#66bb6a',
+  autoPause: '#9e9e9e',
+  paused: '#ffa726',
+  teleop: '#66bb6a',
+  endgame: '#66bb6a',
+  postMatch: '#9e9e9e',
 };
+
+// Muted (low-alpha) versions for the page background
+const PHASE_BG: Record<MatchPhase, string> = {
+  idle: 'transparent',
+  created: 'rgba(66,165,245,0.06)',
+  countdown: 'rgba(255,167,38,0.08)',
+  auto: 'rgba(102,187,106,0.08)',
+  autoPause: 'rgba(158,158,158,0.06)',
+  paused: 'rgba(255,167,38,0.08)',
+  teleop: 'rgba(102,187,106,0.06)',
+  endgame: 'rgba(102,187,106,0.08)',
+  postMatch: 'transparent',
+};
+
+const RED_HEX = '#ef5350';
+const BLUE_HEX = '#42a5f5';
 
 const phaseLabels: Record<MatchPhase, string> = {
   idle: 'Idle',
@@ -51,11 +69,51 @@ const phaseLabels: Record<MatchPhase, string> = {
   postMatch: 'Post-Match',
 };
 
-// ── Timer with ceil rounding ────────────────────────────────────────
-// Auto starts at 0:20 and shows 0:20 for the first second.
-// When the displayed number hits 0:00, that moment is the end.
+/**
+ * Compute the active colour for the timer/chip based on the current match phase
+ * and which alliance's shift is active during teleop.
+ */
+function getActiveColor(matchState: MatchState): string {
+  const { phase } = matchState;
 
-function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: MatchPhase }) {
+  // During teleop shifts, colour by which alliance is scoring
+  if (phase === 'teleop' || phase === 'endgame') {
+    const inactive = getAllianceShiftState(
+      phase,
+      matchState.remainingTime,
+      matchState.config.teleopDuration,
+      matchState.config.endgameDuration,
+      matchState.autoWinnerAlliance,
+    );
+    if (inactive === 'red') return BLUE_HEX; // Blue is scoring
+    if (inactive === 'blue') return RED_HEX; // Red is scoring
+  }
+
+  return PHASE_HEX[phase];
+}
+
+/** Muted page background; during teleop shifts, tint by alliance colour. */
+function getPageBg(matchState: MatchState): string {
+  const { phase } = matchState;
+
+  if (phase === 'teleop' || phase === 'endgame') {
+    const inactive = getAllianceShiftState(
+      phase,
+      matchState.remainingTime,
+      matchState.config.teleopDuration,
+      matchState.config.endgameDuration,
+      matchState.autoWinnerAlliance,
+    );
+    if (inactive === 'red') return 'rgba(66,165,245,0.06)';
+    if (inactive === 'blue') return 'rgba(239,83,80,0.06)';
+  }
+
+  return PHASE_BG[phase];
+}
+
+// ── Timer with ceil rounding ────────────────────────────────────────
+
+function MatchTimer({ remainingTime, color, pulse }: { remainingTime: number; color: string; pulse?: boolean }) {
   const display = Math.ceil(Math.max(0, remainingTime));
   const minutes = Math.floor(display / 60);
   const seconds = display % 60;
@@ -65,9 +123,15 @@ function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: Ma
       sx={{
         fontFamily: 'monospace',
         textAlign: 'center',
-        color: phaseColors[phase],
+        color,
         lineHeight: 1,
         mb: 2,
+        transition: 'color 1s ease',
+        '@keyframes timerPulse': {
+          '0%, 100%': { opacity: 1 },
+          '50%': { opacity: 0.4 },
+        },
+        animation: pulse ? 'timerPulse 1s ease-in-out infinite' : 'none',
       }}
     >
       {minutes}:{seconds.toString().padStart(2, '0')}
@@ -125,29 +189,36 @@ export function MatchControlPage() {
   }
 
   const { phase } = matchState;
+  const activeColor = getActiveColor(matchState);
+  const pageBg = getPageBg(matchState);
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          Match Control
-        </Typography>
-        <Chip
-          label={phaseLabels[phase]}
-          sx={{
-            fontWeight: 'bold',
-            color: phaseColors[phase],
-            borderColor: phaseColors[phase],
-          }}
-          variant="outlined"
-        />
-      </Box>
+    <Box sx={{ minHeight: '100dvh', backgroundColor: pageBg, transition: 'background-color 1s ease' }}>
+      <Container maxWidth="md" sx={{ py: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Match Control
+          </Typography>
+          <Chip
+            label={phaseLabels[phase]}
+            sx={{
+              fontWeight: 'bold',
+              color: activeColor,
+              borderColor: activeColor,
+              transition: 'color 1s ease, border-color 1s ease',
+            }}
+            variant="outlined"
+          />
+        </Box>
 
-      {phase === 'idle' && <IdleView />}
-      {phase === 'created' && <CreatedView matchState={matchState} />}
-      {phase === 'postMatch' && <PostMatchView matchState={matchState} />}
-      {phase !== 'idle' && phase !== 'created' && phase !== 'postMatch' && <ActiveMatchView matchState={matchState} />}
-    </Container>
+        {phase === 'idle' && <IdleView />}
+        {phase === 'created' && <CreatedView matchState={matchState} />}
+        {phase === 'postMatch' && <PostMatchView matchState={matchState} />}
+        {phase !== 'idle' && phase !== 'created' && phase !== 'postMatch' && (
+          <ActiveMatchView matchState={matchState} activeColor={activeColor} />
+        )}
+      </Container>
+    </Box>
   );
 }
 
@@ -333,7 +404,13 @@ function ParticipantRow({
 
 // ── Active match view ───────────────────────────────────────────────
 
-function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<typeof useMatchState>> }) {
+function ActiveMatchView({
+  matchState,
+  activeColor,
+}: {
+  matchState: NonNullable<ReturnType<typeof useMatchState>>;
+  activeColor: string;
+}) {
   const { phase, remainingTime, totalMatchTime, config, stationStates, awaitingAutoWinner } = matchState;
 
   const isPaused = phase === 'paused';
@@ -346,6 +423,10 @@ function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<ty
   const blueStations = joinedStations.filter(s => stationStates[s]?.alliance === 'blue');
 
   const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
+
+  // Pulse the timer in the last 3 seconds of active periods
+  const isActivePeriod = phase === 'auto' || phase === 'teleop' || phase === 'endgame' || phase === 'countdown';
+  const shouldPulse = isActivePeriod && remainingTime > 0 && remainingTime <= 3;
 
   return (
     <>
@@ -360,13 +441,14 @@ function ActiveMatchView({ matchState }: { matchState: NonNullable<ReturnType<ty
                 py: 2.5,
                 px: 2,
                 fontWeight: 'bold',
-                color: phaseColors[phase],
-                borderColor: phaseColors[phase],
+                color: activeColor,
+                borderColor: activeColor,
+                transition: 'color 1s ease, border-color 1s ease',
               }}
               variant="outlined"
             />
           </Box>
-          <MatchTimer remainingTime={remainingTime} phase={phase} />
+          <MatchTimer remainingTime={remainingTime} color={activeColor} pulse={shouldPulse} />
           <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
         </CardContent>
       </Card>
@@ -595,7 +677,7 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
             <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
               {isCounting ? 'Counting...' : (endReasonLabels[endReason ?? ''] ?? 'Post-Match')}
             </Typography>
-            {isCounting && <MatchTimer remainingTime={remainingTime} phase="postMatch" />}
+            {isCounting && <MatchTimer remainingTime={remainingTime} color={PHASE_HEX.postMatch} />}
             {autoWinnerAlliance && (
               <Typography
                 variant="body1"
