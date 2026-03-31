@@ -4,9 +4,8 @@ import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
-import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
-import { Alliance, MatchPhase, StationName, StationControlState } from '../../../src/types';
+import { MatchPhase, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
   sendStationJoin,
@@ -17,7 +16,6 @@ import {
   sendStationSelfEStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
-import { getAllianceShiftState } from '../utils/shiftState';
 
 const phaseColors: Record<MatchPhase, string> = {
   idle: 'text.secondary',
@@ -87,14 +85,20 @@ function stationChipLabel(
   return `${team}${suffix}`;
 }
 
-/**
- * Compute progress bar color based on alliance shift state.
- * Returns a CSS color string for the progress bar.
- */
-function getProgressBarColor(inactiveAlliance: Alliance | null): string {
-  if (inactiveAlliance === 'red') return '#42a5f5'; // Blue's goal active → blue bar
-  if (inactiveAlliance === 'blue') return '#ef5350'; // Red's goal active → red bar
-  return '#4caf50'; // Both active → neutral green
+/** Compute MatchTimeline progress (0-1) from match state. */
+function computeBarProgress(
+  totalMatchTime: number,
+  config: { autoDuration: number; pauseDuration: number; teleopDuration: number; skipAuto?: boolean },
+): number {
+  const countdownDuration = 3;
+  const barTotal = config.autoDuration + config.pauseDuration + config.teleopDuration;
+  if (barTotal <= 0) return 0;
+  const elapsed = Math.max(0, totalMatchTime - countdownDuration);
+  if (config.skipAuto) {
+    const skipOffset = config.autoDuration + config.pauseDuration;
+    return Math.min(1, (skipOffset + elapsed) / barTotal);
+  }
+  return Math.min(1, elapsed / barTotal);
 }
 
 /**
@@ -127,21 +131,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
   // Master view: any station joined means we show controls
   const anyJoined = joinedStations.length > 0;
 
-  // Compute shift state for progress bar coloring
-  const inactiveAlliance = useMemo(() => {
-    if (!matchState) return null;
-    return getAllianceShiftState(
-      matchState.phase,
-      matchState.remainingTime,
-      matchState.config.teleopDuration,
-      matchState.config.endgameDuration,
-      matchState.autoWinnerAlliance,
-    );
-  }, [matchState]);
-
-  const countdownDuration = 3;
-  const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
-  const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
+  const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
 
   // Don't render at all if phase is idle (no match created)
   if (phase === 'idle') return null;
@@ -173,19 +163,9 @@ export function MatchPanel({ station }: { station?: StationName }) {
               />
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
-            <LinearProgress
-              variant="determinate"
-              value={progress}
-              sx={{
-                mb: 2,
-                height: 6,
-                borderRadius: 3,
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: getProgressBarColor(inactiveAlliance),
-                  transition: 'background-color 2s ease',
-                },
-              }}
-            />
+            <Box sx={{ mb: 2 }}>
+              <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+            </Box>
           </>
         )}
 
@@ -331,21 +311,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
   const ready = myState?.ready ?? false;
   const myAlliance = myState?.alliance ?? null;
 
-  // Compute shift state for progress bar coloring
-  const inactiveAlliance = useMemo(() => {
-    if (!matchState) return null;
-    return getAllianceShiftState(
-      matchState.phase,
-      matchState.remainingTime,
-      matchState.config.teleopDuration,
-      matchState.config.endgameDuration,
-      matchState.autoWinnerAlliance,
-    );
-  }, [matchState]);
-
-  const countdownDuration = 3;
-  const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
-  const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
+  const progress = useMemo(() => computeBarProgress(totalMatchTime, config), [totalMatchTime, config]);
 
   // Don't render at all if phase is idle (no match created)
   if (phase === 'idle') return null;
@@ -386,19 +352,9 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               )}
             </Box>
             <MatchTimer remainingTime={remainingTime} phase={phase} />
-            <LinearProgress
-              variant="determinate"
-              value={progress}
-              sx={{
-                mb: 2,
-                height: 6,
-                borderRadius: 3,
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: getProgressBarColor(inactiveAlliance),
-                  transition: 'background-color 2s ease',
-                },
-              }}
-            />
+            <Box sx={{ mb: 2 }}>
+              <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+            </Box>
           </>
         )}
 

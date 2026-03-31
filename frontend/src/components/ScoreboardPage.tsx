@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography';
 import { useScoreState, useMatchState, sendCastReceiverRegister } from '../hooks/useBackend';
 import type { Alliance, ScoreBatch, StationControlState, StationName } from '../../../src/types';
 import { getAllianceShiftState } from '../utils/shiftState';
+import { MatchTimeline } from './MatchTimeline';
 
 // Cast initialization happens in scores.html before this module loads.
 declare global {
@@ -113,6 +114,23 @@ export function ScoreboardPage() {
   const autoWinner = matchState?.autoWinnerAlliance ?? null;
   const isMatchMode = score?.mode === 'match';
   const hasTeams = teamsByAlliance.red.length > 0 || teamsByAlliance.blue.length > 0;
+
+  // Match timeline progress (0-1)
+  const matchProgress = useMemo(() => {
+    if (!matchState || !isMatchMode) return null;
+    const { phase } = matchState;
+    if (phase === 'idle' || phase === 'created') return null;
+    const cfg = matchState.config;
+    const countdownDuration = 3;
+    const barTotal = cfg.autoDuration + cfg.pauseDuration + cfg.teleopDuration;
+    if (barTotal <= 0) return null;
+    const elapsed = Math.max(0, matchState.totalMatchTime - countdownDuration);
+    if (cfg.skipAuto) {
+      const skipOffset = cfg.autoDuration + cfg.pauseDuration;
+      return Math.min(1, (skipOffset + elapsed) / barTotal);
+    }
+    return Math.min(1, elapsed / barTotal);
+  }, [matchState, isMatchMode]);
 
   if (!score) {
     return (
@@ -288,6 +306,13 @@ export function ScoreboardPage() {
               </Box>
             </Box>
           ))}
+        </Box>
+      )}
+
+      {/* Match timeline progress bar */}
+      {matchProgress !== null && matchState && (
+        <Box sx={{ px: 3, pb: 2 }}>
+          <MatchTimeline config={matchState.config} progress={matchProgress} autoWinnerAlliance={autoWinner} />
         </Box>
       )}
     </Box>

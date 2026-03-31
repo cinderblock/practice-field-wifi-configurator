@@ -6,7 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
-import LinearProgress from '@mui/material/LinearProgress';
+import { MatchTimeline } from './MatchTimeline';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
@@ -196,10 +196,10 @@ function StationControlSection() {
 // ── Match Timer ─────────────────────────────────────────────────────
 
 function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: MatchPhase }) {
-  const clamped = Math.max(0, remainingTime);
-  const minutes = Math.floor(clamped / 60);
-  const seconds = Math.floor(clamped % 60);
-  const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const display = Math.ceil(Math.max(0, remainingTime));
+  const minutes = Math.floor(display / 60);
+  const seconds = display % 60;
+  const text = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
   return (
     <Typography
@@ -212,7 +212,7 @@ function MatchTimer({ remainingTime, phase }: { remainingTime: number; phase: Ma
         lineHeight: 1,
       }}
     >
-      {display}
+      {text}
     </Typography>
   );
 }
@@ -227,8 +227,10 @@ function MatchStatusSection() {
   const isActive = phase !== 'idle' && phase !== 'postMatch';
 
   const countdownDuration = 3;
-  const totalDuration = countdownDuration + config.autoDuration + config.pauseDuration + config.teleopDuration;
-  const progress = Math.min(100, (totalMatchTime / totalDuration) * 100);
+  const barTotal = config.autoDuration + config.pauseDuration + config.teleopDuration;
+  const elapsed = Math.max(0, totalMatchTime - countdownDuration);
+  const skipOffset = config.skipAuto ? config.autoDuration + config.pauseDuration : 0;
+  const progress = barTotal > 0 ? Math.min(1, (skipOffset + elapsed) / barTotal) : 0;
 
   return (
     <Card sx={{ mb: 3 }}>
@@ -250,7 +252,9 @@ function MatchStatusSection() {
 
         <MatchTimer remainingTime={remainingTime} phase={phase} />
 
-        <LinearProgress variant="determinate" value={progress} sx={{ my: 2, height: 8, borderRadius: 4 }} />
+        <Box sx={{ my: 2 }}>
+          <MatchTimeline config={config} progress={progress} autoWinnerAlliance={matchState.autoWinnerAlliance} />
+        </Box>
 
         {isActive && (
           <Button
