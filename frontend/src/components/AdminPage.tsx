@@ -19,6 +19,10 @@ import TableRow from '@mui/material/TableRow';
 import type { MatchPhase, StationName } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
 import { prettyStationName } from '../../../src/utils';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Alert from '@mui/material/Alert';
 import Collapse from '@mui/material/Collapse';
 import Dialog from '@mui/material/Dialog';
@@ -353,11 +357,87 @@ function SlackConfigSection() {
           </Box>
         </Box>
 
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Connect to a Slack channel to receive support issue reports and enable real-time chat. You'll need a Slack App
-          with a Bot Token (<code>xoxb-...</code>) and an App-Level Token (<code>xapp-...</code>) with{' '}
-          <code>connections:write</code> scope.
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Connect to a Slack channel to receive support issue reports and enable real-time chat. Uses Socket Mode — no
+          public URL or HTTPS required.
         </Typography>
+
+        <Accordion
+          disableGutters
+          sx={{ mb: 2, backgroundColor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' } }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{ px: 0, minHeight: 0, '& .MuiAccordionSummary-content': { my: 0.5 } }}
+          >
+            <Typography variant="body2" color="primary">
+              Setup instructions — how to create the Slack App
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ px: 0 }}>
+            <Box
+              component="ol"
+              sx={{
+                pl: 2.5,
+                my: 0,
+                '& li': { mb: 1.5, fontSize: '0.875rem', color: 'text.secondary' },
+                '& code': { backgroundColor: 'action.hover', px: 0.5, borderRadius: 0.5, fontSize: '0.8rem' },
+                '& strong': { color: 'text.primary' },
+              }}
+            >
+              <li>
+                Go to{' '}
+                <a href="https://api.slack.com/apps" target="_blank" rel="noopener" style={{ color: 'inherit' }}>
+                  api.slack.com/apps
+                </a>{' '}
+                → <strong>Create New App</strong> → <strong>From scratch</strong>. Name it (e.g. "PFMS Support") and
+                pick your workspace.
+              </li>
+              <li>
+                <strong>Add Bot Token Scopes:</strong> Go to <em>OAuth & Permissions</em> → <em>Scopes</em> →{' '}
+                <em>Bot Token Scopes</em> and add:
+                <Box component="ul" sx={{ mt: 0.5, pl: 2, '& li': { mb: 0.25 } }}>
+                  <li>
+                    <code>chat:write</code> — post messages
+                  </li>
+                  <li>
+                    <code>channels:read</code> — read channel info
+                  </li>
+                  <li>
+                    <code>files:write</code> — upload screenshots
+                  </li>
+                  <li>
+                    <code>users:read</code> — resolve admin display names
+                  </li>
+                </Box>
+              </li>
+              <li>
+                <strong>Install to Workspace:</strong> Go to <em>OAuth & Permissions</em> →{' '}
+                <em>Install to Workspace</em>. Copy the <strong>Bot User OAuth Token</strong> (<code>xoxb-...</code>).
+              </li>
+              <li>
+                <strong>Enable Socket Mode:</strong> Go to <em>Settings</em> → <em>Socket Mode</em> → toggle on. Create
+                an <strong>App-Level Token</strong> with the <code>connections:write</code> scope. Copy it (
+                <code>xapp-...</code>).
+              </li>
+              <li>
+                <strong>Subscribe to Events:</strong> Go to <em>Event Subscriptions</em> → toggle on →{' '}
+                <em>Subscribe to bot events</em> → add <code>message.channels</code>.
+              </li>
+              <li>
+                <strong>Invite the bot</strong> to your support channel: in Slack, type{' '}
+                <code>/invite @PFMS Support</code> in the channel.
+              </li>
+              <li>
+                <strong>Get the Channel ID:</strong> Right-click the channel → <em>View channel details</em> → scroll to
+                the bottom → copy the <strong>Channel ID</strong> (<code>C0XXXXXXX</code>).
+              </li>
+              <li>
+                Paste all three values below and click <strong>Save & Connect</strong>.
+              </li>
+            </Box>
+          </AccordionDetails>
+        </Accordion>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <TextField
