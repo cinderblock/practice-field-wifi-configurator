@@ -6,8 +6,10 @@
  *   Queries:   main network → team VLAN  (laptops looking up robots)
  *   Responses: team VLAN → main network  (robots answering)
  *
- * Only reflects packets matching FRC naming patterns (e.g. roboRIO-TEAM-FRC.local)
- * and routes them to/from the correct VLAN based on team number.
+ * Query routing uses the laptop's slot selection (route preference) to
+ * determine which VLAN to forward to. This means ALL .local names work
+ * (roboRIO, Limelight, PhotonVision, radio, etc.) — the reflector doesn't
+ * need to parse team numbers from hostnames.
  *
  * Loop prevention relies on setMulticastLoopback(false) — the socket never
  * receives its own forwarded packets — plus the directional filter above.
@@ -104,28 +106,6 @@ function parseAnswerRecords(buf: Buffer): { name: string; resolvedIp?: string }[
   }
 
   return records;
-}
-
-// ── FRC name matching ───────────────────────────────────────────────
-
-/**
- * FRC device naming patterns. The team number is captured from group 1
- * and used to route the packet to the correct VLAN.
- *
- * Matched against the hostname portion (after stripping .local):
- *   roboRIO-TEAM-FRC         — standard roboRIO
- *   roboRIO-TEAM-FRC-2       — secondary roboRIO
- */
-const FRC_PATTERNS: RegExp[] = [/^roboRIO-(\d{1,5})-FRC\b/i];
-
-function extractTeamFromName(dnsName: string): number | null {
-  // mDNS names end with .local (sometimes with trailing dot) — strip for matching
-  const hostname = dnsName.replace(/\.local\.?$/i, '');
-  for (const pattern of FRC_PATTERNS) {
-    const match = hostname.match(pattern);
-    if (match) return parseInt(match[1], 10);
-  }
-  return null;
 }
 
 // ── mDNS name condensing ────────────────────────────────────────────
@@ -279,6 +259,7 @@ export class MdnsReflector {
 
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
+    private readonly getStationForRequester: (ip: string) => StationName | null,
     private readonly vlanHostOctet: number = 254,
     excludeRequesters?: string,
   ) {
@@ -417,52 +398,29 @@ export class MdnsReflector {
       this.incrementCounter(station, sourceTeam, 'responsesForwarded', names);
       this.forwardToMain(msg);
     } else {
-      // Packet from the main network — only forward queries (laptop lookups) to VLANs
+      // Packet from the main network — forward queries to the requester's selected VLAN.
+      // Routing is based on the laptop's slot selection (route preference), NOT on
+      // parsing team numbers from hostnames. This means all .local names work:
+      // roboRIO, Limelight, PhotonVision, radio, etc.
       if (isResponse) return;
 
+      const station = this.getStationForRequester(rinfo.address);
+      if (!station) return; // Laptop hasn't selected a slot — nowhere to forward
+
+      const team = this.getTeamForStation(station);
+      if (team === null || !this.joinedTeams.has(team)) return;
+
       const excluded = isExcluded(rinfo.address, this.excludedRequesters);
-
-      const queryNames = parseQuestionNames(msg);
-      const teams = new Set<number>();
-      for (const name of queryNames) {
-        const team = extractTeamFromName(name);
-        if (team !== null) teams.add(team);
+      if (!excluded) {
+        const queryNames = parseQuestionNames(msg);
+        const names: MdnsResolvedName[] = queryNames.map(n => ({
+          name: n.toLowerCase(),
+          requester: rinfo.address,
+        }));
+        this.incrementCounter(station, team, 'queriesForwarded', names);
       }
 
-      if (teams.size > 0) {
-        // FRC-patterned query (e.g. roboRIO-9400-FRC.local) — forward to specific team VLAN(s)
-        for (const team of teams) {
-          if (this.joinedTeams.has(team)) {
-            const station = this.teamToStation.get(team);
-            if (!station) continue;
-            if (!excluded) {
-              const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
-              const names: MdnsResolvedName[] = teamNames.map(n => ({
-                name: n.toLowerCase(),
-                requester: rinfo.address,
-              }));
-              this.incrementCounter(station, team, 'queriesForwarded', names);
-            }
-            this.forwardToVlan(msg, team);
-          }
-        }
-      } else if (queryNames.some(n => !n.startsWith('_'))) {
-        // Non-FRC hostname query (e.g. limelight-left.local, radio.local) — the name
-        // doesn't contain a team number so we can't target a specific VLAN. Broadcast
-        // to all active VLANs and let the device that owns the name respond.
-        // Filter out pure service-discovery queries (_services._dns-sd._udp.local etc.)
-        // to avoid unnecessary response floods from every device on every VLAN.
-        for (const [team] of this.joinedTeams) {
-          const station = this.teamToStation.get(team);
-          if (station && !excluded) {
-            const names: MdnsResolvedName[] = queryNames
-              .filter(n => !n.startsWith('_'))
-              .map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
-            this.incrementCounter(station, team, 'queriesForwarded', names);
-          }
-          this.forwardToVlan(msg, team);
-        }
-      }
+      this.forwardToVlan(msg, team);
     }
   }
 

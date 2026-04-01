@@ -22,6 +22,7 @@ import {
   restorePreferencesFromKernel,
   setRoutePreference,
   clearRoutePreference,
+  getPreference,
 } from './routePreferenceManager.js';
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast, appInfo, appWarn } from './appLogger.js';
@@ -448,6 +449,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   if (StartMdnsReflector && VlanInterface) {
     mdnsReflector = new MdnsReflector(
       s => radioManager.getTeamForStation(s),
+      ip => getPreference(ip),
       VlanHostOctet,
       process.env.MDNS_EXCLUDE_REQUESTERS,
     );
