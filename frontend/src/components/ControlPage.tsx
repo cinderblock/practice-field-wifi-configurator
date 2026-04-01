@@ -25,6 +25,7 @@ import {
   useBackendStagedChanges,
   useLastLinked,
   sendDrive,
+  sendRoutePreference,
   useRoutePreferenceState,
   usePortBridgeState,
   sendPortBridge,
@@ -272,27 +273,33 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
         Team {teamNumber}
       </Typography>
 
-      {/* Routing banner for multi-robot teams */}
-      {isMultiRobot && (
+      {/* Network routing banner — connect this laptop to the robot's VLAN for .local resolution */}
+      {activeStations.size > 0 && (
         <Alert
-          severity={routedSsid ? (routedSsid === currentSsid ? 'success' : 'warning') : 'info'}
+          severity={routePreference ? (routedSsid === currentSsid ? 'success' : 'warning') : 'info'}
           sx={{ mb: 2, '& .MuiAlert-message': { width: '100%' } }}
+          action={
+            routePreference ? (
+              <Button color="inherit" size="small" onClick={() => sendRoutePreference(null)}>
+                Disconnect
+              </Button>
+            ) : selectedStation ? (
+              <Button color="inherit" size="small" onClick={() => sendRoutePreference(selectedStation)}>
+                Connect
+              </Button>
+            ) : undefined
+          }
         >
-          {routedSsid ? (
+          {routePreference ? (
             <>
-              This laptop is routed to <strong>{routedSsid}</strong>.
-              {routedSsid !== currentSsid && ' Select it below or click the robot you want to drive.'}
+              Connected to <strong>{routedSsid ?? routePreference}</strong>.
+              {isMultiRobot &&
+                routedSsid !== currentSsid &&
+                ' Select the robot you want below or click its Drive button.'}
             </>
           ) : (
-            'Select a robot below to route this laptop to its network.'
+            'Connect to access .local devices on this robot\u2019s network (limelight, radio, etc.).'
           )}
-          <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-            Each Driver Station laptop should open{' '}
-            <strong>
-              /<em>SSID</em>
-            </strong>{' '}
-            for the robot it drives.
-          </Typography>
         </Alert>
       )}
 
