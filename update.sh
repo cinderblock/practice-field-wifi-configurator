@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
+# Ensure bun is in PATH (installed at ~/.bun/bin by default)
+export PATH="$HOME/.bun/bin:$PATH"
+
 if [ "$1" == "clean" ]; then
   shift
   rm -rf node_modules
