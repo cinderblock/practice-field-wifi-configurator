@@ -9,7 +9,7 @@
     "prepare": "lefthook install",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend",
-    "build": "tsc && npm run build --workspaces",
+    "build": "tsc && cd frontend && bun run build",
     "dev": "tsx --watch src/index.ts",
     "once": "tsx src/index.ts",
     "start": "node dist"
