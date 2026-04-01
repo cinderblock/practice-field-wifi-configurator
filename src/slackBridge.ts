@@ -26,6 +26,9 @@ export class SlackBridge {
   private connected = false;
   private lastError: string | undefined;
   private listeners: ((state: SlackConfigState) => void)[] = [];
+  /** Cached custom workspace emoji: name → image URL or "alias:target". */
+  private customEmoji = new Map<string, string>();
+  private emojiRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Called when a message is received from Slack in a support thread.
@@ -121,6 +124,8 @@ export class SlackBridge {
         this.connected = true;
         this.lastError = undefined;
         this.notifyListeners();
+        // Fetch/refresh custom emoji on every (re)connect
+        this.fetchCustomEmoji();
       });
 
       this.socketMode.on('disconnected', () => {
@@ -130,6 +135,9 @@ export class SlackBridge {
       });
 
       await this.socketMode.start();
+
+      // Refresh custom emoji periodically (every 30 minutes)
+      this.emojiRefreshTimer = setInterval(() => this.fetchCustomEmoji(), 30 * 60 * 1000);
     } catch (err) {
       this.lastError = (err as Error).message;
       this.connected = false;
@@ -139,6 +147,10 @@ export class SlackBridge {
   }
 
   private async disconnect(): Promise<void> {
+    if (this.emojiRefreshTimer) {
+      clearInterval(this.emojiRefreshTimer);
+      this.emojiRefreshTimer = null;
+    }
     if (this.socketMode) {
       try {
         await this.socketMode.disconnect();
@@ -149,6 +161,67 @@ export class SlackBridge {
     }
     this.web = null;
     this.connected = false;
+  }
+
+  // ── Emoji Resolution ─────────────────────────────────────────────────
+
+  /** Fetch all custom workspace emoji and cache them. */
+  private async fetchCustomEmoji(): Promise<void> {
+    if (!this.web) return;
+    try {
+      const result = await this.web.emoji.list();
+      const emoji = (result as { emoji?: Record<string, string> }).emoji;
+      if (emoji) {
+        this.customEmoji.clear();
+        for (const [name, value] of Object.entries(emoji)) {
+          this.customEmoji.set(name, value);
+        }
+        console.log(`Cached ${this.customEmoji.size} custom Slack emoji`);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch custom emoji:', (err as Error).message);
+    }
+  }
+
+  /**
+   * Resolve a custom emoji name to its image URL, following alias chains.
+   * Returns the image URL, or null if not found.
+   */
+  private resolveCustomEmoji(name: string): string | null {
+    let current = name;
+    for (let depth = 0; depth < 5; depth++) {
+      const value = this.customEmoji.get(current);
+      if (!value) return null;
+      if (value.startsWith('alias:')) {
+        current = value.slice(6);
+        // The alias target might be a standard emoji — try emojify
+        const standard = emojify(`:${current}:`);
+        if (standard !== `:${current}:`) return null; // It's a standard emoji, emojify already handled it
+        continue;
+      }
+      // It's an image URL
+      return value;
+    }
+    return null;
+  }
+
+  /**
+   * Convert Slack emoji codes in text to Unicode or image markers.
+   * Standard emoji → Unicode via emojify().
+   * Custom emoji → `<emoji:URL>` markers for frontend rendering.
+   */
+  resolveEmoji(text: string): string {
+    // First pass: convert standard emoji
+    let result = emojify(text);
+
+    // Second pass: resolve remaining :name: patterns (custom emoji)
+    result = result.replace(/:([a-zA-Z0-9_+\-]+):/g, (match, name) => {
+      const url = this.resolveCustomEmoji(name);
+      if (url) return `<emoji:${url}>`;
+      return match; // Leave unresolved codes as-is
+    });
+
+    return result;
   }
 
   // ── Posting ─────────────────────────────────────────────────────────
@@ -225,11 +298,12 @@ export class SlackBridge {
    * Start a chat thread in Slack for a support chat session.
    * Returns the thread timestamp.
    */
-  async startChatThread(sessionId: string, issueId?: string): Promise<string | null> {
+  async startChatThread(sessionId: string, issueId?: string, senderName?: string): Promise<string | null> {
     if (!this.web || !this.config) return null;
 
     try {
-      const text = issueId ? `💬 Support chat started (from issue ${issueId})` : '💬 New support chat started';
+      const who = senderName ?? 'a user';
+      const text = issueId ? `💬 Support chat from ${who} (issue ${issueId})` : `💬 Support chat from ${who}`;
 
       const result = await this.web.chat.postMessage({
         channel: this.config.channelId,
@@ -306,9 +380,9 @@ export class SlackBridge {
       mimetype: f.mimetype ?? 'application/octet-stream',
     }));
 
-    // Look up the user's display name and convert Slack emoji codes to Unicode
+    // Look up the user's display name and convert Slack emoji codes
     this.resolveUserName(event.user ?? '').then(name => {
-      const text = emojify(event.text ?? '');
+      const text = this.resolveEmoji(event.text ?? '');
       this.onSlackMessage?.(event.thread_ts!, name, text, files);
     });
   }

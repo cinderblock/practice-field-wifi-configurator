@@ -87,12 +87,13 @@ export class SupportStore {
 
   // ── Chat Sessions ───────────────────────────────────────────────────
 
-  createChatSession(issueId?: string): SupportChatSession {
+  createChatSession(issueId?: string, senderName?: string): SupportChatSession {
     const id = `chat-${Date.now()}-${randomBytes(4).toString('hex')}`;
     const session: SupportChatSession = {
       id,
       createdAt: Date.now(),
       issueId,
+      senderName,
       messages: [],
       active: true,
     };

@@ -396,7 +396,7 @@ function SlackConfigSection() {
               <li>
                 <strong>Add Bot Token Scopes:</strong> Go to <em>OAuth & Permissions</em> → <em>Scopes</em> →{' '}
                 <em>Bot Token Scopes</em> and add: <code>chat:write</code>, <code>channels:read</code>,{' '}
-                <code>files:write</code>, <code>users:read</code>.
+                <code>files:write</code>, <code>users:read</code>, <code>emoji:read</code>.
               </li>
               <li>
                 <strong>Install to Workspace:</strong> Go to <em>OAuth & Permissions</em> →{' '}

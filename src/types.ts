@@ -1573,6 +1573,8 @@ export interface SupportChatSession {
   issueId?: string;
   /** Slack thread timestamp for this chat session. */
   slackThreadTs?: string;
+  /** Display name of the user who started this session. */
+  senderName?: string;
   /** Messages in this session. */
   messages: SupportChatMessage[];
   /** Whether this session is still active. */
@@ -1628,6 +1630,7 @@ export function isSubmitSupportIssue(msg: unknown): msg is SubmitSupportIssue {
 export interface StartSupportChat {
   type: 'startSupportChat';
   issueId?: string;
+  senderName?: string;
 }
 
 export function isStartSupportChat(msg: unknown): msg is StartSupportChat {

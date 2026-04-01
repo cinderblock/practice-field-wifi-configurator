@@ -257,16 +257,17 @@ function IssueReportForm({ onSubmitted }: { onSubmitted: (issueId: string) => vo
 
 function SupportChatView({
   sessionId,
+  senderName,
   onEnd,
   onCreateIssue,
 }: {
   sessionId: string;
+  senderName: string;
   onEnd: () => void;
   onCreateIssue: () => void;
 }) {
   const messages = useSupportChatMessages(sessionId);
   const [text, setText] = useState('');
-  const [senderName, setSenderName] = useState(() => localStorage.getItem('support-sender-name') || '');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const slackConfig = useSlackConfigState();
 
@@ -278,10 +279,6 @@ function SupportChatView({
   const handleSend = (screenshotDataUrl?: string) => {
     const msgText = text.trim();
     if (!msgText && !screenshotDataUrl) return;
-
-    if (senderName) {
-      localStorage.setItem('support-sender-name', senderName);
-    }
 
     sendSupportChatMessage(sessionId, msgText || '📷 Screenshot', screenshotDataUrl, senderName || undefined);
     setText('');
@@ -326,16 +323,6 @@ function SupportChatView({
           </Button>
         </Box>
       </Box>
-
-      {/* Name input */}
-      <TextField
-        size="small"
-        label="Your Name (optional)"
-        value={senderName}
-        onChange={e => setSenderName(e.target.value)}
-        sx={{ mb: 1 }}
-        placeholder="e.g., Team 1234 Mentor"
-      />
 
       {/* Messages */}
       <Box
@@ -388,6 +375,26 @@ function SupportChatView({
   );
 }
 
+/** Render message text with custom emoji <emoji:URL> markers as inline images. */
+function renderMessageText(text: string): React.ReactNode[] {
+  const parts = text.split(/(<emoji:https?:\/\/[^>]+>)/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^<emoji:(https?:\/\/[^>]+)>$/);
+    if (match) {
+      return (
+        <Box
+          component="img"
+          key={i}
+          src={match[1]}
+          alt="emoji"
+          sx={{ height: '1.2em', verticalAlign: 'text-bottom', display: 'inline' }}
+        />
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 function ChatBubble({ message }: { message: SupportChatMessage }) {
   const isUser = message.sender === 'user';
   const time = new Date(message.timestamp).toLocaleTimeString();
@@ -415,7 +422,7 @@ function ChatBubble({ message }: { message: SupportChatMessage }) {
           {message.senderName} · {time}
         </Typography>
         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {message.text}
+          {renderMessageText(message.text)}
         </Typography>
         {message.screenshotDataUrl && (
           <Box
@@ -568,6 +575,11 @@ export function SupportPage() {
   const [createIssueDialogOpen, setCreateIssueDialogOpen] = useState(false);
   const slackConfig = useSlackConfigState();
 
+  // Name dialog state
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [chatName, setChatName] = useState(() => localStorage.getItem('support-sender-name') || '');
+  const [pendingIssueId, setPendingIssueId] = useState<string | undefined>();
+
   const handleIssueSubmitted = (issueId: string) => {
     // Dispatch a custom event so the form can pick it up
     window.dispatchEvent(new CustomEvent('supportIssueCreated', { detail: { issueId } }));
@@ -587,7 +599,15 @@ export function SupportPage() {
   }, []);
 
   const handleStartChat = (issueId?: string) => {
-    sendStartSupportChat(issueId);
+    setPendingIssueId(issueId);
+    setNameDialogOpen(true);
+  };
+
+  const handleConfirmStartChat = () => {
+    if (!chatName.trim()) return;
+    localStorage.setItem('support-sender-name', chatName.trim());
+    sendStartSupportChat(pendingIssueId, chatName.trim());
+    setNameDialogOpen(false);
   };
 
   const handleEndChat = () => {
@@ -646,6 +666,7 @@ export function SupportPage() {
               <>
                 <SupportChatView
                   sessionId={activeChatSessionId}
+                  senderName={chatName}
                   onEnd={handleEndChat}
                   onCreateIssue={() => setCreateIssueDialogOpen(true)}
                 />
@@ -684,6 +705,35 @@ export function SupportPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Name dialog before starting chat */}
+      <Dialog open={nameDialogOpen} onClose={() => setNameDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Start Support Chat</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Enter your name so the support team knows who they're chatting with.
+          </Typography>
+          <TextField
+            autoFocus
+            label="Your First Name"
+            value={chatName}
+            onChange={e => setChatName(e.target.value)}
+            fullWidth
+            required
+            sx={{ mt: 1 }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleConfirmStartChat();
+            }}
+            placeholder="e.g., Alex from Team 1234"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNameDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmStartChat} variant="contained" disabled={!chatName.trim()}>
+            Start Chat
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

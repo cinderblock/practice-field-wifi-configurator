@@ -635,30 +635,9 @@ export function setupWebSocket(
         }
       } else if (isStartSupportChat(data)) {
         if (supportStore) {
-          const session = supportStore.createChatSession(data.issueId);
+          const session = supportStore.createChatSession(data.issueId, data.senderName);
           wsToChatSession.set(ws, session.id);
-
-          // Start a Slack thread for this chat session
-          if (slackBridge?.isConnected()) {
-            slackBridge.startChatThread(session.id, data.issueId).then(threadTs => {
-              if (threadTs) {
-                supportStore.setSlackThreadTs(session.id, threadTs);
-
-                // If started from an issue that already has context, post it to the thread
-                if (data.issueId) {
-                  const issue = supportStore.getIssue(data.issueId);
-                  if (issue) {
-                    slackBridge.postChatMessage(
-                      threadTs,
-                      'System',
-                      `Issue context:\n• *Trying to do:* ${issue.tryingToDo}\n• *What happened:* ${issue.actual}`,
-                    );
-                  }
-                }
-              }
-            });
-          }
-
+          // Slack thread is deferred until the first message arrives
           ws.send(JSON.stringify({ type: 'supportChatStarted', sessionId: session.id }));
         }
       } else if (isSendSupportChatMessage(data)) {
@@ -671,9 +650,51 @@ export function setupWebSocket(
             data.screenshotDataUrl,
           );
           if (message) {
-            // Forward to Slack thread
             const session = supportStore.getChatSession(data.sessionId);
-            if (session?.slackThreadTs && slackBridge?.isConnected()) {
+
+            if (session && !session.slackThreadTs && slackBridge?.isConnected()) {
+              // First message — create Slack thread with field config summary
+              const configLines: string[] = [];
+              for (const station of StationNameList) {
+                const config = radioManager.getStationConfig(station);
+                if (config?.ssid) {
+                  const team = radioManager.getTeamForStation(station);
+                  configLines.push(`• ${station}: Team ${team ?? 'unknown'} (${config.ssid})`);
+                }
+              }
+              const configSummary =
+                configLines.length > 0 ? configLines.join('\n') : 'No stations currently configured';
+
+              const displayName = session.senderName ?? data.senderName ?? 'Unknown';
+
+              slackBridge.startChatThread(session.id, session.issueId, displayName).then(threadTs => {
+                if (!threadTs) return;
+                supportStore.setSlackThreadTs(session.id, threadTs);
+
+                // Post field config summary as context
+                const headerText = `*Field Configuration:*\n${configSummary}`;
+                return slackBridge
+                  .postChatMessage(threadTs, 'System', headerText)
+                  .then(() => {
+                    // If started from an issue, also post issue context
+                    if (session.issueId) {
+                      const issue = supportStore.getIssue(session.issueId);
+                      if (issue) {
+                        return slackBridge.postChatMessage(
+                          threadTs,
+                          'System',
+                          `Issue context:\n• *Trying to do:* ${issue.tryingToDo}\n• *What happened:* ${issue.actual}`,
+                        );
+                      }
+                    }
+                  })
+                  .then(() => {
+                    // Post the user's first message
+                    slackBridge.postChatMessage(threadTs, displayName, data.text, data.screenshotDataUrl);
+                  });
+              });
+            } else if (session?.slackThreadTs && slackBridge?.isConnected()) {
+              // Thread already exists — just forward
               slackBridge.postChatMessage(
                 session.slackThreadTs,
                 data.senderName ?? 'Field User',

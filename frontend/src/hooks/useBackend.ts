@@ -1307,8 +1307,8 @@ export function sendSubmitSupportIssue(
   );
 }
 
-export function sendStartSupportChat(issueId?: string) {
-  ws?.send(JSON.stringify({ type: 'startSupportChat', issueId }));
+export function sendStartSupportChat(issueId?: string, senderName?: string) {
+  ws?.send(JSON.stringify({ type: 'startSupportChat', issueId, senderName }));
 }
 
 export function sendSupportChatMessage(
