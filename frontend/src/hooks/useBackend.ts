@@ -35,6 +35,10 @@ import {
   isStopCast,
   isCastReceiverList,
   isCastReceiverSwap,
+  isSupportState,
+  isSupportChatIncoming,
+  isAdminAuthResult,
+  isSlackConfigState,
   CastReceiverList,
   CastReceiverRegister,
   CastReceiverSwap,
@@ -57,6 +61,11 @@ import {
   StationName,
   StationUpdate,
   StatusEntry,
+  SupportState,
+  SupportChatMessage,
+  SupportMetadata,
+  AdminAuthResult,
+  SlackConfigState,
 } from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
 
@@ -363,6 +372,47 @@ function handlePortBridgeState(state: PortBridgeState) {
   events.dispatchEvent(new CustomEvent('portBridgeState', { detail: state }));
 }
 
+// ── Support System State ────────────────────────────────────────────
+
+let currentSupportState: SupportState | null = null;
+let currentSlackConfigState: SlackConfigState | null = null;
+let currentAdminAuth: AdminAuthResult | null = null;
+
+function handleSupportState(state: SupportState) {
+  currentSupportState = state;
+  events.dispatchEvent(new CustomEvent('supportState', { detail: state }));
+}
+
+function handleSupportChatIncoming(msg: { message: SupportChatMessage }) {
+  events.dispatchEvent(new CustomEvent('supportChatMessage', { detail: msg.message }));
+  // Also dispatch to window for non-React consumers
+  window.dispatchEvent(new CustomEvent('supportChatMessage', { detail: msg.message }));
+}
+
+function handleAdminAuthResult(result: AdminAuthResult) {
+  currentAdminAuth = result;
+  events.dispatchEvent(new CustomEvent('adminAuthResult', { detail: result }));
+}
+
+function handleSlackConfigState(state: SlackConfigState) {
+  currentSlackConfigState = state;
+  events.dispatchEvent(new CustomEvent('slackConfigState', { detail: state }));
+}
+
+function handleSupportIssueCreated(msg: { type: string; issueId: string }) {
+  events.dispatchEvent(new CustomEvent('supportIssueCreated', { detail: msg }));
+  window.dispatchEvent(new CustomEvent('supportIssueCreated', { detail: msg }));
+}
+
+function handleSupportChatStarted(msg: { type: string; sessionId: string }) {
+  events.dispatchEvent(new CustomEvent('supportChatStarted', { detail: msg }));
+  window.dispatchEvent(new CustomEvent('supportChatStarted', { detail: msg }));
+}
+
+function handleSlackTestResult(msg: { ok: boolean; error?: string; channelName?: string }) {
+  events.dispatchEvent(new CustomEvent('slackTestResult', { detail: msg }));
+}
+
 function handleServerInfo(info: ServerInfo) {
   // Auto-refresh if the backend has been updated since this frontend was built.
   // Both sides use the git short hash; 'unknown' means we can't compare (dev mode, no git).
@@ -491,6 +541,43 @@ function receiveMessage(detail: Message) {
   if (isPortBridgeState(detail)) {
     handlePortBridgeState(detail);
     return;
+  }
+
+  if (isSupportState(detail)) {
+    handleSupportState(detail);
+    return;
+  }
+
+  if (isSupportChatIncoming(detail)) {
+    handleSupportChatIncoming(detail);
+    return;
+  }
+
+  if (isAdminAuthResult(detail)) {
+    handleAdminAuthResult(detail);
+    return;
+  }
+
+  if (isSlackConfigState(detail)) {
+    handleSlackConfigState(detail);
+    return;
+  }
+
+  // Handle support-specific response messages
+  if (typeof detail === 'object' && detail !== null) {
+    const d = detail as { type?: string };
+    if (d.type === 'supportIssueCreated') {
+      handleSupportIssueCreated(detail as unknown as { type: string; issueId: string });
+      return;
+    }
+    if (d.type === 'supportChatStarted') {
+      handleSupportChatStarted(detail as unknown as { type: string; sessionId: string });
+      return;
+    }
+    if (d.type === 'slackTestResult') {
+      handleSlackTestResult(detail as unknown as { ok: boolean; error?: string; channelName?: string });
+      return;
+    }
   }
 
   if (isAppLogMessage(detail)) {
@@ -1154,6 +1241,157 @@ export function usePortBridgeState(): PortBridgeState | null {
 /** Request to bridge a physical port to a station, or unbind (portVlanId=null). */
 export function sendPortBridge(station: StationName, portVlanId: number | null) {
   ws?.send(JSON.stringify({ type: 'portBridge', station, portVlanId } satisfies PortBridgeRequest));
+}
+
+// ── Support System ──────────────────────────────────────────────────
+
+export function useSupportState(): SupportState | null {
+  const [state, setState] = useState<SupportState | null>(currentSupportState);
+
+  useEffect(() => {
+    setState(currentSupportState);
+    const handler = (e: Event) => setState((e as CustomEvent<SupportState>).detail);
+    events.addEventListener('supportState', handler);
+    return () => events.removeEventListener('supportState', handler);
+  }, []);
+
+  return state;
+}
+
+/** Subscribe to chat messages for a specific session. */
+export function useSupportChatMessages(sessionId: string): SupportChatMessage[] {
+  const [messages, setMessages] = useState<SupportChatMessage[]>(() => {
+    // Initialize from current support state
+    const session = currentSupportState?.activeSessions.find(s => s.id === sessionId);
+    return session?.messages ?? [];
+  });
+
+  useEffect(() => {
+    // Re-initialize if state updates
+    const session = currentSupportState?.activeSessions.find(s => s.id === sessionId);
+    if (session) setMessages([...session.messages]);
+
+    const handler = (e: Event) => {
+      const msg = (e as CustomEvent<SupportChatMessage>).detail;
+      if (msg.sessionId === sessionId) {
+        setMessages(prev => [...prev, msg]);
+      }
+    };
+    events.addEventListener('supportChatMessage', handler);
+    return () => events.removeEventListener('supportChatMessage', handler);
+  }, [sessionId]);
+
+  return messages;
+}
+
+export function sendSubmitSupportIssue(
+  tryingToDo: string,
+  stepsPerformed: string,
+  expected: string,
+  actual: string,
+  metadata: SupportMetadata,
+  screenshotDataUrl?: string,
+  recentLogs: string[] = [],
+) {
+  ws?.send(
+    JSON.stringify({
+      type: 'submitSupportIssue',
+      tryingToDo,
+      stepsPerformed,
+      expected,
+      actual,
+      metadata,
+      screenshotDataUrl,
+      recentLogs,
+    }),
+  );
+}
+
+export function sendStartSupportChat(issueId?: string) {
+  ws?.send(JSON.stringify({ type: 'startSupportChat', issueId }));
+}
+
+export function sendSupportChatMessage(
+  sessionId: string,
+  text: string,
+  screenshotDataUrl?: string,
+  senderName?: string,
+) {
+  ws?.send(
+    JSON.stringify({
+      type: 'sendSupportChatMessage',
+      sessionId,
+      text,
+      screenshotDataUrl,
+      senderName,
+    }),
+  );
+}
+
+export function sendEndSupportChat(sessionId: string) {
+  ws?.send(JSON.stringify({ type: 'endSupportChat', sessionId }));
+}
+
+export function sendCreateIssueFromChat(sessionId: string, tryingToDo: string, actual: string) {
+  ws?.send(JSON.stringify({ type: 'createIssueFromChat', sessionId, tryingToDo, actual }));
+}
+
+// ── Admin Auth ──────────────────────────────────────────────────────
+
+export function useAdminAuth(): AdminAuthResult | null {
+  const [state, setState] = useState<AdminAuthResult | null>(currentAdminAuth);
+
+  useEffect(() => {
+    setState(currentAdminAuth);
+    const handler = (e: Event) => setState((e as CustomEvent<AdminAuthResult>).detail);
+    events.addEventListener('adminAuthResult', handler);
+    return () => events.removeEventListener('adminAuthResult', handler);
+  }, []);
+
+  return state;
+}
+
+export function sendAdminLogin(passphrase: string) {
+  ws?.send(JSON.stringify({ type: 'adminLogin', passphrase }));
+}
+
+export function sendAdminCheckAuth(token: string) {
+  ws?.send(JSON.stringify({ type: 'adminCheckAuth', token }));
+}
+
+export function sendAdminSetPassphrase(passphrase: string) {
+  ws?.send(JSON.stringify({ type: 'adminSetPassphrase', passphrase }));
+}
+
+// ── Slack Config ────────────────────────────────────────────────────
+
+export function useSlackConfigState(): SlackConfigState | null {
+  const [state, setState] = useState<SlackConfigState | null>(currentSlackConfigState);
+
+  useEffect(() => {
+    setState(currentSlackConfigState);
+    const handler = (e: Event) => setState((e as CustomEvent<SlackConfigState>).detail);
+    events.addEventListener('slackConfigState', handler);
+    return () => events.removeEventListener('slackConfigState', handler);
+  }, []);
+
+  return state;
+}
+
+export function sendSaveSlackConfig(botToken: string, appToken: string, channelId: string) {
+  ws?.send(JSON.stringify({ type: 'saveSlackConfig', botToken, appToken, channelId }));
+}
+
+export function sendTestSlackConnection() {
+  ws?.send(JSON.stringify({ type: 'testSlackConnection' }));
+}
+
+export function useSlackTestResult(callback: (result: { ok: boolean; error?: string; channelName?: string }) => void) {
+  useEffect(() => {
+    const handler = (e: Event) => callback((e as CustomEvent).detail);
+    events.addEventListener('slackTestResult', handler);
+    return () => events.removeEventListener('slackTestResult', handler);
+  }, [callback]);
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

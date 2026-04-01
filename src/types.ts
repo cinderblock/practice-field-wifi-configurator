@@ -1508,3 +1508,280 @@ export function isPortBridgeRequest(msg: unknown): msg is PortBridgeRequest {
   if (m.portVlanId !== null && typeof m.portVlanId !== 'number') return false;
   return true;
 }
+
+// ── Support System Types ────────────────────────────────────────────
+
+/** Issue report submitted by a user from the /support page. */
+export interface SupportIssue {
+  id: string;
+  createdAt: number;
+  /** What the user was trying to do. */
+  tryingToDo: string;
+  /** What buttons/actions they took. */
+  stepsPerformed: string;
+  /** What they expected to happen. */
+  expected: string;
+  /** What actually happened. */
+  actual: string;
+  /** Auto-captured browser/station metadata. */
+  metadata: SupportMetadata;
+  /** Optional screenshot (base64 PNG data URL). */
+  screenshotDataUrl?: string;
+  /** Recent app logs captured at time of report. */
+  recentLogs: string[];
+  /** If a chat was started from this issue, the chat session ID. */
+  chatSessionId?: string;
+  /** Slack thread timestamp (if forwarded to Slack). */
+  slackThreadTs?: string;
+  /** Current status. */
+  status: 'open' | 'in-chat' | 'closed';
+}
+
+export interface SupportMetadata {
+  /** Browser user agent string. */
+  userAgent: string;
+  /** Current page URL. */
+  pageUrl: string;
+  /** Client IP (filled in by server). */
+  clientIp?: string;
+  /** Screen resolution. */
+  screenSize?: string;
+  /** Current timestamp. */
+  timestamp: number;
+}
+
+/** Chat message in a support chat session. */
+export interface SupportChatMessage {
+  id: string;
+  sessionId: string;
+  /** Who sent this message: 'user' (web UI) or 'admin' (Slack). */
+  sender: 'user' | 'admin';
+  /** Display name of the sender. */
+  senderName: string;
+  /** Message text content. */
+  text: string;
+  /** Optional screenshot attachment (base64 PNG data URL). */
+  screenshotDataUrl?: string;
+  timestamp: number;
+}
+
+/** A support chat session, bridged to a single Slack thread. */
+export interface SupportChatSession {
+  id: string;
+  createdAt: number;
+  /** The issue this chat was started from (if any). */
+  issueId?: string;
+  /** Slack thread timestamp for this chat session. */
+  slackThreadTs?: string;
+  /** Messages in this session. */
+  messages: SupportChatMessage[];
+  /** Whether this session is still active. */
+  active: boolean;
+}
+
+/** Broadcast state for the support system. */
+export interface SupportState {
+  type: 'supportState';
+  issues: SupportIssue[];
+  /** Active chat sessions for this client (filtered server-side). */
+  activeSessions: SupportChatSession[];
+}
+
+export function isSupportState(msg: unknown): msg is SupportState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as SupportState).type === 'supportState';
+}
+
+/** Incoming chat message from Slack (server → client). */
+export interface SupportChatIncoming {
+  type: 'supportChatMessage';
+  message: SupportChatMessage;
+}
+
+export function isSupportChatIncoming(msg: unknown): msg is SupportChatIncoming {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as SupportChatIncoming).type === 'supportChatMessage';
+}
+
+/** Client → Server: submit an issue report. */
+export interface SubmitSupportIssue {
+  type: 'submitSupportIssue';
+  tryingToDo: string;
+  stepsPerformed: string;
+  expected: string;
+  actual: string;
+  metadata: SupportMetadata;
+  screenshotDataUrl?: string;
+  recentLogs: string[];
+}
+
+export function isSubmitSupportIssue(msg: unknown): msg is SubmitSupportIssue {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as SubmitSupportIssue;
+  if (m.type !== 'submitSupportIssue') return false;
+  if (typeof m.tryingToDo !== 'string') return false;
+  if (typeof m.actual !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: start a chat session (optionally from an issue). */
+export interface StartSupportChat {
+  type: 'startSupportChat';
+  issueId?: string;
+}
+
+export function isStartSupportChat(msg: unknown): msg is StartSupportChat {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StartSupportChat).type === 'startSupportChat';
+}
+
+/** Client → Server: send a chat message. */
+export interface SendSupportChatMessage {
+  type: 'sendSupportChatMessage';
+  sessionId: string;
+  text: string;
+  screenshotDataUrl?: string;
+  senderName?: string;
+}
+
+export function isSendSupportChatMessage(msg: unknown): msg is SendSupportChatMessage {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as SendSupportChatMessage;
+  if (m.type !== 'sendSupportChatMessage') return false;
+  if (typeof m.sessionId !== 'string') return false;
+  if (typeof m.text !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: end a chat session. */
+export interface EndSupportChat {
+  type: 'endSupportChat';
+  sessionId: string;
+}
+
+export function isEndSupportChat(msg: unknown): msg is EndSupportChat {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as EndSupportChat;
+  if (m.type !== 'endSupportChat') return false;
+  if (typeof m.sessionId !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: create an issue from a chat session. */
+export interface CreateIssueFromChat {
+  type: 'createIssueFromChat';
+  sessionId: string;
+  tryingToDo: string;
+  actual: string;
+}
+
+export function isCreateIssueFromChat(msg: unknown): msg is CreateIssueFromChat {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as CreateIssueFromChat;
+  if (m.type !== 'createIssueFromChat') return false;
+  if (typeof m.sessionId !== 'string') return false;
+  return true;
+}
+
+// ── Admin Auth Types ────────────────────────────────────────────────
+
+/** Client → Server: log in to admin with passphrase. */
+export interface AdminLogin {
+  type: 'adminLogin';
+  passphrase: string;
+}
+
+export function isAdminLogin(msg: unknown): msg is AdminLogin {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as AdminLogin;
+  if (m.type !== 'adminLogin') return false;
+  if (typeof m.passphrase !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: check if an existing token is still valid. */
+export interface AdminCheckAuth {
+  type: 'adminCheckAuth';
+  token: string;
+}
+
+export function isAdminCheckAuth(msg: unknown): msg is AdminCheckAuth {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as AdminCheckAuth;
+  if (m.type !== 'adminCheckAuth') return false;
+  if (typeof m.token !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: set the admin passphrase (first-time setup only). */
+export interface AdminSetPassphrase {
+  type: 'adminSetPassphrase';
+  passphrase: string;
+}
+
+export function isAdminSetPassphrase(msg: unknown): msg is AdminSetPassphrase {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as AdminSetPassphrase;
+  if (m.type !== 'adminSetPassphrase') return false;
+  if (typeof m.passphrase !== 'string') return false;
+  return true;
+}
+
+/** Server → Client: admin auth result. */
+export interface AdminAuthResult {
+  type: 'adminAuthResult';
+  authenticated: boolean;
+  /** Token to store in cookie (only on successful login). */
+  token?: string;
+  /** Whether a passphrase has been configured. */
+  passphraseConfigured: boolean;
+}
+
+export function isAdminAuthResult(msg: unknown): msg is AdminAuthResult {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as AdminAuthResult).type === 'adminAuthResult';
+}
+
+// ── Slack Config Types ──────────────────────────────────────────────
+
+/** Client → Server: save Slack configuration. */
+export interface SaveSlackConfig {
+  type: 'saveSlackConfig';
+  botToken: string;
+  appToken: string;
+  channelId: string;
+}
+
+export function isSaveSlackConfig(msg: unknown): msg is SaveSlackConfig {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as SaveSlackConfig;
+  if (m.type !== 'saveSlackConfig') return false;
+  if (typeof m.botToken !== 'string') return false;
+  if (typeof m.appToken !== 'string') return false;
+  if (typeof m.channelId !== 'string') return false;
+  return true;
+}
+
+/** Client → Server: test the current Slack connection. */
+export interface TestSlackConnection {
+  type: 'testSlackConnection';
+}
+
+export function isTestSlackConnection(msg: unknown): msg is TestSlackConnection {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as TestSlackConnection).type === 'testSlackConnection';
+}
+
+/** Server → Client: Slack configuration state. */
+export interface SlackConfigState {
+  type: 'slackConfigState';
+  configured: boolean;
+  connected: boolean;
+  channelName?: string;
+  error?: string;
+}
+
+export function isSlackConfigState(msg: unknown): msg is SlackConfigState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as SlackConfigState).type === 'slackConfigState';
+}

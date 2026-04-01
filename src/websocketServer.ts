@@ -45,6 +45,16 @@ import {
   isMatchSetAutoWinner,
   isStationSelfDisable,
   isStationSelfEStop,
+  isSubmitSupportIssue,
+  isStartSupportChat,
+  isSendSupportChatMessage,
+  isEndSupportChat,
+  isCreateIssueFromChat,
+  isAdminLogin,
+  isAdminCheckAuth,
+  isAdminSetPassphrase,
+  isSaveSlackConfig,
+  isTestSlackConnection,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -61,6 +71,9 @@ import type { SavedTeamStore } from './savedTeamStore.js';
 import type { ApiKeyStore } from './apiKeyStore.js';
 import type { ScoringEngine } from './scoringEngine.js';
 import type { PortBridgeManager } from './portBridgeManager.js';
+import type { SupportStore } from './supportStore.js';
+import type { SlackBridge } from './slackBridge.js';
+import type { AdminAuth } from './adminAuth.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -113,6 +126,9 @@ export function setupWebSocket(
   scoringEngine?: ScoringEngine,
   portBridgeManager?: PortBridgeManager,
   onDriveAction?: DriveActionCallback,
+  supportStore?: SupportStore,
+  slackBridge?: SlackBridge,
+  adminAuth?: AdminAuth,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -150,6 +166,12 @@ export function setupWebSocket(
 
   /** Track which IP each WebSocket connection belongs to */
   const wsToIp = new Map<WebSocket, string>();
+
+  /** Track which WebSocket connections are admin-authenticated */
+  const adminConnections = new Set<WebSocket>();
+
+  /** Track which WebSocket connections are in which chat sessions */
+  const wsToChatSession = new Map<WebSocket, string>();
 
   /** Track registered cast receivers (TV displays) */
   let nextReceiverId = 1;
@@ -229,6 +251,36 @@ export function setupWebSocket(
     broadcast(portBridgeManager.getState());
   });
 
+  // Broadcast support state changes to all clients
+  supportStore?.addListener(broadcast);
+
+  // Broadcast Slack config state changes to all clients
+  slackBridge?.addListener(broadcast);
+
+  // Handle incoming Slack messages and forward to appropriate chat WebSocket clients
+  if (slackBridge && supportStore) {
+    slackBridge.onSlackMessage = (threadTs, senderName, text) => {
+      const session = supportStore.getChatSessionBySlackThread(threadTs);
+      if (!session) return;
+
+      const message = supportStore.addChatMessage(session.id, 'admin', senderName, text);
+      if (!message) return;
+
+      // Send to all connected clients that are in this chat session
+      const incoming = { type: 'supportChatMessage', message };
+      const data = JSON.stringify(incoming);
+      for (const [clientWs, sessionId] of wsToChatSession) {
+        if (sessionId === session.id && clientWs.readyState === WebSocket.OPEN) {
+          try {
+            clientWs.send(data);
+          } catch {
+            // Client in bad state
+          }
+        }
+      }
+    };
+  }
+
   wss.on('connection', (ws: WebSocket, req) => {
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const rawIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
@@ -281,8 +333,20 @@ export function setupWebSocket(
       ws.send(JSON.stringify(portBridgeManager.getState()));
     }
 
+    // Send support system state
+    if (supportStore) {
+      ws.send(JSON.stringify(supportStore.getState()));
+    }
+
+    // Send Slack config state
+    if (slackBridge) {
+      ws.send(JSON.stringify(slackBridge.getState()));
+    }
+
     ws.on('close', () => {
       wsToIp.delete(ws);
+      adminConnections.delete(ws);
+      wsToChatSession.delete(ws);
       if (castReceivers.delete(ws)) {
         broadcastReceiverList();
       }
@@ -543,6 +607,210 @@ export function setupWebSocket(
           portBridgeManager.bridgePort(data.station, data.portVlanId).catch(err => {
             appError('Error bridging port: ' + err.message);
             ws.send(JSON.stringify({ error: 'Failed to bridge port', details: err.message }));
+          });
+        }
+
+        // ── Support System ──────────────────────────────────────────
+      } else if (isSubmitSupportIssue(data)) {
+        if (supportStore) {
+          const issue = supportStore.createIssue(
+            data.tryingToDo,
+            data.stepsPerformed,
+            data.expected,
+            data.actual,
+            { ...data.metadata, clientIp },
+            data.screenshotDataUrl,
+            data.recentLogs,
+          );
+          ws.send(JSON.stringify({ type: 'supportIssueCreated', issueId: issue.id }));
+
+          // Forward to Slack if configured
+          if (slackBridge?.isConnected()) {
+            slackBridge.postIssue(issue).then(threadTs => {
+              if (threadTs) {
+                supportStore.setIssueSlackThread(issue.id, threadTs);
+              }
+            });
+          }
+        }
+      } else if (isStartSupportChat(data)) {
+        if (supportStore) {
+          const session = supportStore.createChatSession(data.issueId);
+          wsToChatSession.set(ws, session.id);
+
+          // Start a Slack thread for this chat session
+          if (slackBridge?.isConnected()) {
+            slackBridge.startChatThread(session.id, data.issueId).then(threadTs => {
+              if (threadTs) {
+                supportStore.setSlackThreadTs(session.id, threadTs);
+
+                // If started from an issue that already has context, post it to the thread
+                if (data.issueId) {
+                  const issue = supportStore.getIssue(data.issueId);
+                  if (issue) {
+                    slackBridge.postChatMessage(
+                      threadTs,
+                      'System',
+                      `Issue context:\n• *Trying to do:* ${issue.tryingToDo}\n• *What happened:* ${issue.actual}`,
+                    );
+                  }
+                }
+              }
+            });
+          }
+
+          ws.send(JSON.stringify({ type: 'supportChatStarted', sessionId: session.id }));
+        }
+      } else if (isSendSupportChatMessage(data)) {
+        if (supportStore) {
+          const message = supportStore.addChatMessage(
+            data.sessionId,
+            'user',
+            data.senderName ?? 'Field User',
+            data.text,
+            data.screenshotDataUrl,
+          );
+          if (message) {
+            // Forward to Slack thread
+            const session = supportStore.getChatSession(data.sessionId);
+            if (session?.slackThreadTs && slackBridge?.isConnected()) {
+              slackBridge.postChatMessage(
+                session.slackThreadTs,
+                data.senderName ?? 'Field User',
+                data.text,
+                data.screenshotDataUrl,
+              );
+            }
+
+            // Broadcast to all clients in this chat session
+            const incoming = { type: 'supportChatMessage', message };
+            const msgData = JSON.stringify(incoming);
+            for (const [clientWs, sessionId] of wsToChatSession) {
+              if (sessionId === data.sessionId && clientWs.readyState === WebSocket.OPEN) {
+                try {
+                  clientWs.send(msgData);
+                } catch {
+                  // Client in bad state
+                }
+              }
+            }
+          }
+        }
+      } else if (isEndSupportChat(data)) {
+        if (supportStore) {
+          const session = supportStore.getChatSession(data.sessionId);
+          supportStore.endChatSession(data.sessionId);
+          wsToChatSession.delete(ws);
+
+          // Notify Slack
+          if (session?.slackThreadTs && slackBridge?.isConnected()) {
+            slackBridge.postChatEnded(session.slackThreadTs);
+          }
+        }
+      } else if (isCreateIssueFromChat(data)) {
+        if (supportStore) {
+          const issue = supportStore.createIssueFromChat(data.sessionId, data.tryingToDo, data.actual);
+          if (issue) {
+            ws.send(JSON.stringify({ type: 'supportIssueCreated', issueId: issue.id }));
+
+            // Forward the new issue to Slack
+            if (slackBridge?.isConnected()) {
+              slackBridge.postIssue(issue).then(threadTs => {
+                if (threadTs) {
+                  supportStore.setIssueSlackThread(issue.id, threadTs);
+                }
+              });
+            }
+          }
+        }
+
+        // ── Admin Auth ──────────────────────────────────────────────
+      } else if (isAdminLogin(data)) {
+        if (adminAuth) {
+          const token = adminAuth.login(data.passphrase);
+          if (token) {
+            adminConnections.add(ws);
+            ws.send(
+              JSON.stringify({
+                type: 'adminAuthResult',
+                authenticated: true,
+                token,
+                passphraseConfigured: true,
+              }),
+            );
+          } else {
+            ws.send(
+              JSON.stringify({
+                type: 'adminAuthResult',
+                authenticated: false,
+                passphraseConfigured: adminAuth.isConfigured(),
+              }),
+            );
+          }
+        }
+      } else if (isAdminCheckAuth(data)) {
+        if (adminAuth) {
+          const valid = adminAuth.validateToken(data.token);
+          if (valid) adminConnections.add(ws);
+          ws.send(
+            JSON.stringify({
+              type: 'adminAuthResult',
+              authenticated: valid,
+              passphraseConfigured: adminAuth.isConfigured(),
+            }),
+          );
+        }
+      } else if (isAdminSetPassphrase(data)) {
+        if (adminAuth) {
+          // Allow setting passphrase if none is configured, or if this connection is admin-authenticated
+          const canSet = !adminAuth.isConfigured() || adminConnections.has(ws);
+          if (canSet) {
+            const success = adminAuth.setPassphrase(data.passphrase, adminConnections.has(ws));
+            if (success) {
+              // Auto-login the user who set the passphrase
+              const token = adminAuth.login(data.passphrase);
+              if (token) adminConnections.add(ws);
+              ws.send(
+                JSON.stringify({
+                  type: 'adminAuthResult',
+                  authenticated: true,
+                  token,
+                  passphraseConfigured: true,
+                }),
+              );
+            } else {
+              ws.send(JSON.stringify({ error: 'Failed to set passphrase (must be at least 4 characters)' }));
+            }
+          } else {
+            ws.send(JSON.stringify({ error: 'Not authorized to change passphrase' }));
+          }
+        }
+
+        // ── Slack Config ────────────────────────────────────────────
+      } else if (isSaveSlackConfig(data)) {
+        if (slackBridge && adminAuth) {
+          if (!adminConnections.has(ws)) {
+            ws.send(JSON.stringify({ error: 'Admin authentication required to configure Slack' }));
+          } else {
+            slackBridge
+              .saveConfig(data.botToken, data.appToken, data.channelId)
+              .then(() => {
+                ws.send(JSON.stringify({ info: 'Slack configuration saved and connected' }));
+              })
+              .catch(err => {
+                ws.send(JSON.stringify({ error: 'Failed to configure Slack', details: err.message }));
+              });
+          }
+        }
+      } else if (isTestSlackConnection(data)) {
+        if (slackBridge) {
+          slackBridge.testConnection().then(result => {
+            ws.send(
+              JSON.stringify({
+                type: 'slackTestResult',
+                ...result,
+              }),
+            );
           });
         }
       } else {

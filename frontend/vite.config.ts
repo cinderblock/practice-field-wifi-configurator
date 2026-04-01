@@ -53,6 +53,9 @@ function stationRoutes(): Plugin {
         if (url === '/overview') {
           req.url = '/overview.html';
         }
+        if (url === '/support') {
+          req.url = '/support.html';
+        }
         next();
       });
     },
@@ -100,6 +103,7 @@ export default defineConfig({
         scores: 'scores.html',
         match: 'match.html',
         overview: 'overview.html',
+        support: 'support.html',
       },
     },
   },

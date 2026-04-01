@@ -2,8 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { StrictMode } from 'react';
 import { createTheme, CssBaseline, ThemeProvider } from '@mui/material';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { AdminPage } from '../components/AdminPage';
-import { AdminAuthGate } from '../components/AdminAuthGate';
+import { SupportPage } from '../components/SupportPage';
 import { StatusBar } from '../components/StatusBar';
 
 const theme = createTheme({ colorSchemes: { dark: true } });
@@ -14,9 +13,7 @@ createRoot(document.getElementById('root')!).render(
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <StatusBar />
-        <AdminAuthGate>
-          <AdminPage />
-        </AdminAuthGate>
+        <SupportPage />
       </ThemeProvider>
     </ErrorBoundary>
   </StrictMode>,

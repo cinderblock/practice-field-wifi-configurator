@@ -39,6 +39,9 @@ import { handleScoringRequest } from './scoringApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
 import { ApiKeyStore } from './apiKeyStore.js';
 import { PortBridgeManager, parseFieldPorts } from './portBridgeManager.js';
+import { SupportStore } from './supportStore.js';
+import { SlackBridge } from './slackBridge.js';
+import { AdminAuth } from './adminAuth.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -225,6 +228,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Auto-switch scoring mode based on match state
   matchEngine.addStateListener(state => scoringEngine.onMatchStateChange(state));
 
+  // Initialize support system
+  const supportStore = new SupportStore();
+  const slackBridge = new SlackBridge();
+  const adminAuth = new AdminAuth();
+
   // Initialize WebSocket server (callbacks are set below after subsystems are created)
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
   let onDriveAction: ((dsIp: string, station: StationName | null) => void) | undefined;
@@ -258,6 +266,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     scoringEngine,
     portBridgeManager,
     (dsIp, station) => onDriveAction?.(dsIp, station),
+    supportStore,
+    slackBridge,
+    adminAuth,
   );
   setBroadcast(broadcast);
 

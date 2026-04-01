@@ -1,0 +1,406 @@
+import { WebClient } from '@slack/web-api';
+import { SocketModeClient } from '@slack/socket-mode';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import type { SupportIssue, SlackConfigState } from './types.js';
+
+const DEFAULT_CONFIG_FILE = 'slack-config.json';
+
+interface StoredSlackConfig {
+  botToken: string;
+  appToken: string;
+  channelId: string;
+  channelName?: string;
+}
+
+/**
+ * Bridges support system to a Slack channel.
+ * Each chat session becomes a single Slack thread.
+ * Issues are posted as formatted messages.
+ */
+export class SlackBridge {
+  private web: WebClient | null = null;
+  private socketMode: SocketModeClient | null = null;
+  private config: StoredSlackConfig | null = null;
+  private configFilePath: string;
+  private connected = false;
+  private lastError: string | undefined;
+  private listeners: ((state: SlackConfigState) => void)[] = [];
+
+  /**
+   * Called when a message is received from Slack in a support thread.
+   * The handler should forward it to the appropriate WebSocket client.
+   */
+  onSlackMessage:
+    | ((threadTs: string, senderName: string, text: string, files?: { url: string; mimetype: string }[]) => void)
+    | null = null;
+
+  constructor(configFilePath?: string) {
+    this.configFilePath = configFilePath ?? process.env.SLACK_CONFIG_FILE ?? DEFAULT_CONFIG_FILE;
+    this.loadConfig();
+    if (this.config) {
+      this.connect().catch(err => {
+        console.warn('Failed to connect to Slack on startup:', err.message);
+      });
+    }
+  }
+
+  /** Whether Slack is configured (has tokens). */
+  isConfigured(): boolean {
+    return this.config !== null;
+  }
+
+  /** Whether Slack is currently connected. */
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  // ── Configuration ───────────────────────────────────────────────────
+
+  async saveConfig(botToken: string, appToken: string, channelId: string): Promise<void> {
+    // Validate tokens by making a test API call
+    const testClient = new WebClient(botToken);
+
+    let channelName: string | undefined;
+    try {
+      const info = await testClient.conversations.info({ channel: channelId });
+      channelName = (info.channel as { name?: string })?.name;
+    } catch (err) {
+      throw new Error(`Failed to access channel ${channelId}: ${(err as Error).message}`);
+    }
+
+    this.config = { botToken, appToken, channelId, channelName };
+    this.persistConfig();
+
+    // Reconnect with new config
+    await this.disconnect();
+    await this.connect();
+
+    this.notifyListeners();
+  }
+
+  async testConnection(): Promise<{ ok: boolean; error?: string; channelName?: string }> {
+    if (!this.config) return { ok: false, error: 'Slack not configured' };
+
+    try {
+      const client = new WebClient(this.config.botToken);
+      const authResult = await client.auth.test();
+      if (!authResult.ok) return { ok: false, error: 'Auth test failed' };
+
+      const channelInfo = await client.conversations.info({ channel: this.config.channelId });
+      const channelName = (channelInfo.channel as { name?: string })?.name;
+
+      return { ok: true, channelName };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
+  // ── Connection ──────────────────────────────────────────────────────
+
+  private async connect(): Promise<void> {
+    if (!this.config) return;
+
+    try {
+      this.web = new WebClient(this.config.botToken);
+
+      // Start Socket Mode for receiving messages
+      this.socketMode = new SocketModeClient({
+        appToken: this.config.appToken,
+        // Reconnect automatically
+      });
+
+      // Listen for message events in our channel
+      this.socketMode.on('message', async ({ event, ack }) => {
+        await ack();
+        this.handleSlackMessage(event);
+      });
+
+      this.socketMode.on('connected', () => {
+        console.log('Slack Socket Mode connected');
+        this.connected = true;
+        this.lastError = undefined;
+        this.notifyListeners();
+      });
+
+      this.socketMode.on('disconnected', () => {
+        console.log('Slack Socket Mode disconnected');
+        this.connected = false;
+        this.notifyListeners();
+      });
+
+      await this.socketMode.start();
+    } catch (err) {
+      this.lastError = (err as Error).message;
+      this.connected = false;
+      console.error('Failed to connect Slack:', this.lastError);
+      this.notifyListeners();
+    }
+  }
+
+  private async disconnect(): Promise<void> {
+    if (this.socketMode) {
+      try {
+        await this.socketMode.disconnect();
+      } catch {
+        // Ignore disconnect errors
+      }
+      this.socketMode = null;
+    }
+    this.web = null;
+    this.connected = false;
+  }
+
+  // ── Posting ─────────────────────────────────────────────────────────
+
+  /**
+   * Post an issue report to the Slack channel.
+   * Returns the thread timestamp for future replies.
+   */
+  async postIssue(issue: SupportIssue): Promise<string | null> {
+    if (!this.web || !this.config) return null;
+
+    try {
+      const blocks = [
+        {
+          type: 'header' as const,
+          text: { type: 'plain_text' as const, text: `🐛 Issue Report: ${issue.id}` },
+        },
+        {
+          type: 'section' as const,
+          fields: [
+            { type: 'mrkdwn' as const, text: `*Trying to do:*\n${issue.tryingToDo || '_Not specified_'}` },
+            { type: 'mrkdwn' as const, text: `*What happened:*\n${issue.actual || '_Not specified_'}` },
+          ],
+        },
+        {
+          type: 'section' as const,
+          fields: [
+            { type: 'mrkdwn' as const, text: `*Steps:*\n${issue.stepsPerformed || '_Not specified_'}` },
+            { type: 'mrkdwn' as const, text: `*Expected:*\n${issue.expected || '_Not specified_'}` },
+          ],
+        },
+        {
+          type: 'context' as const,
+          elements: [
+            {
+              type: 'mrkdwn' as const,
+              text: `📍 ${issue.metadata.pageUrl} | 🖥️ ${issue.metadata.screenSize ?? 'unknown'} | 🌐 ${issue.metadata.clientIp ?? 'unknown'}`,
+            },
+          ],
+        },
+      ];
+
+      const result = await this.web.chat.postMessage({
+        channel: this.config.channelId,
+        text: `Issue Report: ${issue.tryingToDo}`,
+        blocks,
+      });
+
+      const threadTs = result.ts;
+
+      // If there are recent logs, post them as a thread reply
+      if (issue.recentLogs.length > 0) {
+        const logText = issue.recentLogs.slice(-20).join('\n');
+        await this.web.chat.postMessage({
+          channel: this.config.channelId,
+          thread_ts: threadTs,
+          text: `📋 *Recent Logs:*\n\`\`\`${logText}\`\`\``,
+        });
+      }
+
+      // If there's a screenshot, upload it as a thread reply
+      if (issue.screenshotDataUrl && threadTs) {
+        await this.uploadScreenshot(issue.screenshotDataUrl, threadTs, 'Issue screenshot');
+      }
+
+      return threadTs ?? null;
+    } catch (err) {
+      console.error('Failed to post issue to Slack:', (err as Error).message);
+      return null;
+    }
+  }
+
+  /**
+   * Start a chat thread in Slack for a support chat session.
+   * Returns the thread timestamp.
+   */
+  async startChatThread(sessionId: string, issueId?: string): Promise<string | null> {
+    if (!this.web || !this.config) return null;
+
+    try {
+      const text = issueId ? `💬 Support chat started (from issue ${issueId})` : '💬 New support chat started';
+
+      const result = await this.web.chat.postMessage({
+        channel: this.config.channelId,
+        text,
+      });
+
+      return result.ts ?? null;
+    } catch (err) {
+      console.error('Failed to start Slack chat thread:', (err as Error).message);
+      return null;
+    }
+  }
+
+  /**
+   * Post a user's chat message as a reply in the Slack thread.
+   */
+  async postChatMessage(threadTs: string, senderName: string, text: string, screenshotDataUrl?: string): Promise<void> {
+    if (!this.web || !this.config) return;
+
+    try {
+      await this.web.chat.postMessage({
+        channel: this.config.channelId,
+        thread_ts: threadTs,
+        text: `*${senderName}:* ${text}`,
+      });
+
+      if (screenshotDataUrl) {
+        await this.uploadScreenshot(screenshotDataUrl, threadTs, `Screenshot from ${senderName}`);
+      }
+    } catch (err) {
+      console.error('Failed to post chat message to Slack:', (err as Error).message);
+    }
+  }
+
+  /**
+   * Post a notification that a chat session has ended.
+   */
+  async postChatEnded(threadTs: string): Promise<void> {
+    if (!this.web || !this.config) return;
+
+    try {
+      await this.web.chat.postMessage({
+        channel: this.config.channelId,
+        thread_ts: threadTs,
+        text: '🔚 Support chat session ended.',
+      });
+    } catch (err) {
+      console.error('Failed to post chat-ended to Slack:', (err as Error).message);
+    }
+  }
+
+  // ── Receiving ───────────────────────────────────────────────────────
+
+  private handleSlackMessage(event: {
+    type?: string;
+    subtype?: string;
+    channel?: string;
+    thread_ts?: string;
+    ts?: string;
+    text?: string;
+    user?: string;
+    bot_id?: string;
+    files?: { url_private?: string; mimetype?: string }[];
+  }): void {
+    // Only handle messages in our channel that are threaded replies
+    if (!this.config) return;
+    if (event.channel !== this.config.channelId) return;
+    if (!event.thread_ts) return; // Only threaded replies
+    if (event.bot_id) return; // Ignore our own bot messages
+    if (event.subtype === 'bot_message') return;
+
+    const files = event.files?.map(f => ({
+      url: f.url_private ?? '',
+      mimetype: f.mimetype ?? 'application/octet-stream',
+    }));
+
+    // Look up the user's display name
+    this.resolveUserName(event.user ?? '').then(name => {
+      this.onSlackMessage?.(event.thread_ts!, name, event.text ?? '', files);
+    });
+  }
+
+  private async resolveUserName(userId: string): Promise<string> {
+    if (!this.web || !userId) return 'Admin';
+    try {
+      const info = await this.web.users.info({ user: userId });
+      return (
+        (info.user as { real_name?: string; name?: string })?.real_name ??
+        (info.user as { name?: string })?.name ??
+        'Admin'
+      );
+    } catch {
+      return 'Admin';
+    }
+  }
+
+  // ── Screenshots ─────────────────────────────────────────────────────
+
+  private async uploadScreenshot(dataUrl: string, threadTs: string, title: string): Promise<void> {
+    if (!this.web || !this.config) return;
+
+    try {
+      // Strip data URL prefix to get raw base64
+      const base64Match = dataUrl.match(/^data:image\/\w+;base64,(.+)$/);
+      if (!base64Match) return;
+
+      const buffer = Buffer.from(base64Match[1], 'base64');
+
+      await this.web.filesUploadV2({
+        channel_id: this.config.channelId,
+        thread_ts: threadTs,
+        file: buffer,
+        filename: 'screenshot.png',
+        title,
+      });
+    } catch (err) {
+      console.error('Failed to upload screenshot to Slack:', (err as Error).message);
+    }
+  }
+
+  // ── State & Listeners ───────────────────────────────────────────────
+
+  getState(): SlackConfigState {
+    return {
+      type: 'slackConfigState',
+      configured: this.isConfigured(),
+      connected: this.connected,
+      channelName: this.config?.channelName,
+      error: this.lastError,
+    };
+  }
+
+  addListener(fn: (state: SlackConfigState) => void): () => void {
+    this.listeners.push(fn);
+    return () => {
+      const idx = this.listeners.indexOf(fn);
+      if (idx >= 0) this.listeners.splice(idx, 1);
+    };
+  }
+
+  private notifyListeners(): void {
+    const state = this.getState();
+    for (const listener of this.listeners) {
+      try {
+        listener(state);
+      } catch (err) {
+        console.error('Error in SlackBridge listener:', err);
+      }
+    }
+  }
+
+  // ── Persistence ─────────────────────────────────────────────────────
+
+  private loadConfig(): void {
+    try {
+      if (!existsSync(this.configFilePath)) return;
+      const raw = readFileSync(this.configFilePath, 'utf-8');
+      const parsed: StoredSlackConfig = JSON.parse(raw);
+      if (parsed.botToken && parsed.appToken && parsed.channelId) {
+        this.config = parsed;
+        console.log(`Loaded Slack config from ${this.configFilePath}`);
+      }
+    } catch (err) {
+      console.warn(`Failed to load Slack config from ${this.configFilePath}:`, (err as Error).message);
+    }
+  }
+
+  private persistConfig(): void {
+    try {
+      writeFileSync(this.configFilePath, JSON.stringify(this.config, null, 2), 'utf-8');
+    } catch (err) {
+      console.error(`Failed to save Slack config to ${this.configFilePath}:`, (err as Error).message);
+    }
+  }
+}

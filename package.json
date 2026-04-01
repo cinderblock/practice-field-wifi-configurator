@@ -30,6 +30,8 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
+    "@slack/socket-mode": "^2.0.6",
+    "@slack/web-api": "^7.15.0",
     "cidr-matcher": "^2.1.1",
     "cron": "^3.2.0",
     "syslog-server": "github:cinderblock/syslog-server",

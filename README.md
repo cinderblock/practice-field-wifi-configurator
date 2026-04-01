@@ -42,6 +42,7 @@ npm install
 | `/logs`             | Logs page — live backend log stream                                                 |
 | `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`) |
 | `/scores`           | Scoreboard — full-screen TV-optimized score display for casting                     |
+| `/support`          | Support — issue reporting, real-time Slack chat, screenshot capture                 |
 | `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients         |
 
 ## Features
@@ -111,6 +112,39 @@ Full API documentation is served at `GET /api/score/schema` as an [OpenAPI 3.1.0
 | `/api/score/schema`  | GET    | None     | Machine-readable API schema                 |
 
 Score state is also broadcast in real time to all WebSocket clients as `scoreState` messages.
+
+### Support System
+
+A built-in support system available at `/support` with two main workflows:
+
+**Issue Reports** — Teams can submit structured issue reports with:
+
+- Standard template fields: what they were trying to do, what steps they took, what they expected, and what happened
+- Automatic screenshot capture of the current browser page (via html2canvas)
+- Auto-included recent system logs and browser metadata (user agent, screen size, page URL)
+- Issues are stored server-side and optionally forwarded to a Slack channel
+
+**Real-Time Chat** — Teams can start a live chat session that bridges to a Slack channel:
+
+- Each chat session becomes a single Slack thread
+- Screenshots can be attached to chat messages with one click (📷 button)
+- A chat can be started directly from an existing issue report
+- An admin's Slack replies appear in real-time on the web chat UI
+- Issues can be created from chat conversations to track them formally
+
+A **Support** button (agent icon) appears in the status bar on every page for quick access.
+
+**Slack Integration** is configured on the admin page (`/admin` → Slack Integration):
+
+- Requires a Slack App with a Bot Token (`xoxb-...`) and App-Level Token (`xapp-...`) with `connections:write` scope
+- Uses Socket Mode for receiving messages (no public URL required)
+- Test connection button to verify configuration
+
+**Admin Authentication** — The `/admin` page is secured with a shared passphrase:
+
+- First visit prompts passphrase creation (min. 4 characters)
+- Subsequent visits require login; session token stored in browser
+- Required for Slack configuration and other admin operations
 
 ### Duplicate Team Handling
 
@@ -382,24 +416,28 @@ server {
 
 ## Environment Variables
 
-| Variable                      | Default             | Description                                                                                                                           |
-| ----------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEBSOCKET_PORT`              | `3000`              | Port for the WebSocket server                                                                                                         |
-| `RADIO_URL`                   | `http://10.0.100.2` | URL for the radio management API                                                                                                      |
-| `VLAN_INTERFACE`              | _(none)_            | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
-| `FMS_ENDPOINT`                | `false`             | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
-| `SYSLOG_ENDPOINT`             | `false`             | Set to `true` to enable the syslog server                                                                                             |
-| `RADIO_CLEAR_SCHEDULE`        | _(none)_            | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
-| `RADIO_CLEAR_TIMEZONE`        | _(none)_            | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
-| `VLAN_HOST_OCTET`             | `254`               | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
-| `TRUSTED_PROXIES`             | _(none)_            | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
-| `IPTABLES_COMMENT_PREFIX`     | `pfms-`             | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
-| `MDNS_REFLECTOR`              | `false`             | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
-| `TEST_INTERFACE`              | _(none)_            | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
-| `FIELD_PORTS`                 | _(none)_            | Physical port bridging config: `VLANID:Name,...` (e.g., `201:Port A,202:Port B`). Requires `VLAN_INTERFACE`.                          |
-| `DRY_RUN`                     | _(none)_            | Set to any value to disable network operations (log-only mode for development)                                                        |
-| `API_KEYS_FILE`               | `api-keys.json`     | Path to the JSON file for API key persistence.                                                                                        |
-| `SCORING_AUTO_REGISTER_LIMIT` | `1`                 | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |
+| Variable                      | Default               | Description                                                                                                                           |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBSOCKET_PORT`              | `3000`                | Port for the WebSocket server                                                                                                         |
+| `RADIO_URL`                   | `http://10.0.100.2`   | URL for the radio management API                                                                                                      |
+| `VLAN_INTERFACE`              | _(none)_              | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
+| `FMS_ENDPOINT`                | `false`               | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
+| `SYSLOG_ENDPOINT`             | `false`               | Set to `true` to enable the syslog server                                                                                             |
+| `RADIO_CLEAR_SCHEDULE`        | _(none)_              | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
+| `RADIO_CLEAR_TIMEZONE`        | _(none)_              | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
+| `VLAN_HOST_OCTET`             | `254`                 | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
+| `TRUSTED_PROXIES`             | _(none)_              | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
+| `IPTABLES_COMMENT_PREFIX`     | `pfms-`               | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
+| `MDNS_REFLECTOR`              | `false`               | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
+| `TEST_INTERFACE`              | _(none)_              | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
+| `FIELD_PORTS`                 | _(none)_              | Physical port bridging config: `VLANID:Name,...` (e.g., `201:Port A,202:Port B`). Requires `VLAN_INTERFACE`.                          |
+| `DRY_RUN`                     | _(none)_              | Set to any value to disable network operations (log-only mode for development)                                                        |
+| `API_KEYS_FILE`               | `api-keys.json`       | Path to the JSON file for API key persistence.                                                                                        |
+| `SCORING_AUTO_REGISTER_LIMIT` | `1`                   | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |
+| `ADMIN_AUTH_FILE`             | `admin-auth.json`     | Path to the JSON file for admin authentication persistence.                                                                           |
+| `SUPPORT_ISSUES_FILE`         | `support-issues.json` | Path to the JSON file for support issue persistence.                                                                                  |
+| `SUPPORT_CHATS_FILE`          | `support-chats.json`  | Path to the JSON file for support chat session persistence.                                                                           |
+| `SLACK_CONFIG_FILE`           | `slack-config.json`   | Path to the JSON file for Slack integration configuration.                                                                            |
 
 ### Trusted Proxies Configuration
 

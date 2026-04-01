@@ -34,6 +34,8 @@ import {
   useScoreState,
   useApiKeyState,
   useApiKeyCreatedEvent,
+  useSlackConfigState,
+  useSlackTestResult,
   sendAdminStopMatch,
   sendAdminGlobalEStop,
   sendAdminStationEStop,
@@ -50,6 +52,8 @@ import {
   sendApprovePendingDevice,
   sendDismissPendingDevice,
   sendScoreReset,
+  sendSaveSlackConfig,
+  sendTestSlackConnection,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -293,8 +297,129 @@ export function AdminPage() {
       <ScoringSection />
       <ApiKeySection />
       <StationControlSection />
+      <SlackConfigSection />
       <FirmwareSection />
     </Container>
+  );
+}
+
+// ── Slack Configuration ──────────────────────────────────────────────
+
+function SlackConfigSection() {
+  const slackConfig = useSlackConfigState();
+  const [botToken, setBotToken] = useState('');
+  const [appToken, setAppToken] = useState('');
+  const [channelId, setChannelId] = useState('');
+  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string; channelName?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useSlackTestResult(
+    useCallback((result: { ok: boolean; error?: string; channelName?: string }) => {
+      setTestResult(result);
+    }, []),
+  );
+
+  const handleSave = () => {
+    if (!botToken || !appToken || !channelId) return;
+    setSaving(true);
+    sendSaveSlackConfig(botToken, appToken, channelId);
+    // Reset saving state after a timeout (result comes via slackConfigState)
+    setTimeout(() => setSaving(false), 3000);
+  };
+
+  const handleTest = () => {
+    setTestResult(null);
+    sendTestSlackConnection();
+  };
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h5">Slack Integration</Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            {slackConfig?.configured && (
+              <Chip
+                label={
+                  slackConfig.connected
+                    ? `Connected${slackConfig.channelName ? ` (#${slackConfig.channelName})` : ''}`
+                    : 'Disconnected'
+                }
+                size="small"
+                color={slackConfig.connected ? 'success' : 'error'}
+              />
+            )}
+            {!slackConfig?.configured && <Chip label="Not Configured" size="small" color="default" />}
+          </Box>
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Connect to a Slack channel to receive support issue reports and enable real-time chat. You'll need a Slack App
+          with a Bot Token (<code>xoxb-...</code>) and an App-Level Token (<code>xapp-...</code>) with{' '}
+          <code>connections:write</code> scope.
+        </Typography>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <TextField
+            size="small"
+            label="Bot Token (xoxb-...)"
+            type="password"
+            value={botToken}
+            onChange={e => setBotToken(e.target.value)}
+            placeholder="xoxb-..."
+            fullWidth
+          />
+          <TextField
+            size="small"
+            label="App-Level Token (xapp-...)"
+            type="password"
+            value={appToken}
+            onChange={e => setAppToken(e.target.value)}
+            placeholder="xapp-..."
+            fullWidth
+          />
+          <TextField
+            size="small"
+            label="Channel ID"
+            value={channelId}
+            onChange={e => setChannelId(e.target.value)}
+            placeholder="C0XXXXXXX"
+            fullWidth
+            helperText="Right-click a Slack channel → View channel details → scroll to Channel ID"
+          />
+
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleSave}
+              disabled={saving || !botToken || !appToken || !channelId}
+            >
+              {saving ? 'Saving...' : 'Save & Connect'}
+            </Button>
+            {slackConfig?.configured && (
+              <Button variant="outlined" size="small" onClick={handleTest}>
+                Test Connection
+              </Button>
+            )}
+          </Box>
+
+          {slackConfig?.error && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {slackConfig.error}
+            </Alert>
+          )}
+
+          {testResult && (
+            <Alert severity={testResult.ok ? 'success' : 'error'} sx={{ mt: 1 }}>
+              {testResult.ok
+                ? `Connection OK${testResult.channelName ? ` — posting to #${testResult.channelName}` : ''}`
+                : `Connection failed: ${testResult.error}`}
+            </Alert>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 

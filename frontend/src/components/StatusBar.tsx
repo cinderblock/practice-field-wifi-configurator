@@ -6,6 +6,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Button from '@mui/material/Button';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import ScoreboardIcon from '@mui/icons-material/Scoreboard';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
 import { usePendingCommit, sendApplyConfig, useServerStartTime, serverToBrowserTime } from '../hooks/useBackend';
 
@@ -135,6 +136,11 @@ export function StatusBar() {
         </Tooltip>
       )}
       <Box sx={{ position: 'absolute', right: 4, display: 'flex', gap: 0.5, alignItems: 'center' }}>
+        <Tooltip title="Get Help / Report Issue" arrow>
+          <IconButton component="a" href="/support" size="small" sx={{ p: 0, color: 'warning.main' }}>
+            <SupportAgentIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Scoreboard" arrow>
           <IconButton component="a" href="/scores" target="_blank" size="small" sx={{ p: 0, color: 'text.secondary' }}>
             <ScoreboardIcon sx={{ fontSize: 14 }} />
