@@ -257,6 +257,26 @@ export class MdnsReflector {
   /** IPs/ranges to exclude from requester tracking */
   private readonly excludedRequesters: IpMatcher[];
 
+  /**
+   * Serialized send queue.
+   *
+   * setMulticastInterface() is a socket-wide option (setsockopt IP_MULTICAST_IF)
+   * that takes effect immediately, but socket.send() is DEFERRED — in libuv, when
+   * called during receive processing (UV_HANDLE_UDP_PROCESSING flag), the actual
+   * sendmsg() syscall is queued and flushed after all pending reads complete.
+   *
+   * When multiple mDNS packets arrive simultaneously (common: laptops query,
+   * robots announce, service discovery fires), each handlePacket call overwrites
+   * IP_MULTICAST_IF and queues a send. All queued sends then execute using
+   * whichever interface was set LAST — sending packets out the wrong interface.
+   *
+   * This queue serializes sends: set the interface, send, wait for the callback,
+   * then process the next entry. This guarantees each packet goes out on the
+   * correct interface regardless of how many packets are batched in one read cycle.
+   */
+  private sendQueue: Array<{ packet: Buffer; iface: string; label: string }> = [];
+  private sendInFlight = false;
+
   constructor(
     private readonly getTeamForStation: (station: StationName) => number | null,
     private readonly vlanHostOctet: number = 254,
@@ -314,6 +334,8 @@ export class MdnsReflector {
       this.socket = null;
     }
     this.joinedTeams.clear();
+    this.sendQueue.length = 0;
+    this.sendInFlight = false;
     console.log('mDNS reflector stopped');
   }
 
@@ -423,19 +445,31 @@ export class MdnsReflector {
   }
 
   /**
-   * Forward a query packet to a team's VLAN by switching the socket's
-   * outgoing multicast interface. Safe to call in sequence because Node.js
-   * is single-threaded — setMulticastInterface + send execute atomically
-   * within the same event loop tick.
+   * Enqueue a multicast send and kick the queue if idle.
+   * Each send sets its own multicast interface before calling sendmsg(),
+   * avoiding the race where batched reads overwrite IP_MULTICAST_IF.
    */
+  private enqueueSend(packet: Buffer, iface: string, label: string): void {
+    this.sendQueue.push({ packet, iface, label });
+    this.flushSendQueue();
+  }
+
+  private flushSendQueue(): void {
+    if (this.sendInFlight || this.sendQueue.length === 0 || !this.socket) return;
+    this.sendInFlight = true;
+    const { packet, iface, label } = this.sendQueue.shift()!;
+    this.socket.setMulticastInterface(iface);
+    this.socket.send(packet, 0, packet.length, MDNS_PORT, MDNS_ADDR, err => {
+      if (err) console.error(`mDNS: failed to send (${label}):`, err);
+      this.sendInFlight = false;
+      this.flushSendQueue();
+    });
+  }
+
   private forwardToVlan(packet: Buffer, team: number): void {
     const vlanIp = this.joinedTeams.get(team);
     if (!vlanIp || !this.socket) return;
-
-    this.socket.setMulticastInterface(vlanIp);
-    this.socket.send(packet, 0, packet.length, MDNS_PORT, MDNS_ADDR, err => {
-      if (err) console.error(`mDNS: failed to forward query to team ${team}:`, err);
-    });
+    this.enqueueSend(packet, vlanIp, `query → team ${team}`);
   }
 
   private static readonly MAX_RECENT_NAMES = 10;
@@ -486,11 +520,7 @@ export class MdnsReflector {
   /** Forward a response packet to the main network (default route interface). */
   private forwardToMain(packet: Buffer): void {
     if (!this.socket) return;
-
     // 0.0.0.0 = default multicast interface (see comment in start())
-    this.socket.setMulticastInterface('0.0.0.0');
-    this.socket.send(packet, 0, packet.length, MDNS_PORT, MDNS_ADDR, err => {
-      if (err) console.error('mDNS: failed to forward response to main network:', err);
-    });
+    this.enqueueSend(packet, '0.0.0.0', 'response → main');
   }
 }
