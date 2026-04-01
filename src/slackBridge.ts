@@ -1,6 +1,7 @@
 import { WebClient } from '@slack/web-api';
 import { SocketModeClient } from '@slack/socket-mode';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { emojify } from 'node-emoji';
 import type { SupportIssue, SlackConfigState } from './types.js';
 
 const DEFAULT_CONFIG_FILE = 'slack-config.json';
@@ -305,9 +306,10 @@ export class SlackBridge {
       mimetype: f.mimetype ?? 'application/octet-stream',
     }));
 
-    // Look up the user's display name
+    // Look up the user's display name and convert Slack emoji codes to Unicode
     this.resolveUserName(event.user ?? '').then(name => {
-      this.onSlackMessage?.(event.thread_ts!, name, event.text ?? '', files);
+      const text = emojify(event.text ?? '');
+      this.onSlackMessage?.(event.thread_ts!, name, text, files);
     });
   }
 
