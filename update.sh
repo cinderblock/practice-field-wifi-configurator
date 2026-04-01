@@ -11,13 +11,9 @@ if [ "$1" != "continue" ]; then
   exec "$(realpath "$0")" continue
 fi
 
-if [ -d node_modules ]; then
-  npm i
-else
-  npm ci
-fi
+bun install
 
-npm run build
+bun run build
 
 DEPLOY_BASE=/opt/practice-field-management-system
 SERVICE=practice-field-management-system.service
