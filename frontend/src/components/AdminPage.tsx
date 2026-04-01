@@ -371,7 +371,7 @@ function SlackConfigSection() {
             sx={{ px: 0, minHeight: 0, '& .MuiAccordionSummary-content': { my: 0.5 } }}
           >
             <Typography variant="body2" color="primary">
-              Setup instructions — how to create the Slack App
+              Setup wizard — create a Slack App and connect it
             </Typography>
           </AccordionSummary>
           <AccordionDetails sx={{ px: 0 }}>
@@ -380,7 +380,7 @@ function SlackConfigSection() {
               sx={{
                 pl: 2.5,
                 my: 0,
-                '& li': { mb: 1.5, fontSize: '0.875rem', color: 'text.secondary' },
+                '& > li': { mb: 2, fontSize: '0.875rem', color: 'text.secondary' },
                 '& code': { backgroundColor: 'action.hover', px: 0.5, borderRadius: 0.5, fontSize: '0.8rem' },
                 '& strong': { color: 'text.primary' },
               }}
@@ -395,32 +395,39 @@ function SlackConfigSection() {
               </li>
               <li>
                 <strong>Add Bot Token Scopes:</strong> Go to <em>OAuth & Permissions</em> → <em>Scopes</em> →{' '}
-                <em>Bot Token Scopes</em> and add:
-                <Box component="ul" sx={{ mt: 0.5, pl: 2, '& li': { mb: 0.25 } }}>
-                  <li>
-                    <code>chat:write</code> — post messages
-                  </li>
-                  <li>
-                    <code>channels:read</code> — read channel info
-                  </li>
-                  <li>
-                    <code>files:write</code> — upload screenshots
-                  </li>
-                  <li>
-                    <code>users:read</code> — resolve admin display names
-                  </li>
-                </Box>
+                <em>Bot Token Scopes</em> and add: <code>chat:write</code>, <code>channels:read</code>,{' '}
+                <code>files:write</code>, <code>users:read</code>.
               </li>
               <li>
                 <strong>Install to Workspace:</strong> Go to <em>OAuth & Permissions</em> →{' '}
-                <em>Install to Workspace</em>. Copy the <strong>Bot User OAuth Token</strong> (<code>xoxb-...</code>).
+                <em>Install to Workspace</em>. Copy the <strong>Bot User OAuth Token</strong> and paste it here:
+                <TextField
+                  size="small"
+                  label="Bot Token (xoxb-...)"
+                  type="password"
+                  value={botToken}
+                  onChange={e => setBotToken(e.target.value)}
+                  placeholder="xoxb-..."
+                  fullWidth
+                  sx={{ mt: 1 }}
+                />
               </li>
               <li>
                 <strong>Enable Socket Mode:</strong> Go to <em>Settings</em> → <em>Socket Mode</em> → toggle on. A
                 dialog will prompt you to create an <strong>App-Level Token</strong> — the{' '}
                 <code>connections:write</code> scope is pre-selected. Give it a name (e.g. "websocket") and click{' '}
-                <strong>Generate</strong>. Copy the token (<code>xapp-...</code>). If you missed the dialog, go to{' '}
-                <em>Basic Information</em> → <em>App-Level Tokens</em> → <em>Generate Token and Scopes</em>.
+                <strong>Generate</strong>. If you missed the dialog, go to <em>Basic Information</em> →{' '}
+                <em>App-Level Tokens</em> → <em>Generate Token and Scopes</em>. Paste the token here:
+                <TextField
+                  size="small"
+                  label="App-Level Token (xapp-...)"
+                  type="password"
+                  value={appToken}
+                  onChange={e => setAppToken(e.target.value)}
+                  placeholder="xapp-..."
+                  fullWidth
+                  sx={{ mt: 1 }}
+                />
               </li>
               <li>
                 <strong>Subscribe to Events:</strong> Go to <em>Event Subscriptions</em> → toggle on →{' '}
@@ -432,44 +439,22 @@ function SlackConfigSection() {
               </li>
               <li>
                 <strong>Get the Channel ID:</strong> Right-click the channel → <em>View channel details</em> → scroll to
-                the bottom → copy the <strong>Channel ID</strong> (<code>C0XXXXXXX</code>).
-              </li>
-              <li>
-                Paste all three values below and click <strong>Save & Connect</strong>.
+                the bottom. Paste the <strong>Channel ID</strong> here:
+                <TextField
+                  size="small"
+                  label="Channel ID"
+                  value={channelId}
+                  onChange={e => setChannelId(e.target.value)}
+                  placeholder="C0XXXXXXX"
+                  fullWidth
+                  sx={{ mt: 1 }}
+                />
               </li>
             </Box>
           </AccordionDetails>
         </Accordion>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <TextField
-            size="small"
-            label="Bot Token (xoxb-...)"
-            type="password"
-            value={botToken}
-            onChange={e => setBotToken(e.target.value)}
-            placeholder="xoxb-..."
-            fullWidth
-          />
-          <TextField
-            size="small"
-            label="App-Level Token (xapp-...)"
-            type="password"
-            value={appToken}
-            onChange={e => setAppToken(e.target.value)}
-            placeholder="xapp-..."
-            fullWidth
-          />
-          <TextField
-            size="small"
-            label="Channel ID"
-            value={channelId}
-            onChange={e => setChannelId(e.target.value)}
-            placeholder="C0XXXXXXX"
-            fullWidth
-            helperText="Right-click a Slack channel → View channel details → scroll to Channel ID"
-          />
-
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
               variant="contained"
