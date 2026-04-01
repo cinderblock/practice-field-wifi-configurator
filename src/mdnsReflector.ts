@@ -429,13 +429,35 @@ export class MdnsReflector {
         if (team !== null) teams.add(team);
       }
 
-      for (const team of teams) {
-        if (this.joinedTeams.has(team)) {
+      if (teams.size > 0) {
+        // FRC-patterned query (e.g. roboRIO-9400-FRC.local) — forward to specific team VLAN(s)
+        for (const team of teams) {
+          if (this.joinedTeams.has(team)) {
+            const station = this.teamToStation.get(team);
+            if (!station) continue;
+            if (!excluded) {
+              const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
+              const names: MdnsResolvedName[] = teamNames.map(n => ({
+                name: n.toLowerCase(),
+                requester: rinfo.address,
+              }));
+              this.incrementCounter(station, team, 'queriesForwarded', names);
+            }
+            this.forwardToVlan(msg, team);
+          }
+        }
+      } else if (queryNames.some(n => !n.startsWith('_'))) {
+        // Non-FRC hostname query (e.g. limelight-left.local, radio.local) — the name
+        // doesn't contain a team number so we can't target a specific VLAN. Broadcast
+        // to all active VLANs and let the device that owns the name respond.
+        // Filter out pure service-discovery queries (_services._dns-sd._udp.local etc.)
+        // to avoid unnecessary response floods from every device on every VLAN.
+        for (const [team] of this.joinedTeams) {
           const station = this.teamToStation.get(team);
-          if (!station) continue;
-          if (!excluded) {
-            const teamNames = queryNames.filter(n => extractTeamFromName(n) === team);
-            const names: MdnsResolvedName[] = teamNames.map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
+          if (station && !excluded) {
+            const names: MdnsResolvedName[] = queryNames
+              .filter(n => !n.startsWith('_'))
+              .map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
             this.incrementCounter(station, team, 'queriesForwarded', names);
           }
           this.forwardToVlan(msg, team);
