@@ -6,15 +6,10 @@
  *   Queries:   main network → team VLAN  (laptops looking up robots)
  *   Responses: team VLAN → main network  (robots answering)
  *
- * Query routing uses two strategies:
- *   1. Team-in-hostname (e.g. roboRIO-9400-FRC.local) → extract team number
- *      and route to that VLAN. Works for any laptop without configuration.
- *   2. Requester's slot selection (route preference) → used for names that
- *      don't contain a team number (limelight.local, radio.local, etc.).
- *      Requires the laptop to have selected a station in the web UI.
- *
- * This means any laptop can resolve roboRIO by name, and laptops that have
- * selected their team can also resolve Limelights, radios, PhotonVision, etc.
+ * Query routing uses the laptop's slot selection (route preference) to
+ * determine which VLAN to forward to. This means ALL .local names work
+ * (roboRIO, Limelight, PhotonVision, radio, etc.) — the reflector doesn't
+ * need to parse team numbers from hostnames.
  *
  * Loop prevention relies on setMulticastLoopback(false) — the socket never
  * receives its own forwarded packets — plus the directional filter above.
@@ -111,24 +106,6 @@ function parseAnswerRecords(buf: Buffer): { name: string; resolvedIp?: string }[
   }
 
   return records;
-}
-
-// ── FRC name matching ───────────────────────────────────────────────
-
-/**
- * FRC device naming patterns. Group 1 captures the team number.
- * Used to route queries like roboRIO-9400-FRC.local to the correct VLAN
- * without requiring the laptop to have a route preference set.
- */
-const FRC_PATTERNS: RegExp[] = [/^roboRIO-(\d{1,5})-FRC\b/i];
-
-function extractTeamFromName(dnsName: string): number | null {
-  const hostname = dnsName.replace(/\.local\.?$/i, '');
-  for (const pattern of FRC_PATTERNS) {
-    const match = hostname.match(pattern);
-    if (match) return parseInt(match[1], 10);
-  }
-  return null;
 }
 
 // ── mDNS name condensing ────────────────────────────────────────────
@@ -421,52 +398,28 @@ export class MdnsReflector {
       this.incrementCounter(station, sourceTeam, 'responsesForwarded', names);
       this.forwardToMain(msg);
     } else {
-      // Packet from the main network — forward queries to the appropriate VLAN.
+      // Packet from the main network — forward queries to the requester's selected VLAN.
+      // Routing is based on the laptop's slot selection (route preference), NOT on
+      // parsing team numbers from hostnames. This means all .local names work:
+      // roboRIO, Limelight, PhotonVision, radio, etc.
       if (isResponse) return;
 
-      const excluded = isExcluded(rinfo.address, this.excludedRequesters);
-      const queryNames = parseQuestionNames(msg);
-
-      // Strategy 1: Extract team number from FRC hostnames (e.g. roboRIO-9400-FRC.local).
-      // Works for any laptop — no route preference needed.
-      const teamsFromNames = new Set<number>();
-      for (const name of queryNames) {
-        const team = extractTeamFromName(name);
-        if (team !== null) teamsFromNames.add(team);
-      }
-
-      if (teamsFromNames.size > 0) {
-        for (const team of teamsFromNames) {
-          if (!this.joinedTeams.has(team)) continue;
-          const station = this.teamToStation.get(team);
-          if (!station) continue;
-          if (!excluded) {
-            const names: MdnsResolvedName[] = queryNames
-              .filter(n => extractTeamFromName(n) === team)
-              .map(n => ({ name: n.toLowerCase(), requester: rinfo.address }));
-            this.incrementCounter(station, team, 'queriesForwarded', names);
-          }
-          this.forwardToVlan(msg, team);
-        }
-        return;
-      }
-
-      // Strategy 2: Use the requester's slot selection (route preference) for names
-      // that don't embed a team number (limelight.local, radio.local, etc.).
-      // Requires the laptop to have selected a station via the web UI.
       const station = this.getStationForRequester(rinfo.address);
-      if (!station) return;
+      if (!station) return; // Laptop hasn't selected a slot — nowhere to forward
 
       const team = this.getTeamForStation(station);
       if (team === null || !this.joinedTeams.has(team)) return;
 
+      const excluded = isExcluded(rinfo.address, this.excludedRequesters);
       if (!excluded) {
+        const queryNames = parseQuestionNames(msg);
         const names: MdnsResolvedName[] = queryNames.map(n => ({
           name: n.toLowerCase(),
           requester: rinfo.address,
         }));
         this.incrementCounter(station, team, 'queriesForwarded', names);
       }
+
       this.forwardToVlan(msg, team);
     }
   }
