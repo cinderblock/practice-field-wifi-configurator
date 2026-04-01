@@ -603,33 +603,23 @@ export function SupportPage() {
         Support
       </Typography>
 
+      {slackConfig !== null && slackConfig.configured === false && (
+        <Alert severity="info" sx={{ mb: 1 }}>
+          Chat requires Slack integration.{' '}
+          <a href="/admin" style={{ color: 'inherit' }}>
+            Set up Slack on the admin page
+          </a>{' '}
+          to enable real-time chat.
+        </Alert>
+      )}
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab icon={<BugReportIcon />} label="Report Issue" iconPosition="start" />
-        <Tooltip
-          title={
-            !slackConfig?.configured ? (
-              <>
-                Slack not configured.{' '}
-                <a href="/admin" style={{ color: 'inherit' }}>
-                  Set up Slack on the admin page
-                </a>{' '}
-                to enable chat.
-              </>
-            ) : (
-              ''
-            )
-          }
-          arrow
-        >
-          <span>
-            <Tab
-              icon={<ChatIcon />}
-              label={activeChatSessionId ? 'Chat (Active)' : 'Chat'}
-              iconPosition="start"
-              disabled={!slackConfig?.configured && !activeChatSessionId}
-            />
-          </span>
-        </Tooltip>
+        <Tab
+          icon={<ChatIcon />}
+          label={activeChatSessionId ? 'Chat (Active)' : 'Chat'}
+          iconPosition="start"
+          disabled={slackConfig !== null && !slackConfig.configured && !activeChatSessionId}
+        />
         <Tab icon={<DescriptionIcon />} label="Issues" iconPosition="start" />
       </Tabs>
 
