@@ -9,7 +9,13 @@ import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import LockIcon from '@mui/icons-material/Lock';
 
-import { useAdminAuth, sendAdminLogin, sendAdminCheckAuth, sendAdminSetPassphrase } from '../hooks/useBackend';
+import {
+  useAdminAuth,
+  useWsConnected,
+  sendAdminLogin,
+  sendAdminCheckAuth,
+  sendAdminSetPassphrase,
+} from '../hooks/useBackend';
 
 const ADMIN_TOKEN_KEY = 'pfms-admin-token';
 
@@ -20,13 +26,17 @@ const ADMIN_TOKEN_KEY = 'pfms-admin-token';
  */
 export function AdminAuthGate({ children }: { children: ReactNode }) {
   const authResult = useAdminAuth();
+  const wsConnected = useWsConnected();
   const [passphrase, setPassphrase] = useState('');
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  const [authCheckSent, setAuthCheckSent] = useState(false);
 
-  // On mount, check for stored token
+  // Wait for WebSocket to connect, then check for stored token
   useEffect(() => {
+    if (!wsConnected || authCheckSent) return;
+    setAuthCheckSent(true);
     const token = localStorage.getItem(ADMIN_TOKEN_KEY);
     if (token) {
       sendAdminCheckAuth(token);
@@ -34,7 +44,7 @@ export function AdminAuthGate({ children }: { children: ReactNode }) {
       // Send a check to find out if passphrase is configured
       sendAdminCheckAuth('');
     }
-  }, []);
+  }, [wsConnected, authCheckSent]);
 
   // Handle auth result changes
   useEffect(() => {
