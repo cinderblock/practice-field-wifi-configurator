@@ -566,6 +566,7 @@ export function SupportPage() {
   const [tab, setTab] = useState(0);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [createIssueDialogOpen, setCreateIssueDialogOpen] = useState(false);
+  const slackConfig = useSlackConfigState();
 
   const handleIssueSubmitted = (issueId: string) => {
     // Dispatch a custom event so the form can pick it up
@@ -604,7 +605,31 @@ export function SupportPage() {
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab icon={<BugReportIcon />} label="Report Issue" iconPosition="start" />
-        <Tab icon={<ChatIcon />} label={activeChatSessionId ? 'Chat (Active)' : 'Chat'} iconPosition="start" />
+        <Tooltip
+          title={
+            !slackConfig?.configured ? (
+              <>
+                Slack not configured.{' '}
+                <a href="/admin" style={{ color: 'inherit' }}>
+                  Set up Slack on the admin page
+                </a>{' '}
+                to enable chat.
+              </>
+            ) : (
+              ''
+            )
+          }
+          arrow
+        >
+          <span>
+            <Tab
+              icon={<ChatIcon />}
+              label={activeChatSessionId ? 'Chat (Active)' : 'Chat'}
+              iconPosition="start"
+              disabled={!slackConfig?.configured && !activeChatSessionId}
+            />
+          </span>
+        </Tooltip>
         <Tab icon={<DescriptionIcon />} label="Issues" iconPosition="start" />
       </Tabs>
 
