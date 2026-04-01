@@ -416,9 +416,11 @@ function SlackConfigSection() {
                 <em>Install to Workspace</em>. Copy the <strong>Bot User OAuth Token</strong> (<code>xoxb-...</code>).
               </li>
               <li>
-                <strong>Enable Socket Mode:</strong> Go to <em>Settings</em> → <em>Socket Mode</em> → toggle on. Create
-                an <strong>App-Level Token</strong> with the <code>connections:write</code> scope. Copy it (
-                <code>xapp-...</code>).
+                <strong>Enable Socket Mode:</strong> Go to <em>Settings</em> → <em>Socket Mode</em> → toggle on. A
+                dialog will prompt you to create an <strong>App-Level Token</strong> — the{' '}
+                <code>connections:write</code> scope is pre-selected. Give it a name (e.g. "websocket") and click{' '}
+                <strong>Generate</strong>. Copy the token (<code>xapp-...</code>). If you missed the dialog, go to{' '}
+                <em>Basic Information</em> → <em>App-Level Tokens</em> → <em>Generate Token and Scopes</em>.
               </li>
               <li>
                 <strong>Subscribe to Events:</strong> Go to <em>Event Subscriptions</em> → toggle on →{' '}
