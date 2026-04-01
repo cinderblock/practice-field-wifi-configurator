@@ -24,7 +24,7 @@ import {
   clearRoutePreference,
 } from './routePreferenceManager.js';
 import { buildNetworkStats } from './networkStats.js';
-import { setBroadcast } from './appLogger.js';
+import { setBroadcast, appInfo, appWarn } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
@@ -615,7 +615,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         comment: `${IPTABLES_COMMENT_PREFIX}block-dup-ds-${station}`,
       });
       stationBlocks.set(dsIp, brName);
-      console.warn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${brName})`);
+      appWarn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${brName})`);
       matchEngine.setBlockedDS(station, [...stationBlocks!.keys()]);
       startBlockedDsControlLoop();
     }
@@ -636,7 +636,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       });
       stationBlocks!.delete(dsIp);
       if (stationBlocks!.size === 0) blockedDsRules.delete(station);
-      console.log(`Unblocked duplicate DS ${dsIp} for ${station}`);
+      appInfo(`Unblocked duplicate DS ${dsIp} for ${station}`);
       const remaining = blockedDsRules.get(station);
       matchEngine.setBlockedDS(station, remaining ? [...remaining.keys()] : undefined);
     }
@@ -705,7 +705,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
       });
       activeDnatRules.set(station, { dsIp, gatewayIp, vlanInterface: brName });
-      console.log(`DNAT rule added: ${station} UDP → ${gatewayIp} rewritten to ${dsIp}`);
+      appInfo(`DNAT rule added: ${station} UDP → ${gatewayIp} rewritten to ${dsIp}`);
       // Flush any stale conntrack entries for UDP traffic to the gateway IP.
       // Without this, packets that arrived before the DNAT rule was inserted get
       // cached as local-delivery flows, and subsequent packets bypass the nat table entirely.
@@ -740,7 +740,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         comment: `${IPTABLES_COMMENT_PREFIX}dnat-${station}`,
       });
       activeDnatRules.delete(station);
-      console.log(`DNAT rule removed: ${station}`);
+      appInfo(`DNAT rule removed: ${station}`);
     }
 
     // Clean up DNAT, route preferences, and blocked DS rules when stations are deconfigured or team changes
@@ -778,7 +778,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       // Reverse path: DNAT so robot→gateway UDP gets rewritten to the DS's guest WiFi IP
       await addDnatRule(station, dsIp);
 
-      console.log(`Drive started: ${dsIp} → ${station} (team ${team})`);
+      appInfo(`Drive started: ${dsIp} → ${station} (team ${team})`);
       broadcastRouteState();
     }
 
@@ -794,7 +794,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           await removeDnatRule(station);
           acceptedDsForStation.delete(station);
           matchEngine.clearDSAddress(station);
-          console.log(`Drive stopped: ${dsIp} (was on ${station})`);
+          appInfo(`Drive stopped: ${dsIp} (was on ${station})`);
           broadcastRouteState();
           return;
         }
