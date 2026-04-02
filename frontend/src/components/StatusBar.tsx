@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
@@ -9,6 +10,7 @@ import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import { useConnectivity, ConnectivityState } from '../hooks/useConnectivity';
 import { usePendingCommit, sendApplyConfig, useServerStartTime, serverToBrowserTime } from '../hooks/useBackend';
+import { useSupportWidget } from './SupportChatWidget';
 
 type DotColor = 'success.main' | 'error.main' | 'warning.main' | 'text.disabled';
 
@@ -83,6 +85,34 @@ function getPfmsIndicator(state: ConnectivityState) {
   return { color: 'error.main' as DotColor, tooltip: 'PFMS disconnected' };
 }
 
+function SupportButton() {
+  try {
+    const { openWidget, unreadCount } = useSupportWidget();
+    return (
+      <Tooltip title="Get Help / Report Issue" arrow>
+        <IconButton onClick={() => openWidget()} size="small" sx={{ p: 0, color: 'warning.main' }}>
+          <Badge
+            badgeContent={unreadCount}
+            color="error"
+            sx={{ '& .MuiBadge-badge': { fontSize: '0.55rem', minWidth: 14, height: 14 } }}
+          >
+            <SupportAgentIcon sx={{ fontSize: 14 }} />
+          </Badge>
+        </IconButton>
+      </Tooltip>
+    );
+  } catch {
+    // No SupportWidgetProvider — fall back to link
+    return (
+      <Tooltip title="Get Help / Report Issue" arrow>
+        <IconButton component="a" href="/support" size="small" sx={{ p: 0, color: 'warning.main' }}>
+          <SupportAgentIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
+    );
+  }
+}
+
 export function StatusBar() {
   const connectivity = useConnectivity();
   const internet = getInternetIndicator(connectivity);
@@ -136,11 +166,7 @@ export function StatusBar() {
         </Tooltip>
       )}
       <Box sx={{ position: 'absolute', right: 4, display: 'flex', gap: 0.5, alignItems: 'center' }}>
-        <Tooltip title="Get Help / Report Issue" arrow>
-          <IconButton component="a" href="/support" size="small" sx={{ p: 0, color: 'warning.main' }}>
-            <SupportAgentIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Tooltip>
+        <SupportButton />
         <Tooltip title="Scoreboard" arrow>
           <IconButton component="a" href="/scores" target="_blank" size="small" sx={{ p: 0, color: 'text.secondary' }}>
             <ScoreboardIcon sx={{ fontSize: 14 }} />

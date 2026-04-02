@@ -8,6 +8,7 @@ import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import { useHistory, useLatest, serverToBrowserTime, useServerResponse } from '../hooks/useBackend.js';
 import { StatusBar } from '../components/StatusBar';
+import { SupportWidgetProvider } from '../components/SupportChatWidget';
 
 const EstimatedReconfigurationTime = 40; // seconds
 
@@ -85,10 +86,12 @@ export function WrapAll({
       <ErrorBoundary>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
-            <StatusBar />
-            <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
-          </Box>
+          <SupportWidgetProvider>
+            <Box sx={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
+              <StatusBar />
+              <Box sx={{ flex: 1, overflowY: 'auto' }}>{children}</Box>
+            </Box>
+          </SupportWidgetProvider>
           {showReconfigOverlay && (
             <Backdrop open={isConfiguring} sx={{ zIndex: 9999 }}>
               <Grid

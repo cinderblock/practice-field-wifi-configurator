@@ -42,7 +42,7 @@ npm install
 | `/logs`             | Logs page — live backend log stream                                                 |
 | `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`) |
 | `/scores`           | Scoreboard — full-screen TV-optimized score display for casting                     |
-| `/support`          | Support — issue reporting, real-time Slack chat, screenshot capture                 |
+| `/support`          | _(redirects to `/`)_ — support is now a floating widget available on every page     |
 | `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients         |
 
 ## Features
@@ -115,12 +115,12 @@ Score state is also broadcast in real time to all WebSocket clients as `scoreSta
 
 ### Support System
 
-A built-in support system available at `/support` with two main workflows:
+A built-in support system available as a floating widget on every page (click the support agent icon in the status bar):
 
 **Issue Reports** — Teams can submit structured issue reports with:
 
 - Standard template fields: what they were trying to do, what steps they took, what they expected, and what happened
-- Automatic screenshot capture of the current browser page (via html2canvas)
+- Automatic screenshot capture of the current page content (widget hides itself during capture via html2canvas)
 - Auto-included recent system logs and browser metadata (user agent, screen size, page URL)
 - Issues are stored server-side and optionally forwarded to a Slack channel
 
@@ -132,7 +132,7 @@ A built-in support system available at `/support` with two main workflows:
 - An admin's Slack replies appear in real-time on the web chat UI
 - Issues can be created from chat conversations to track them formally
 
-A **Support** button (agent icon) appears in the status bar on every page for quick access.
+The **Support** button (agent icon) in the status bar opens the widget as a floating panel in the bottom-right corner. The widget can be closed and reopened without losing the chat session, and persists state across page navigations via localStorage. An unread message badge appears on the icon when admin replies arrive while the widget is closed.
 
 **Slack Integration** is configured on the admin page (`/admin` → Slack Integration):
 

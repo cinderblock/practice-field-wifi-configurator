@@ -1,23 +1,12 @@
 import { createRoot } from 'react-dom/client';
-import { StrictMode } from 'react';
-import { createTheme, CssBaseline, ThemeProvider } from '@mui/material';
-import ErrorBoundary from '../components/ErrorBoundary';
 import { AdminPage } from '../components/AdminPage';
 import { AdminAuthGate } from '../components/AdminAuthGate';
-import { StatusBar } from '../components/StatusBar';
-
-const theme = createTheme({ colorSchemes: { dark: true } });
+import { WrapAll } from './wrap';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <StatusBar />
-        <AdminAuthGate>
-          <AdminPage />
-        </AdminAuthGate>
-      </ThemeProvider>
-    </ErrorBoundary>
-  </StrictMode>,
+  <WrapAll showReconfigOverlay={false}>
+    <AdminAuthGate>
+      <AdminPage />
+    </AdminAuthGate>
+  </WrapAll>,
 );
