@@ -780,9 +780,9 @@ export function SupportWidgetProvider({ children }: { children: ReactNode }) {
     // Capture screenshot before showing the widget so it captures the actual page
     captureScreenshot().then(s => {
       preOpenScreenshot = s;
+      setIsOpen(true);
+      setUnreadCount(0);
     });
-    setIsOpen(true);
-    setUnreadCount(0);
   }, []);
 
   const closeWidget = useCallback(() => {
