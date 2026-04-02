@@ -693,16 +693,26 @@ function SupportChatWidgetPanel() {
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: 1.5,
-                px: 2,
+                justifyContent: 'flex-end',
+                gap: 1,
+                px: 1,
+                pb: 0.5,
               }}
             >
-              <ChatIcon sx={{ fontSize: 36, color: 'text.secondary' }} />
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', textAlign: 'center' }}>
-                Chat with an admin in real-time via Slack.
-              </Typography>
+              <Box
+                sx={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <ChatIcon sx={{ fontSize: 36, color: 'text.secondary', mb: 0.5 }} />
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', textAlign: 'center' }}>
+                  Chat with an admin in real-time via Slack.
+                </Typography>
+              </Box>
               <TextField
                 size="small"
                 label="Your Name"
