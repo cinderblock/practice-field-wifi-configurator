@@ -411,20 +411,13 @@ export class MdnsReflector {
       // Packet from the main network — forward queries to the requester's selected VLAN.
       if (isResponse) return;
 
-      const queryNames = parseQuestionNames(msg);
       const station = this.getStationForRequester(rinfo.address);
-      if (!station) {
-        // Debug: log queries we're dropping so we can diagnose routing issues
-        if (queryNames.length > 0 && !queryNames.every(n => n.startsWith('_'))) {
-          console.log(`mDNS: dropping query from ${rinfo.address} (no slot selected): ${queryNames.join(', ')}`);
-        }
-        return;
-      }
+      if (!station) return; // Laptop hasn't selected a slot — nowhere to forward
 
       const team = this.getTeamForStation(station);
       if (team === null || !this.joinedTeams.has(team)) return;
 
-      console.log(`mDNS: forwarding query from ${rinfo.address} → ${station} (team ${team}): ${queryNames.join(', ')}`);
+      const queryNames = parseQuestionNames(msg);
 
       const excluded = isExcluded(rinfo.address, this.excludedRequesters);
       if (!excluded) {

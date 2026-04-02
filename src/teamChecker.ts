@@ -94,6 +94,23 @@ const FACTORY_DEFAULT_IP = '192.168.69.1';
 /**
  * Send a raw mDNS multicast query on a specific interface and wait for a response.
  * Returns the first A record IP, or null on timeout.
+ *
+ * This is a standalone diagnostic socket, separate from the mDNS reflector
+ * (mdnsReflector.ts). Both coexist on port 5353 via SO_REUSEADDR:
+ *
+ *   - The reflector bridges queries between the main/guest networks and team
+ *     VLANs. It will also see responses to our queries and forward them to
+ *     laptop-facing interfaces — that's harmless extra traffic.
+ *
+ *   - This socket binds to 0.0.0.0:5353 so it receives multicast responses
+ *     from ALL VLANs, not just the target. That means concurrent checks for
+ *     different stations, laptop mDNS queries from the guest WiFi, and the
+ *     reflector's forwarded packets all arrive here. parseARecord() filters
+ *     by hostname to ensure we only accept the specific A record we asked for.
+ *
+ *   - Binding to sourceIp:5353 instead of 0.0.0.0 would seem cleaner but
+ *     breaks multicast delivery on Linux: the kernel filters by destination
+ *     IP, and mDNS responses are addressed to 224.0.0.251, not our unicast IP.
  */
 function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promise<string | null> {
   return new Promise(resolve => {
@@ -110,9 +127,10 @@ function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promi
     });
 
     sock.on('message', msg => {
-      // Parse DNS response — only accept A records whose name matches our query.
-      // This prevents cross-contamination when concurrent mDNS queries (e.g.
-      // radio.local and roboRIO-TEAM-FRC.local) share the same port on a VLAN.
+      // Only accept A records whose name matches our query. This is critical
+      // because we're on 0.0.0.0:5353 and receive mDNS traffic from all VLANs,
+      // including: concurrent diagnostic checks for other stations, the mDNS
+      // reflector's forwarded responses, and unsolicited announcements.
       const ip = parseARecord(msg, hostname);
       if (ip) {
         clearTimeout(timer);
@@ -121,18 +139,17 @@ function mdnsQuery(hostname: string, sourceIp: string, timeoutMs: number): Promi
       }
     });
 
-    // Bind to port 5353 (with SO_REUSEADDR already set above) so we receive
-    // multicast responses. Binding to an ephemeral port fails when the mDNS
-    // reflector is running because multicast responses go to port 5353.
-    sock.bind(MDNS_PORT, sourceIp, () => {
+    // Bind to 0.0.0.0:5353 — see function doc for why not sourceIp.
+    // SO_REUSEADDR (set in createSocket) allows coexistence with the mDNS reflector.
+    sock.bind(MDNS_PORT, '0.0.0.0', () => {
       try {
         sock.addMembership('224.0.0.251', sourceIp);
       } catch {
-        // May fail if already a member
+        // May fail if already a member (e.g. reflector already joined this interface)
       }
-      // Must set the outgoing multicast interface explicitly — otherwise the
-      // OS sends on the default-route interface (main network) and the query
-      // never reaches the team VLAN where the roboRIO lives.
+      // Set the outgoing multicast interface explicitly — otherwise the OS sends
+      // on the default-route interface (main network) and the query never reaches
+      // the team VLAN where the robot lives.
       sock.setMulticastInterface(sourceIp);
       sock.setMulticastTTL(255); // mDNS spec requires TTL=255
       const query = buildMdnsQuery(hostname);
