@@ -7,9 +7,12 @@ import Container from '@mui/material/Container';
 import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import ArticleIcon from '@mui/icons-material/Article';
+import LanIcon from '@mui/icons-material/Lan';
+import RouterIcon from '@mui/icons-material/Router';
 import ScoreboardIcon from '@mui/icons-material/Scoreboard';
 import SettingsIcon from '@mui/icons-material/Settings';
-import DashboardIcon from '@mui/icons-material/Dashboard';
+import SportsScoreIcon from '@mui/icons-material/SportsScore';
 import { getTeamNumberCookie, setTeamNumberCookie } from '../utils/cookies';
 
 /**
@@ -84,14 +87,26 @@ function TeamEntryDialog() {
         </form>
 
         {/* Quick links */}
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 3 }}>
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 3, flexWrap: 'wrap' }}>
           <Link href="/scores" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <ScoreboardIcon fontSize="small" />
             Scoreboard
           </Link>
-          <Link href="/overview" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <DashboardIcon fontSize="small" />
-            Overview
+          <Link href="/match" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <SportsScoreIcon fontSize="small" />
+            Match
+          </Link>
+          <Link href="/network" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <LanIcon fontSize="small" />
+            Network
+          </Link>
+          <Link href="/test" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <RouterIcon fontSize="small" />
+            Robot Test
+          </Link>
+          <Link href="/logs" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <ArticleIcon fontSize="small" />
+            Logs
           </Link>
           <Link href="/admin" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <SettingsIcon fontSize="small" />

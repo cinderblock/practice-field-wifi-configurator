@@ -85,30 +85,101 @@ function getPfmsIndicator(state: ConnectivityState) {
   return { color: 'error.main' as DotColor, tooltip: 'PFMS disconnected' };
 }
 
+function SupportCalloutBubble({ onClick }: { onClick: () => void }) {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        position: 'absolute',
+        top: '100%',
+        right: 0,
+        mt: 0.75,
+        px: 1.5,
+        py: 0.75,
+        backgroundColor: 'warning.main',
+        color: 'warning.contrastText',
+        borderRadius: 1.5,
+        fontSize: '0.7rem',
+        fontWeight: 'bold',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        boxShadow: 3,
+        zIndex: 1,
+        // Speech bubble arrow pointing up
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: -6,
+          right: 4,
+          width: 0,
+          height: 0,
+          borderLeft: '6px solid transparent',
+          borderRight: '6px solid transparent',
+          borderBottom: '6px solid',
+          borderBottomColor: 'warning.main',
+        },
+        animation: 'supportBubblePulse 2s ease-in-out infinite',
+        '@keyframes supportBubblePulse': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.03)' },
+        },
+      }}
+    >
+      Click here for immediate help!
+    </Box>
+  );
+}
+
 function SupportButton() {
+  const [noticed, setNoticed] = useState(() => localStorage.getItem('support-noticed') === 'true');
+
   try {
     const { openWidget, unreadCount } = useSupportWidget();
+    const handleClick = () => {
+      if (!noticed) {
+        localStorage.setItem('support-noticed', 'true');
+        setNoticed(true);
+      }
+      openWidget();
+    };
     return (
-      <Tooltip title="Get Help / Report Issue" arrow>
-        <IconButton onClick={() => openWidget()} size="small" sx={{ p: 0, color: 'warning.main' }}>
-          <Badge
-            badgeContent={unreadCount}
-            color="error"
-            sx={{ '& .MuiBadge-badge': { fontSize: '0.55rem', minWidth: 14, height: 14 } }}
-          >
-            <SupportAgentIcon sx={{ fontSize: 14 }} />
-          </Badge>
-        </IconButton>
-      </Tooltip>
+      <Box sx={{ position: 'relative' }}>
+        <Tooltip title="Get Help / Report Issue" arrow disableHoverListener={!noticed}>
+          <IconButton onClick={handleClick} size="small" sx={{ p: 0, color: 'warning.main' }}>
+            <Badge
+              badgeContent={unreadCount || undefined}
+              color="error"
+              invisible={!unreadCount}
+              sx={{ '& .MuiBadge-badge': { fontSize: '0.55rem', minWidth: 14, height: 14 } }}
+            >
+              <SupportAgentIcon sx={{ fontSize: 14 }} />
+            </Badge>
+          </IconButton>
+        </Tooltip>
+        {!noticed && <SupportCalloutBubble onClick={handleClick} />}
+      </Box>
     );
   } catch {
     // No SupportWidgetProvider — fall back to link
+    const handleClick = () => {
+      localStorage.setItem('support-noticed', 'true');
+      setNoticed(true);
+    };
     return (
-      <Tooltip title="Get Help / Report Issue" arrow>
-        <IconButton component="a" href="/support" size="small" sx={{ p: 0, color: 'warning.main' }}>
-          <SupportAgentIcon sx={{ fontSize: 14 }} />
-        </IconButton>
-      </Tooltip>
+      <Box sx={{ position: 'relative' }}>
+        <Tooltip title="Get Help / Report Issue" arrow disableHoverListener={!noticed}>
+          <IconButton
+            component="a"
+            href="/support"
+            size="small"
+            sx={{ p: 0, color: 'warning.main' }}
+            onClick={handleClick}
+          >
+            <SupportAgentIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+        {!noticed && <SupportCalloutBubble onClick={handleClick} />}
+      </Box>
     );
   }
 }
