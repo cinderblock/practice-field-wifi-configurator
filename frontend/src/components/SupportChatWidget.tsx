@@ -21,7 +21,6 @@ import SendIcon from '@mui/icons-material/Send';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import ChatIcon from '@mui/icons-material/Chat';
-import DescriptionIcon from '@mui/icons-material/Description';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CloseIcon from '@mui/icons-material/Close';
@@ -43,7 +42,7 @@ import {
 // ── Widget Context ─────────────────────────────────────────────────
 
 interface SupportWidgetContextValue {
-  openWidget: (view?: 'chat' | 'report' | 'issues') => void;
+  openWidget: (view?: 'chat' | 'report') => void;
   closeWidget: () => void;
   isOpen: boolean;
   unreadCount: number;
@@ -63,6 +62,8 @@ export function useSupportWidget() {
 // ── Screenshot Utility ─────────────────────────────────────────────
 
 let widgetElement: HTMLElement | null = null;
+/** Screenshot taken when the widget was opened (before it was visible). */
+let preOpenScreenshot: string | undefined;
 
 async function captureScreenshot(): Promise<string | undefined> {
   try {
@@ -308,8 +309,11 @@ function WidgetIssueForm({ onSubmitted }: { onSubmitted: () => void }) {
     }, []),
   );
 
+  // Use the pre-captured screenshot (taken before widget was shown)
   useEffect(() => {
-    if (includeScreenshot) captureScreenshot().then(setScreenshot);
+    if (includeScreenshot && preOpenScreenshot) {
+      setScreenshot(preOpenScreenshot);
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async () => {
@@ -531,8 +535,9 @@ function CreateIssueFromChatDialog({
 
 function SupportChatWidgetPanel() {
   const { isOpen, closeWidget } = useSupportWidget();
-  const [view, setView] = useState<'chat' | 'report' | 'issues'>(() => {
-    return (localStorage.getItem('support-widget-view') as 'chat' | 'report' | 'issues') || 'report';
+  const [view, setView] = useState<'chat' | 'report'>(() => {
+    const saved = localStorage.getItem('support-widget-view');
+    return saved === 'report' ? 'report' : 'chat';
   });
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(() => {
     return localStorage.getItem('support-widget-sessionId') || null;
@@ -605,13 +610,12 @@ function SupportChatWidgetPanel() {
     if (activeChatSessionId) {
       sendEndSupportChat(activeChatSessionId);
       setActiveChatSessionId(null);
-      setView('report');
     }
   };
 
   if (!isOpen) return null;
 
-  const tabIndex = view === 'report' ? 0 : view === 'chat' ? 1 : 2;
+  const tabIndex = view === 'chat' ? 0 : 1;
   const chatDisabled = slackConfig !== null && !slackConfig.configured && !activeChatSessionId;
 
   return (
@@ -663,10 +667,9 @@ function SupportChatWidgetPanel() {
       {/* Tabs */}
       <Tabs
         value={tabIndex}
-        onChange={(_, v) => setView(v === 0 ? 'report' : v === 1 ? 'chat' : 'issues')}
+        onChange={(_, v) => setView(v === 0 ? 'chat' : 'report')}
         sx={{ minHeight: 32, flexShrink: 0, '& .MuiTab-root': { minHeight: 32, py: 0.5, fontSize: '0.7rem' } }}
       >
-        <Tab icon={<BugReportIcon sx={{ fontSize: 14 }} />} label="Report" iconPosition="start" sx={{ minWidth: 0 }} />
         <Tab
           icon={<ChatIcon sx={{ fontSize: 14 }} />}
           label={activeChatSessionId ? 'Chat ●' : 'Chat'}
@@ -675,8 +678,8 @@ function SupportChatWidgetPanel() {
           sx={{ minWidth: 0 }}
         />
         <Tab
-          icon={<DescriptionIcon sx={{ fontSize: 14 }} />}
-          label="Issues"
+          icon={<BugReportIcon sx={{ fontSize: 14 }} />}
+          label="Report Issue"
           iconPosition="start"
           sx={{ minWidth: 0 }}
         />
@@ -684,8 +687,6 @@ function SupportChatWidgetPanel() {
 
       {/* Content */}
       <Box sx={{ flex: 1, p: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto' }}>
-        {view === 'report' && <WidgetIssueForm onSubmitted={() => {}} />}
-
         {view === 'chat' &&
           (activeChatSessionId ? (
             <WidgetChatView
@@ -720,7 +721,7 @@ function SupportChatWidgetPanel() {
             </Box>
           ))}
 
-        {view === 'issues' && <WidgetIssuesList onStartChat={issueId => handleStartChat(issueId)} />}
+        {view === 'report' && <WidgetIssueForm onSubmitted={() => {}} />}
       </Box>
 
       {/* Dialogs */}
@@ -795,8 +796,12 @@ export function SupportWidgetProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('support-widget-open', isOpen ? 'true' : 'false');
   }, [isOpen]);
 
-  const openWidget = useCallback((view?: 'chat' | 'report' | 'issues') => {
+  const openWidget = useCallback((view?: 'chat' | 'report') => {
     if (view) localStorage.setItem('support-widget-view', view);
+    // Capture screenshot before showing the widget so it captures the actual page
+    captureScreenshot().then(s => {
+      preOpenScreenshot = s;
+    });
     setIsOpen(true);
     setUnreadCount(0);
   }, []);
