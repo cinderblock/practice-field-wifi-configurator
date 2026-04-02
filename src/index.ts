@@ -452,6 +452,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       ip => getPreference(ip),
       VlanHostOctet,
       process.env.MDNS_EXCLUDE_REQUESTERS,
+      process.env.MDNS_LISTEN_INTERFACES?.split(/[,\s]+/).filter(Boolean) ?? [],
     );
     mdnsReflector.start();
     // Refresh after commit — VLAN interfaces only exist after configureNetwork completes

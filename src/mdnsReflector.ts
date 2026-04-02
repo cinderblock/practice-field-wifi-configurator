@@ -262,6 +262,8 @@ export class MdnsReflector {
     private readonly getStationForRequester: (ip: string) => StationName | null,
     private readonly vlanHostOctet: number = 254,
     excludeRequesters?: string,
+    /** Additional interface IPs to join multicast on (e.g. guest WiFi VLAN). */
+    private readonly listenInterfaces: string[] = [],
   ) {
     this.excludedRequesters = excludeRequesters ? parseExcludeList(excludeRequesters) : [];
     if (this.excludedRequesters.length > 0) {
@@ -293,13 +295,21 @@ export class MdnsReflector {
 
     socket.bind(MDNS_PORT, () => {
       // Join mDNS multicast on the default interface (main network).
-      // 0.0.0.0 = OS picks the interface with the default route, which in
-      // the expected deployment is the physical NIC (e.g. eno1) where
-      // laptops live. If the default route ever points elsewhere, this
-      // would need to be an explicit interface IP instead.
       socket.addMembership(MDNS_ADDR);
       socket.setMulticastLoopback(false);
       socket.setMulticastTTL(255); // mDNS spec requires TTL=255
+
+      // Join multicast on additional interfaces (e.g. guest WiFi VLAN)
+      // so we can receive mDNS queries from laptops on those networks.
+      for (const ip of this.listenInterfaces) {
+        try {
+          socket.addMembership(MDNS_ADDR, ip);
+          console.log(`mDNS: listening on ${ip}`);
+        } catch (err) {
+          console.error(`mDNS: failed to join multicast on ${ip}:`, err);
+        }
+      }
+
       console.log('mDNS reflector started on port', MDNS_PORT);
 
       // Join multicast on active VLAN interfaces
@@ -502,10 +512,14 @@ export class MdnsReflector {
     }
   }
 
-  /** Forward a response packet to the main network (default route interface). */
+  /** Forward a response packet to all laptop-facing interfaces. */
   private forwardToMain(packet: Buffer): void {
     if (!this.socket) return;
-    // 0.0.0.0 = default multicast interface (see comment in start())
+    // Send on the default interface (eno1 / main network)
     this.enqueueSend(packet, '0.0.0.0', 'response → main');
+    // Also send on additional listener interfaces (e.g. guest WiFi)
+    for (const ip of this.listenInterfaces) {
+      this.enqueueSend(packet, ip, `response → ${ip}`);
+    }
   }
 }
