@@ -543,8 +543,6 @@ function SupportChatWidgetPanel() {
     return localStorage.getItem('support-widget-sessionId') || null;
   });
   const [chatName, setChatName] = useState(() => localStorage.getItem('support-sender-name') || '');
-  const [nameDialogOpen, setNameDialogOpen] = useState(false);
-  const [pendingIssueId, setPendingIssueId] = useState<string | undefined>();
   const [createIssueDialogOpen, setCreateIssueDialogOpen] = useState(false);
   const slackConfig = useSlackConfigState();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -594,16 +592,10 @@ function SupportChatWidgetPanel() {
     }
   }, [activeChatSessionId, supportState]);
 
-  const handleStartChat = (issueId?: string) => {
-    setPendingIssueId(issueId);
-    setNameDialogOpen(true);
-  };
-
   const handleConfirmStartChat = () => {
     if (!chatName.trim()) return;
     localStorage.setItem('support-sender-name', chatName.trim());
-    sendStartSupportChat(pendingIssueId, chatName.trim());
-    setNameDialogOpen(false);
+    sendStartSupportChat(undefined, chatName.trim());
   };
 
   const handleEndChat = () => {
@@ -698,25 +690,40 @@ function SupportChatWidgetPanel() {
           ) : (
             <Box
               sx={{
-                textAlign: 'center',
-                py: 3,
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
+                alignItems: 'center',
+                gap: 1.5,
+                px: 2,
               }}
             >
-              <ChatIcon sx={{ fontSize: 36, color: 'text.secondary', mb: 1 }} />
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.8rem' }}>
+              <ChatIcon sx={{ fontSize: 36, color: 'text.secondary' }} />
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', textAlign: 'center' }}>
                 Chat with an admin in real-time via Slack.
               </Typography>
+              <TextField
+                size="small"
+                label="Your Name"
+                value={chatName}
+                onChange={e => setChatName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && chatName.trim()) handleConfirmStartChat();
+                }}
+                fullWidth
+                placeholder="e.g., Alex from Team 1234"
+                autoFocus
+              />
               <Button
                 variant="contained"
+                fullWidth
                 startIcon={<ChatIcon />}
-                onClick={() => handleStartChat()}
+                onClick={handleConfirmStartChat}
+                disabled={!chatName.trim()}
                 sx={{ textTransform: 'none' }}
               >
-                Start New Chat
+                Start Chat
               </Button>
             </Box>
           ))}
@@ -732,34 +739,6 @@ function SupportChatWidgetPanel() {
           onClose={() => setCreateIssueDialogOpen(false)}
         />
       )}
-
-      <Dialog open={nameDialogOpen} onClose={() => setNameDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Start Support Chat</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Enter your name so the support team knows who they're chatting with.
-          </Typography>
-          <TextField
-            autoFocus
-            label="Your First Name"
-            value={chatName}
-            onChange={e => setChatName(e.target.value)}
-            fullWidth
-            required
-            sx={{ mt: 1 }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') handleConfirmStartChat();
-            }}
-            placeholder="e.g., Alex from Team 1234"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNameDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleConfirmStartChat} variant="contained" disabled={!chatName.trim()}>
-            Start Chat
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
