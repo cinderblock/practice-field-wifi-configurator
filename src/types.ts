@@ -1020,6 +1020,13 @@ export interface RobotTestState {
   routerIp?: string;
   checks: CheckResult[];
   lastUpdate: number;
+  /** Timestamp (epoch ms) when the last radio reconfiguration or firmware update completed.
+   *  Set after configure/update finishes; cleared once the robot checks pass. */
+  reconfiguredAt?: number;
+  /** Maximum time (ms) to wait for the network to stabilize after reconfiguration. */
+  reconfigureTimeoutMs?: number;
+  /** What kind of reconfiguration triggered the settling period. */
+  reconfigureType?: 'radio' | 'firmware';
 }
 
 export function isRobotTestState(msg: unknown): msg is RobotTestState {

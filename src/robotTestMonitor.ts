@@ -81,6 +81,12 @@ export class RobotTestMonitor {
   private skipLinkDetection = false;
   /** IP where the factory-default radio was last seen (set by probeFactoryDefault). */
   private factoryRadioIp: string | null = null;
+  /** Timestamp when a radio reconfiguration or firmware update completed — network is "settling". */
+  private reconfiguredAt?: number;
+  /** Max settling window (ms). VLAN "all devices down" reset is suppressed during this window. */
+  private reconfigureTimeoutMs?: number;
+  /** What kind of reconfiguration triggered the settling period. */
+  private reconfigureType?: 'radio' | 'firmware';
 
   constructor(
     private readonly interfaceName: string,
@@ -142,6 +148,9 @@ export class RobotTestMonitor {
       routerIp: this.routerIp,
       checks: this.checks,
       lastUpdate: Date.now(),
+      reconfiguredAt: this.reconfiguredAt,
+      reconfigureTimeoutMs: this.reconfiguredAt ? this.reconfigureTimeoutMs : undefined,
+      reconfigureType: this.reconfiguredAt ? this.reconfigureType : undefined,
     };
   }
 
@@ -197,6 +206,9 @@ export class RobotTestMonitor {
     this.leasedIp = undefined;
     this.routerIp = undefined;
     this.checks = [];
+    this.reconfiguredAt = undefined;
+    this.reconfigureTimeoutMs = undefined;
+    this.reconfigureType = undefined;
     this.stopChecking();
     this.stopFactoryProbe();
     this.killDhcp();
@@ -417,12 +429,26 @@ export class RobotTestMonitor {
       ]);
       this.checks = [...factoryResult, ...radioResults, ...rioResults];
 
+      // Clear the settling state once the radio is reachable (at least one non-error check).
+      const radioReachable = radioResults.some(c => c.status !== 'error');
+      if (radioReachable && this.reconfiguredAt) {
+        this.reconfiguredAt = undefined;
+        this.reconfigureTimeoutMs = undefined;
+        this.reconfigureType = undefined;
+      }
+
       // On a VLAN, if both radio and roboRIO are unreachable, the robot is likely
       // disconnected. Release the DHCP lease and go back to requesting state so we
       // pick up the next robot that connects.
+      // Suppress this reset while the network is still settling after a reconfiguration,
+      // so the test page doesn't cycle between DHCP ↔ checks every few seconds.
       const allDevicesDown =
         radioResults.every(c => c.status === 'error') && rioResults.every(c => c.status === 'error');
-      if (this.skipLinkDetection && allDevicesDown && factoryResult.length === 0) {
+      const settling =
+        this.reconfiguredAt != null &&
+        this.reconfigureTimeoutMs != null &&
+        Date.now() - this.reconfiguredAt < this.reconfigureTimeoutMs;
+      if (this.skipLinkDetection && allDevicesDown && factoryResult.length === 0 && !settling) {
         console.log('RobotTestMonitor: all devices unreachable on VLAN — resetting to DHCP');
         const oldIp = this.leasedIp;
         const oldPrefix = this.leasedPrefix;
@@ -505,6 +531,10 @@ export class RobotTestMonitor {
 
     try {
       await updateRadioFirmware(this.teamNumber, wpaKey, wpaKey24, skipReconfigure, this.firmwareStore, sendProgress);
+      // Mark the settling period — firmware updates take longer to stabilize
+      this.reconfiguredAt = Date.now();
+      this.reconfigureTimeoutMs = 180_000;
+      this.reconfigureType = 'firmware';
       // Re-run checks after successful update
       this.runChecks();
     } catch (err) {
@@ -614,6 +644,12 @@ export class RobotTestMonitor {
         message: `Radio configured for team ${teamNumber}${radioVersion ? ` (firmware ${radioVersion})` : ''}`,
         progress: 100,
       });
+
+      // Mark the settling period — suppresses the VLAN "all devices down" reset
+      // and lets the UI show "network is settling" feedback while DHCP re-acquires.
+      this.reconfiguredAt = Date.now();
+      this.reconfigureTimeoutMs = 90_000;
+      this.reconfigureType = 'radio';
 
       // Reset DHCP state so we pick up the newly configured radio
       this.killDhcp();

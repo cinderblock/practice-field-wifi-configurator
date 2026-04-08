@@ -131,6 +131,60 @@ function StartupTimer() {
   );
 }
 
+/** Shows a contextual banner while the network settles after a radio reconfiguration or firmware update. */
+function SettlingBanner({
+  reconfiguredAt,
+  timeoutMs,
+  type,
+}: {
+  reconfiguredAt: number;
+  timeoutMs: number;
+  type?: 'radio' | 'firmware';
+}) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const tick = () => setElapsed(Date.now() - reconfiguredAt);
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [reconfiguredAt]);
+
+  const label = type === 'firmware' ? 'firmware update' : 'reconfiguration';
+  const expectedMs = type === 'firmware' ? 60_000 : 40_000;
+  const secs = Math.round(elapsed / 1000);
+
+  if (elapsed > timeoutMs) {
+    return (
+      <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>
+        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+          Network did not stabilize after {label} ({secs}s). Something may have gone wrong — try power-cycling the
+          robot.
+        </Typography>
+      </Alert>
+    );
+  }
+
+  if (elapsed > expectedMs) {
+    return (
+      <Alert severity="warning" sx={{ mb: 1.5, py: 0.5 }}>
+        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+          Network is taking longer than usual to settle after {label} ({secs}s). Please wait...
+        </Typography>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
+      <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+        Radio was just {type === 'firmware' ? 'updated' : 'reconfigured'}. The network is settling — this is normal (
+        {secs}s).
+      </Typography>
+    </Alert>
+  );
+}
+
 function CheckResultRow({ check }: { check: CheckResult }) {
   const failed = check.status === 'fail' || check.status === 'error' || check.status === 'warn';
   return (
@@ -297,6 +351,13 @@ export function TestPage() {
             </Typography>
           </StepLabel>
           <StepContent TransitionProps={{ unmountOnExit: false }}>
+            {state.reconfiguredAt != null && state.reconfigureTimeoutMs != null && (
+              <SettlingBanner
+                reconfiguredAt={state.reconfiguredAt}
+                timeoutMs={state.reconfigureTimeoutMs}
+                type={state.reconfigureType}
+              />
+            )}
             {/* 3-column check layout */}
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1.5, mb: 1 }}>
               {/* Column 1: Radio */}
@@ -415,6 +476,15 @@ export function TestPage() {
           </StepContent>
         </Step>
       </Stepper>
+
+      {/* Show settling banner outside the stepper too, in case we're back on the DHCP step */}
+      {state.reconfiguredAt != null && state.reconfigureTimeoutMs != null && step < 2 + (state.isVlan ? -1 : 0) && (
+        <SettlingBanner
+          reconfiguredAt={state.reconfiguredAt}
+          timeoutMs={state.reconfigureTimeoutMs}
+          type={state.reconfigureType}
+        />
+      )}
 
       {state.linkUp && <RadioConfigureSection teamNumber={state.teamNumber} />}
 
