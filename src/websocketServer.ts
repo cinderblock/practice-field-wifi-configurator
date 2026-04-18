@@ -90,6 +90,8 @@ export interface WebSocketContext {
   broadcast: (msg: unknown) => void;
   /** Send updated route preference state to all connected clients (e.g., after config change). */
   broadcastRouteState: () => void;
+  /** Public (read-only) WebSocket connections — only receive scoreState and matchState. */
+  publicConnections: ReadonlySet<WebSocket>;
 }
 
 export type RunTeamChecksCallback = (station: StationName) => void;
@@ -170,6 +172,13 @@ export function setupWebSocket(
   /** Track which WebSocket connections are admin-authenticated */
   const adminConnections = new Set<WebSocket>();
 
+  /** Track public (read-only) WebSocket connections (connected via /ws/scores).
+   *  These only receive scoreState and matchState — no sensitive data. */
+  const publicConnections = new Set<WebSocket>();
+
+  /** Message types safe to send to public (unauthenticated) connections. */
+  const PUBLIC_SAFE_TYPES = new Set(['scoreState', 'matchState']);
+
   /** Track which WebSocket connections are in which chat sessions */
   const wsToChatSession = new Map<WebSocket, string>();
 
@@ -187,8 +196,13 @@ export function setupWebSocket(
 
   function broadcast(msg: unknown) {
     const data = JSON.stringify(msg);
+    const msgType = (msg as Record<string, unknown>)?.type;
+    const isPublicSafe = typeof msgType === 'string' && PUBLIC_SAFE_TYPES.has(msgType);
+
     wss.clients.forEach(client => {
       if (client.readyState !== WebSocket.OPEN) return;
+      // Public connections only receive whitelisted message types
+      if (publicConnections.has(client) && !isPublicSafe) return;
       try {
         client.send(data);
       } catch {
@@ -282,6 +296,21 @@ export function setupWebSocket(
   }
 
   wss.on('connection', (ws: WebSocket, req) => {
+    // Public connections (/ws/scores) are read-only and only receive score + match data.
+    // Handle them separately to avoid leaking sensitive state.
+    if (req.url?.startsWith('/ws/scores')) {
+      publicConnections.add(ws);
+      console.log('Public scores client connected');
+      ws.send(JSON.stringify(matchEngine.getState()));
+      ws.on('close', () => publicConnections.delete(ws));
+      ws.on('error', err => {
+        console.error('Public WebSocket error:', err.message);
+        ws.terminate();
+      });
+      // Score state is sent by the index.ts connection handler (which checks publicConnections)
+      return;
+    }
+
     const socketRemoteAddress = (ws as any)._socket?.remoteAddress;
     const rawIp = getRealClientIp(socketRemoteAddress, req.headers, trustedProxyMatcher);
     const clientIp = normalizeIp(rawIp);
@@ -844,5 +873,5 @@ export function setupWebSocket(
     console.log(`HTTP + WebSocket server running on port ${port}`);
   });
 
-  return { server, wss, broadcast, broadcastRouteState };
+  return { server, wss, broadcast, broadcastRouteState, publicConnections };
 }

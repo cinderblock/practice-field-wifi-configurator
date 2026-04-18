@@ -75,7 +75,10 @@ let wsConnected = false;
 function connect() {
   const schema = window.location.protocol === 'https:' ? 'wss' : 'ws';
 
-  const url = `${schema}://${window.location.host}/ws`;
+  // The scores page uses a public read-only WebSocket that only receives
+  // scoreState and matchState — no auth required, no sensitive data.
+  const wsPath = window.location.pathname === '/scores' ? '/ws/scores' : '/ws';
+  const url = `${schema}://${window.location.host}${wsPath}`;
 
   console.log(`Connecting to backend: ${url}`);
 
