@@ -31,7 +31,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 
-import type { ApiKeyCreated, PendingDevice } from '../../../src/types';
+import type { ApiKeyCreated, ExternalAccessTokenCreated, PendingDevice } from '../../../src/types';
 import {
   useMatchState,
   useLatest,
@@ -58,6 +58,10 @@ import {
   sendScoreReset,
   sendSaveSlackConfig,
   sendTestSlackConnection,
+  useExternalAccessState,
+  useExternalAccessTokenCreatedEvent,
+  sendCreateExternalAccessToken,
+  sendRevokeExternalAccessToken,
 } from '../hooks/useBackend';
 
 const phaseColors: Record<MatchPhase, string> = {
@@ -300,6 +304,7 @@ export function AdminPage() {
       <MatchStatusSection />
       <ScoringSection />
       <ApiKeySection />
+      <ExternalAccessSection />
       <StationControlSection />
       <SlackConfigSection />
       <FirmwareSection />
@@ -720,6 +725,137 @@ function ScoreCard({ alliance, score }: { alliance: 'red' | 'blue'; score: { tot
 }
 
 // ── API Key Management ──────────────────────────────────────────────
+
+// ── External Access Tokens ──────────────────────────────────────────
+
+function ExternalAccessSection() {
+  const state = useExternalAccessState();
+  const [newLabel, setNewLabel] = useState('');
+  const [createdToken, setCreatedToken] = useState<ExternalAccessTokenCreated | null>(null);
+  const [, setTick] = useState(0);
+
+  // Re-render every second to update relative timestamps
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Listen for token creation events (raw token shown once)
+  useExternalAccessTokenCreatedEvent(useCallback((msg: ExternalAccessTokenCreated) => setCreatedToken(msg), []));
+
+  // Dismiss the banner when the token is revoked
+  useEffect(() => {
+    if (createdToken && state && !state.tokens.some(t => t.id === createdToken.id)) {
+      setCreatedToken(null);
+    }
+  }, [createdToken, state]);
+
+  if (!state) return null;
+
+  const handleCreate = () => {
+    if (!newLabel.trim()) return;
+    sendCreateExternalAccessToken(newLabel.trim());
+    setNewLabel('');
+  };
+
+  const authUrl = createdToken ? `${window.location.origin}/admin/auth/${createdToken.token}` : '';
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Typography variant="h5" sx={{ mb: 1 }}>
+          External Access
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Grant trusted users access to the internal UI from outside the local network. Each token generates a shareable
+          URL — visiting it sets a browser cookie that Caddy checks on every request.
+        </Typography>
+
+        {/* Token creation form */}
+        <Box sx={{ display: 'flex', gap: 1, my: 2, alignItems: 'flex-end' }}>
+          <TextField
+            size="small"
+            label="Label"
+            placeholder="e.g. Cameron's phone"
+            value={newLabel}
+            onChange={e => setNewLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            sx={{ flex: 1 }}
+          />
+          <Button variant="contained" size="small" onClick={handleCreate} disabled={!newLabel.trim()}>
+            Create Token
+          </Button>
+        </Box>
+
+        {/* One-time auth URL display */}
+        <Collapse in={!!createdToken} unmountOnExit>
+          <Alert severity="success" onClose={() => setCreatedToken(null)} sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">Token created: {createdToken?.label}</Typography>
+            <Typography
+              variant="body2"
+              sx={{ fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all', my: 0.5 }}
+            >
+              {authUrl}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Share this URL — it will not be shown again.
+            </Typography>
+          </Alert>
+        </Collapse>
+
+        {/* Token list */}
+        {state.tokens.length > 0 && (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Label</TableCell>
+                <TableCell>Created</TableCell>
+                <TableCell>Last Used</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {state.tokens.map(token => (
+                <TableRow key={token.id}>
+                  <TableCell>{token.label}</TableCell>
+                  <TableCell>
+                    <Tooltip title={new Date(token.createdAt).toLocaleString()}>
+                      <span>{formatAge(token.createdAt)}</span>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    {token.lastUsedAt ? (
+                      <Tooltip title={new Date(token.lastUsedAt).toLocaleString()}>
+                        <span>{formatAge(token.lastUsedAt)}</span>
+                      </Tooltip>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Never
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="small" color="error" onClick={() => sendRevokeExternalAccessToken(token.id)}>
+                      Revoke
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {state.tokens.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No external access tokens. External users see the public page only.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── API Keys ────────────────────────────────────────────────────────
 
 function ApiKeySection() {
   const apiKeyState = useApiKeyState();

@@ -55,6 +55,8 @@ import {
   isAdminSetPassphrase,
   isSaveSlackConfig,
   isTestSlackConnection,
+  isCreateExternalAccessToken,
+  isRevokeExternalAccessToken,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -74,6 +76,7 @@ import type { PortBridgeManager } from './portBridgeManager.js';
 import type { SupportStore } from './supportStore.js';
 import type { SlackBridge } from './slackBridge.js';
 import type { AdminAuth } from './adminAuth.js';
+import type { ExternalAccessStore } from './externalAccessStore.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -131,6 +134,7 @@ export function setupWebSocket(
   supportStore?: SupportStore,
   slackBridge?: SlackBridge,
   adminAuth?: AdminAuth,
+  externalAccessStore?: ExternalAccessStore,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -271,6 +275,9 @@ export function setupWebSocket(
   // Broadcast Slack config state changes to all clients
   slackBridge?.addListener(broadcast);
 
+  // Broadcast external access token state changes to all clients
+  externalAccessStore?.addListener(broadcast);
+
   // Handle incoming Slack messages and forward to appropriate chat WebSocket clients
   if (slackBridge && supportStore) {
     slackBridge.onSlackMessage = (threadTs, senderName, text) => {
@@ -370,6 +377,11 @@ export function setupWebSocket(
     // Send Slack config state
     if (slackBridge) {
       ws.send(JSON.stringify(slackBridge.getState()));
+    }
+
+    // Send external access token state
+    if (externalAccessStore) {
+      ws.send(JSON.stringify(externalAccessStore.getState()));
     }
 
     ws.on('close', () => {
@@ -780,12 +792,16 @@ export function setupWebSocket(
           const token = adminAuth.login(data.passphrase);
           if (token) {
             adminConnections.add(ws);
+            // Auto-create an external access token so the admin's browser
+            // gets a cookie for remote access without a separate step.
+            const extToken = externalAccessStore?.createToken(`Admin login`);
             ws.send(
               JSON.stringify({
                 type: 'adminAuthResult',
                 authenticated: true,
                 token,
                 passphraseConfigured: true,
+                externalAccessToken: extToken?.token,
               }),
             );
           } else {
@@ -862,6 +878,21 @@ export function setupWebSocket(
               }),
             );
           });
+        }
+
+        // ── External Access Tokens ─────────────────────────────────────
+      } else if (isCreateExternalAccessToken(data)) {
+        if (externalAccessStore && adminConnections.has(ws)) {
+          const { token, id } = externalAccessStore.createToken(data.label);
+          ws.send(JSON.stringify({ type: 'externalAccessTokenCreated', token, id, label: data.label }));
+        } else if (externalAccessStore) {
+          ws.send(JSON.stringify({ error: 'Admin authentication required' }));
+        }
+      } else if (isRevokeExternalAccessToken(data)) {
+        if (externalAccessStore && adminConnections.has(ws)) {
+          externalAccessStore.revokeToken(data.id);
+        } else if (externalAccessStore) {
+          ws.send(JSON.stringify({ error: 'Admin authentication required' }));
         }
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));

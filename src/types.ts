@@ -1741,10 +1741,12 @@ export function isAdminSetPassphrase(msg: unknown): msg is AdminSetPassphrase {
 export interface AdminAuthResult {
   type: 'adminAuthResult';
   authenticated: boolean;
-  /** Token to store in cookie (only on successful login). */
+  /** Admin session token to store in localStorage (only on successful login). */
   token?: string;
   /** Whether a passphrase has been configured. */
   passphraseConfigured: boolean;
+  /** External access token — fetch /admin/auth/<token> to set the cookie. */
+  externalAccessToken?: string;
 }
 
 export function isAdminAuthResult(msg: unknown): msg is AdminAuthResult {
@@ -1794,4 +1796,65 @@ export interface SlackConfigState {
 export function isSlackConfigState(msg: unknown): msg is SlackConfigState {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as SlackConfigState).type === 'slackConfigState';
+}
+
+// ── External Access Tokens ──────────────────────────────────────────
+
+/** Summary of an external access token (no raw token or hash). */
+export interface ExternalAccessTokenSummary {
+  id: string;
+  label: string;
+  createdAt: number;
+  lastUsedAt?: number;
+}
+
+/** Broadcast state for external access token management. */
+export interface ExternalAccessState {
+  type: 'externalAccessState';
+  tokens: ExternalAccessTokenSummary[];
+}
+
+export function isExternalAccessState(msg: unknown): msg is ExternalAccessState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ExternalAccessState).type === 'externalAccessState';
+}
+
+/** Server → requesting client only: newly created token with the raw value (shown once). */
+export interface ExternalAccessTokenCreated {
+  type: 'externalAccessTokenCreated';
+  /** The raw token — share this in the auth URL. Will not be shown again. */
+  token: string;
+  id: string;
+  label: string;
+}
+
+export function isExternalAccessTokenCreated(msg: unknown): msg is ExternalAccessTokenCreated {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ExternalAccessTokenCreated).type === 'externalAccessTokenCreated';
+}
+
+// ── External Access Admin Commands (WebSocket client → server) ──────
+
+/** Create a new external access token. */
+export interface CreateExternalAccessToken {
+  type: 'createExternalAccessToken';
+  label: string;
+}
+
+export function isCreateExternalAccessToken(msg: unknown): msg is CreateExternalAccessToken {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as CreateExternalAccessToken;
+  return m.type === 'createExternalAccessToken' && typeof m.label === 'string' && m.label.length > 0;
+}
+
+/** Revoke (delete) an external access token. */
+export interface RevokeExternalAccessToken {
+  type: 'revokeExternalAccessToken';
+  id: string;
+}
+
+export function isRevokeExternalAccessToken(msg: unknown): msg is RevokeExternalAccessToken {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as RevokeExternalAccessToken;
+  return m.type === 'revokeExternalAccessToken' && typeof m.id === 'string';
 }

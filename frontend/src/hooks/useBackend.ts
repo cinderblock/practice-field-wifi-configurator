@@ -39,6 +39,10 @@ import {
   isSupportChatIncoming,
   isAdminAuthResult,
   isSlackConfigState,
+  isExternalAccessState,
+  isExternalAccessTokenCreated,
+  ExternalAccessState,
+  ExternalAccessTokenCreated,
   CastReceiverList,
   CastReceiverRegister,
   CastReceiverSwap,
@@ -395,6 +399,14 @@ function handleSupportChatIncoming(msg: { message: SupportChatMessage }) {
 function handleAdminAuthResult(result: AdminAuthResult) {
   currentAdminAuth = result;
   events.dispatchEvent(new CustomEvent('adminAuthResult', { detail: result }));
+
+  // When admin login succeeds with an external access token, set the browser
+  // cookie by fetching the auth URL. This grants remote access automatically.
+  if (result.authenticated && result.externalAccessToken) {
+    fetch(`/admin/auth/${result.externalAccessToken}`).catch(() => {
+      // Cookie-setting failed — not critical, admin can create tokens manually
+    });
+  }
 }
 
 function handleSlackConfigState(state: SlackConfigState) {
@@ -533,6 +545,16 @@ function receiveMessage(detail: Message) {
 
   if (isApiKeyCreated(detail)) {
     handleApiKeyCreated(detail);
+    return;
+  }
+
+  if (isExternalAccessState(detail)) {
+    handleExternalAccessState(detail);
+    return;
+  }
+
+  if (isExternalAccessTokenCreated(detail)) {
+    handleExternalAccessTokenCreated(detail);
     return;
   }
 
@@ -1220,6 +1242,49 @@ export function sendApprovePendingDevice(id: string, label: string) {
 
 export function sendDismissPendingDevice(id: string) {
   ws?.send(JSON.stringify({ type: 'dismissPendingDevice', id }));
+}
+
+// ── External Access Token Management ─────────────────────────────────
+
+let currentExternalAccessState: ExternalAccessState | null = null;
+
+function handleExternalAccessState(state: ExternalAccessState) {
+  currentExternalAccessState = state;
+  events.dispatchEvent(new CustomEvent('externalAccessState', { detail: state }));
+}
+
+function handleExternalAccessTokenCreated(msg: ExternalAccessTokenCreated) {
+  events.dispatchEvent(new CustomEvent('externalAccessTokenCreated', { detail: msg }));
+}
+
+export function useExternalAccessState(): ExternalAccessState | null {
+  const [state, setState] = useState<ExternalAccessState | null>(currentExternalAccessState);
+
+  useEffect(() => {
+    setState(currentExternalAccessState);
+    const handler = (e: Event) => setState((e as CustomEvent<ExternalAccessState>).detail);
+    events.addEventListener('externalAccessState', handler);
+    return () => events.removeEventListener('externalAccessState', handler);
+  }, []);
+
+  return state;
+}
+
+/** Subscribe to one-time token creation events (contains the raw token for sharing). */
+export function useExternalAccessTokenCreatedEvent(callback: (msg: ExternalAccessTokenCreated) => void) {
+  useEffect(() => {
+    const handler = (e: Event) => callback((e as CustomEvent<ExternalAccessTokenCreated>).detail);
+    events.addEventListener('externalAccessTokenCreated', handler);
+    return () => events.removeEventListener('externalAccessTokenCreated', handler);
+  }, [callback]);
+}
+
+export function sendCreateExternalAccessToken(label: string) {
+  ws?.send(JSON.stringify({ type: 'createExternalAccessToken', label }));
+}
+
+export function sendRevokeExternalAccessToken(id: string) {
+  ws?.send(JSON.stringify({ type: 'revokeExternalAccessToken', id }));
 }
 
 export function sendScoreReset() {

@@ -416,40 +416,35 @@ server {
 
 ## Environment Variables
 
-| Variable                      | Default               | Description                                                                                                                                                                                  |
-| ----------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEBSOCKET_PORT`              | `3000`                | Port for the WebSocket server                                                                                                                                                                |
-| `RADIO_URL`                   | `http://10.0.100.2`   | URL for the radio management API                                                                                                                                                             |
-| `VLAN_INTERFACE`              | _(none)_              | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                                                                                      |
-| `FMS_ENDPOINT`                | `false`               | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                                                                                 |
-| `SYSLOG_ENDPOINT`             | `false`               | Set to `true` to enable the syslog server                                                                                                                                                    |
-| `RADIO_CLEAR_SCHEDULE`        | _(none)_              | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                                                                                     |
-| `RADIO_CLEAR_TIMEZONE`        | _(none)_              | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                                                                                |
-| `VLAN_HOST_OCTET`             | `254`                 | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                                                                         |
-| `TRUSTED_PROXIES`             | _(none)_              | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                                                                         |
-| `IPTABLES_COMMENT_PREFIX`     | `pfms-`               | Prefix for iptables rule comments (used to identify and flush rules)                                                                                                                         |
-| `MDNS_REFLECTOR`              | `false`               | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`.                                                        |
-| `TEST_INTERFACE`              | _(none)_              | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.                                                                     |
-| `FIELD_PORTS`                 | _(none)_              | Physical port bridging config: `VLANID:Name,...` (e.g., `201:Port A,202:Port B`). Requires `VLAN_INTERFACE`.                                                                                 |
-| `DRY_RUN`                     | _(none)_              | Set to any value to disable network operations (log-only mode for development)                                                                                                               |
-| `API_KEYS_FILE`               | `api-keys.json`       | Path to the JSON file for API key persistence.                                                                                                                                               |
-| `SCORING_AUTO_REGISTER_LIMIT` | `1`                   | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                                                                         |
-| `ADMIN_AUTH_FILE`             | `admin-auth.json`     | Path to the JSON file for admin authentication persistence.                                                                                                                                  |
-| `SUPPORT_ISSUES_FILE`         | `support-issues.json` | Path to the JSON file for support issue persistence.                                                                                                                                         |
-| `SUPPORT_CHATS_FILE`          | `support-chats.json`  | Path to the JSON file for support chat session persistence.                                                                                                                                  |
-| `SLACK_CONFIG_FILE`           | `slack-config.json`   | Path to the JSON file for Slack integration configuration.                                                                                                                                   |
-| `EXTERNAL_ACCESS_TOKEN`       | _(none)_              | Shared secret token for external access. When set, visiting `/admin/auth/<token>` sets a 365-day cookie granting internal UI access from the internet. Generate with `openssl rand -hex 32`. |
+| Variable                      | Default                | Description                                                                                                                           |
+| ----------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBSOCKET_PORT`              | `3000`                 | Port for the WebSocket server                                                                                                         |
+| `RADIO_URL`                   | `http://10.0.100.2`    | URL for the radio management API                                                                                                      |
+| `VLAN_INTERFACE`              | _(none)_               | Physical network interface for VLAN configuration (e.g., `eno1`). Required for routing.                                               |
+| `FMS_ENDPOINT`                | `false`                | Set to `true` to enable the FMS server (TCP/1750 + UDP/1160)                                                                          |
+| `SYSLOG_ENDPOINT`             | `false`                | Set to `true` to enable the syslog server                                                                                             |
+| `RADIO_CLEAR_SCHEDULE`        | _(none)_               | Cron expression for scheduled configuration clearing (e.g., `0 6 * * *`)                                                              |
+| `RADIO_CLEAR_TIMEZONE`        | _(none)_               | Timezone for scheduled clearing (e.g., `America/Los_Angeles`)                                                                         |
+| `VLAN_HOST_OCTET`             | `254`                  | Host octet for the pFMS host's IP on each team VLAN (range: 220–254)                                                                  |
+| `TRUSTED_PROXIES`             | _(none)_               | Comma-separated trusted proxy IPs/CIDRs for real client IP detection                                                                  |
+| `IPTABLES_COMMENT_PREFIX`     | `pfms-`                | Prefix for iptables rule comments (used to identify and flush rules)                                                                  |
+| `MDNS_REFLECTOR`              | `false`                | Set to `true` to enable the mDNS reflector (bridges `.local` queries between main network and team VLANs). Requires `VLAN_INTERFACE`. |
+| `TEST_INTERFACE`              | _(none)_               | Network interface for the robot tester CSA tool (e.g., `eth1`). See [Robot Network Tester](#robot-network-tester) below.              |
+| `FIELD_PORTS`                 | _(none)_               | Physical port bridging config: `VLANID:Name,...` (e.g., `201:Port A,202:Port B`). Requires `VLAN_INTERFACE`.                          |
+| `DRY_RUN`                     | _(none)_               | Set to any value to disable network operations (log-only mode for development)                                                        |
+| `API_KEYS_FILE`               | `api-keys.json`        | Path to the JSON file for API key persistence.                                                                                        |
+| `SCORING_AUTO_REGISTER_LIMIT` | `1`                    | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                  |
+| `ADMIN_AUTH_FILE`             | `admin-auth.json`      | Path to the JSON file for admin authentication persistence.                                                                           |
+| `SUPPORT_ISSUES_FILE`         | `support-issues.json`  | Path to the JSON file for support issue persistence.                                                                                  |
+| `SUPPORT_CHATS_FILE`          | `support-chats.json`   | Path to the JSON file for support chat session persistence.                                                                           |
+| `SLACK_CONFIG_FILE`           | `slack-config.json`    | Path to the JSON file for Slack integration configuration.                                                                            |
+| `EXTERNAL_ACCESS_FILE`        | `external-access.json` | Path to the JSON file for external access token persistence.                                                                          |
 
 ### External Access
 
-To grant trusted users access to the full UI from outside the local network:
+External access tokens grant trusted users access to the full internal UI from outside the local network. Tokens are managed from the admin page — create, view, and revoke tokens as needed.
 
-1. Generate a strong token: `openssl rand -hex 32`
-2. Set `EXTERNAL_ACCESS_TOKEN=<token>` in the pFMS environment file (`/etc/pfms/environment`)
-3. Deploy the updated Caddy config (uses `forward_auth` — the token only needs to be in the app's environment, not Caddy's)
-4. Share the URL `https://pfms.tomsawyerlabs.com/admin/auth/<token>` with trusted users
-
-When a user visits the auth URL, the backend validates the token, sets an `HttpOnly` cookie (365 days), and redirects to `/`. On subsequent requests from external IPs, Caddy uses `forward_auth` to ask the backend whether the cookie is valid — the backend returns `200` (serve internal UI) or `401` (serve public page). To revoke access, change the token.
+When an admin logs in, a token is automatically created and the browser cookie is set. Tokens can also be created manually and shared as URLs (`/admin/auth/<token>`). Visiting the URL sets an `HttpOnly` cookie (365 days, refreshed on every page load). On subsequent requests from external IPs, Caddy uses `forward_auth` to ask the backend whether the cookie is valid — the backend returns `200` (serve internal UI) or `401` (serve public page). Revoking a token in the admin UI invalidates it immediately.
 
 ### Trusted Proxies Configuration
 

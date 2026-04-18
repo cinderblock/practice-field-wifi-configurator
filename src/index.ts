@@ -44,6 +44,7 @@ import { SupportStore } from './supportStore.js';
 import { SlackBridge } from './slackBridge.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
+import { ExternalAccessStore } from './externalAccessStore.js';
 import { StationName, StationNameList, TeamCheckResults } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
@@ -71,10 +72,6 @@ const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
 const TestInterface = process.env.TEST_INTERFACE;
 const VlanHostOctet = Number(process.env.VLAN_HOST_OCTET) || 254;
 const WebSocketPort = Number(process.env.WEBSOCKET_PORT) || 3000;
-
-// External access token — allows specific external users to access the internal UI
-// via a cookie set by visiting /admin/auth/<token>. Generate with: openssl rand -hex 32
-const ExternalAccessToken = process.env.EXTERNAL_ACCESS_TOKEN;
 
 // Physical port bridging configuration
 const FieldPorts = parseFieldPorts(process.env.FIELD_PORTS);
@@ -239,15 +236,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const supportStore = new SupportStore();
   const slackBridge = new SlackBridge();
   const adminAuth = new AdminAuth();
-
-  if (ExternalAccessToken) {
-    if (ExternalAccessToken.length < 32) {
-      console.warn(
-        'WARNING: EXTERNAL_ACCESS_TOKEN is shorter than 32 characters. Use a strong random token (e.g. openssl rand -hex 32).',
-      );
-    }
-    console.log('External access token configured — /admin/auth/<token> endpoint enabled');
-  }
+  const externalAccessStore = new ExternalAccessStore();
 
   // Initialize WebSocket server (callbacks are set below after subsystems are created)
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
@@ -259,9 +248,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     trustedProxyMatcher,
     station => onRunTeamChecks?.(station),
     [
-      ...(ExternalAccessToken
-        ? [(req: IncomingMessage, res: ServerResponse) => handleExternalAccessAuth(req, res, ExternalAccessToken)]
-        : []),
+      (req: IncomingMessage, res: ServerResponse) => handleExternalAccessAuth(req, res, externalAccessStore),
       (req, res) => handleScoringRequest(req, res, scoringEngine, apiKeyStore, trustedProxyMatcher),
       (req, res) => handleFirmwareRequest(req, res, firmwareStore),
     ],
@@ -288,6 +275,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     supportStore,
     slackBridge,
     adminAuth,
+    externalAccessStore,
   );
   setBroadcast(broadcast);
 
