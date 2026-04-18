@@ -267,39 +267,36 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
     return null;
   }, [routePreference, activeStations]);
 
+  // Auto-connect to the selected robot's station on first load if no preference exists.
+  const autoConnectDone = useRef(false);
+  useEffect(() => {
+    if (autoConnectDone.current) return;
+    if (routeState === null) return; // Haven't received state from server yet
+    if (routePreference) return; // Already connected to something
+    if (!selectedStation) return; // Selected robot isn't active
+    autoConnectDone.current = true;
+    sendRoutePreference(selectedStation);
+  }, [routeState, routePreference, selectedStation]);
+
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
       <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>
         Team {teamNumber}
       </Typography>
 
-      {/* Network routing banner — connect this laptop to the robot's VLAN for .local resolution */}
-      {activeStations.size > 0 && (
+      {/* Network routing banner — shows once connected, with option to switch or disconnect */}
+      {routePreference && activeStations.size > 0 && (
         <Alert
-          severity={routePreference ? (routedSsid === currentSsid ? 'success' : 'warning') : 'info'}
+          severity={routedSsid === currentSsid ? 'success' : 'warning'}
           sx={{ mb: 2, '& .MuiAlert-message': { width: '100%' } }}
           action={
-            routePreference ? (
-              <Button color="inherit" size="small" onClick={() => sendRoutePreference(null)}>
-                Disconnect
-              </Button>
-            ) : selectedStation ? (
-              <Button color="inherit" size="small" onClick={() => sendRoutePreference(selectedStation)}>
-                Connect
-              </Button>
-            ) : undefined
+            <Button color="inherit" size="small" onClick={() => sendRoutePreference(null)}>
+              Disconnect
+            </Button>
           }
         >
-          {routePreference ? (
-            <>
-              Connected to <strong>{routedSsid ?? routePreference}</strong>.
-              {isMultiRobot &&
-                routedSsid !== currentSsid &&
-                ' Select the robot you want below or click its Drive button.'}
-            </>
-          ) : (
-            'Connect to access .local devices on this robot\u2019s network (limelight, radio, etc.).'
-          )}
+          Connected to <strong>{routedSsid ?? routePreference}</strong>.
+          {isMultiRobot && routedSsid !== currentSsid && ' Select the robot you want below or click its Drive button.'}
         </Alert>
       )}
 

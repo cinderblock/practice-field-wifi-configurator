@@ -298,21 +298,38 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   apiKeyStore.addListener(broadcast);
 
   // Subnet scanning for device discovery on team VLANs
+  const autoConnectInFlight = new Set<string>();
   const subnetScanner = new SubnetScanner(
     s => radioManager.getTeamForStation(s),
     results => {
       latestSubnetScan = results;
       broadcast(results);
 
-      // Re-trigger team checks when new devices appear on stations that had error results.
       for (const station of StationNameList) {
+        const scan = results.stations[station];
+        if (!scan) continue;
+
+        // Auto-connect: when conntrack detects a guest WiFi IP communicating with a
+        // team subnet, set its route preference so mDNS reflection works automatically.
+        // The autoConnectInFlight guard prevents duplicate ip-rule calls when the same
+        // IP appears under multiple stations or across overlapping scan cycles.
+        for (const host of scan.hosts) {
+          if (!host.alive || host.source !== 'conntrack') continue;
+          if (getPreference(host.ip) || autoConnectInFlight.has(host.ip)) continue;
+          autoConnectInFlight.add(host.ip);
+          setRoutePreference(host.ip, station, scan.team)
+            .catch(err => console.error(`Auto-connect failed for ${host.ip} → ${station}:`, err))
+            .finally(() => autoConnectInFlight.delete(host.ip));
+        }
+
+        // Re-trigger team checks when new devices appear on stations that had error results.
         const team = radioManager.getTeamForStation(station);
         if (!team) continue;
         const lastResults = latestCheckResults.get(station);
         if (!lastResults) continue;
         if (!lastResults.checks.some(c => c.status === 'error')) continue;
 
-        const currentAlive = new Set(results.stations[station]?.hosts.filter(h => h.alive).map(h => h.ip) ?? []);
+        const currentAlive = new Set(scan.hosts.filter(h => h.alive).map(h => h.ip));
         const previousAlive = checksAliveSnapshot.get(station);
         const retries = checksRetryCount.get(station) ?? 0;
         if (previousAlive && retries < MAX_AUTO_RETRIGGERS && [...currentAlive].some(ip => !previousAlive.has(ip))) {
