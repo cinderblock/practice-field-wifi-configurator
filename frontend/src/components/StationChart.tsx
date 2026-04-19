@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Typography, useTheme } from '@mui/material';
 import SmoothieComponent, { TimeSeries } from 'react-smoothie';
 import { StationName, StatusEntry, StationNameList, TelemetryUpdate } from '../../../src/types';
@@ -47,6 +47,8 @@ const stationTimeSeries: Record<
     qualityNotLinked: TimeSeries;
     // Telemetry (from FMS/Driver Station)
     batteryVoltage: TimeSeries;
+    /** Derived: running minimum voltage with exponential relaxation toward current. */
+    batteryMinVoltage: TimeSeries;
     dsCpuPercent: TimeSeries;
     robotComms: TimeSeries;
     radioPing: TimeSeries;
@@ -78,6 +80,7 @@ for (const stationName of StationNameList) {
     qualityNone: new TimeSeries(),
     qualityNotLinked: new TimeSeries(),
     batteryVoltage: new TimeSeries(),
+    batteryMinVoltage: new TimeSeries(),
     dsCpuPercent: new TimeSeries(),
     robotComms: new TimeSeries(),
     radioPing: new TimeSeries(),
@@ -118,6 +121,7 @@ function clearStationTimeSeries(stationName: StationName) {
   series.qualityNone.clear();
   series.qualityNotLinked.clear();
   series.batteryVoltage.clear();
+  series.batteryMinVoltage.clear();
   series.dsCpuPercent.clear();
   series.robotComms.clear();
   series.radioPing.clear();
@@ -200,6 +204,45 @@ export function handleStatusUpdate(entry: StatusEntry) {
   }
 }
 
+// ── Battery min-voltage tracking ──────────────────────────────────────
+// Tracks a "floor" per station that drops instantly on voltage sags and
+// relaxes exponentially back toward the current reading when idle.
+
+const RELAX_TAU = 5000; // 5-second exponential time constant
+
+/** Per-station state for the min-voltage derived series. */
+const batteryMinState: Record<StationName, { floor: number; lastTs: number }> = {} as any;
+for (const s of StationNameList) {
+  batteryMinState[s] = { floor: NaN, lastTs: 0 };
+}
+
+function updateBatteryMin(station: StationName, voltage: number, timestamp: number) {
+  const ts = stationTimeSeries[station];
+  const st = batteryMinState[station];
+
+  if (isNaN(st.floor)) {
+    // First sample — initialise
+    st.floor = voltage;
+    st.lastTs = timestamp;
+    ts.batteryMinVoltage.append(timestamp, voltage);
+    return;
+  }
+
+  const dt = timestamp - st.lastTs;
+  st.lastTs = timestamp;
+
+  // Relax toward current voltage (exponential decay)
+  if (dt > 0 && dt < 30_000) {
+    const alpha = 1 - Math.exp(-dt / RELAX_TAU);
+    st.floor = st.floor + alpha * (voltage - st.floor);
+  }
+
+  // Drop instantly if voltage is below floor
+  if (voltage < st.floor) st.floor = voltage;
+
+  ts.batteryMinVoltage.append(timestamp, st.floor);
+}
+
 // Handle telemetry updates from FMS/Driver Station
 export function handleTelemetryUpdate(entry: TelemetryUpdate) {
   const timeSeries = stationTimeSeries[entry.station];
@@ -207,7 +250,10 @@ export function handleTelemetryUpdate(entry: TelemetryUpdate) {
 
   const timestamp = serverToBrowserTime(entry.timestamp);
 
-  if (entry.batteryVoltage !== undefined) timeSeries.batteryVoltage.append(timestamp, entry.batteryVoltage);
+  if (entry.batteryVoltage !== undefined) {
+    timeSeries.batteryVoltage.append(timestamp, entry.batteryVoltage);
+    updateBatteryMin(entry.station, entry.batteryVoltage, timestamp);
+  }
   if (entry.dsCpuPercent !== undefined) timeSeries.dsCpuPercent.append(timestamp, entry.dsCpuPercent);
 
   if (entry.dsStatus) {
@@ -347,7 +393,16 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
     unit: 'V',
     minValue: 5,
     maxValue: 14,
-    series: [{ data: 'batteryVoltage', label: 'Voltage', color: { r: 76, g: 175, b: 80 }, lineWidth: 2 }],
+    series: [
+      { data: 'batteryVoltage', label: 'Voltage', color: { r: 76, g: 175, b: 80 }, lineWidth: 2 },
+      {
+        data: 'batteryMinVoltage',
+        label: 'Min',
+        color: { r: 244, g: 67, b: 54 },
+        fillStyle: 'rgba(244, 67, 54, 0.15)',
+        lineWidth: 1,
+      },
+    ],
   },
   dsCpuPercent: {
     title: 'DS CPU',
@@ -408,6 +463,65 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
   },
 };
 
+// ── Custom chart tooltip ─────────────────────────────────────────────
+
+function formatTimeAgo(timestampMs: number): string {
+  const seconds = Math.round((Date.now() - timestampMs) / 1000);
+  if (seconds < 0) return 'now';
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s ago`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
+}
+
+function ChartTooltip(props: { display?: boolean; time?: number; data?: { series: any; value: number }[] }) {
+  if (!props.display) return <div />;
+  return (
+    <div
+      style={{
+        userSelect: 'none',
+        background: 'rgba(30, 30, 30, 0.92)',
+        color: '#fff',
+        padding: '4px 8px',
+        borderRadius: 4,
+        fontSize: 11,
+        fontFamily: 'monospace',
+        whiteSpace: 'nowrap',
+        lineHeight: 1.5,
+      }}
+    >
+      <div style={{ color: '#aaa', marginBottom: 2 }}>{props.time ? formatTimeAgo(props.time) : ''}</div>
+      {props.data?.map((d, i) => (
+        <div key={i} style={{ color: d.series?.options?.strokeStyle || '#fff' }}>
+          {typeof d.value === 'number' ? d.value.toFixed(1) : d.value}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Wrapper tooltip component that clamps itself to the viewport.
+ * react-smoothie positions the parent div absolutely at the mouse cursor;
+ * this inner div shifts left if it would overflow the right edge.
+ */
+function ClampedTooltip(props: { display?: boolean; time?: number; data?: { series: any; value: number }[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [nudge, setNudge] = useState(0);
+
+  useEffect(() => {
+    if (!ref.current || !props.display) return;
+    const rect = ref.current.getBoundingClientRect();
+    const overflow = rect.right - window.innerWidth + 8;
+    setNudge(overflow > 0 ? -overflow : 0);
+  });
+
+  return (
+    <div ref={ref} style={{ marginLeft: nudge }}>
+      <ChartTooltip {...props} />
+    </div>
+  );
+}
+
 export function StationChart({ station, metric, height = '60px', marginBottom = 2 }: StationChartProps) {
   const timeSeries = stationTimeSeries[station];
   const theme = useTheme();
@@ -424,11 +538,23 @@ export function StationChart({ station, metric, height = '60px', marginBottom = 
   const config = metricConfigs[metric];
 
   return (
-    <Box sx={{ width: '100%', marginBottom, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+    <Box
+      sx={{
+        width: '100%',
+        marginBottom,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1,
+        // Raise chart on hover so its tooltip renders above neighbouring charts
+        position: 'relative',
+        '&:hover': { zIndex: 10 },
+      }}
+    >
       <Box sx={{ width: '100%', '& canvas': { display: 'block', height: `${height} !important` } }}>
         <SmoothieComponent
           responsive
-          tooltip
+          tooltip={ClampedTooltip}
+          doNotSimplifyData
           streamDelay={-1000}
           height={parseInt(height)}
           millisPerPixel={100}
