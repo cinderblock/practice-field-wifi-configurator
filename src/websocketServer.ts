@@ -181,7 +181,7 @@ export function setupWebSocket(
   const publicConnections = new Set<WebSocket>();
 
   /** Message types safe to send to public (unauthenticated) connections. */
-  const PUBLIC_SAFE_TYPES = new Set(['scoreState', 'matchState']);
+  const PUBLIC_SAFE_TYPES = new Set(['scoreState', 'matchState', 'telemetry']);
 
   /** Track which WebSocket connections are in which chat sessions */
   const wsToChatSession = new Map<WebSocket, string>();

@@ -1,12 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import SmoothieComponent from 'react-smoothie';
 
-import { useScoreState, useMatchState, sendCastReceiverRegister } from '../hooks/useBackend';
-import type { Alliance, ScoreBatch, StationControlState, StationName } from '../../../src/types';
+import { useScoreState, useMatchState, useTelemetryCallback, sendCastReceiverRegister } from '../hooks/useBackend';
+import type { Alliance, ScoreBatch, StationControlState, StationName, TelemetryUpdate } from '../../../src/types';
+import { StationNameList } from '../../../src/types';
 import { getAllianceShiftState } from '../utils/shiftState';
 import { MatchTimeline } from './MatchTimeline';
 import { MatchTimer, getActiveColor } from './MatchTimer';
+import { handleTelemetryUpdate, stationTimeSeries, batteryMinState } from './StationChart';
 
 // Cast initialization happens in scores.html before this module loads.
 declare global {
@@ -348,6 +351,196 @@ export function ScoreboardPage() {
           />
         </Box>
       )}
+
+      {/* Battery voltage for connected robots */}
+      <BatteryPanel matchState={matchState} />
+    </Box>
+  );
+}
+
+// ── Battery Panel ────────────────────────────────────────────────────
+
+/** Per-station battery state tracked from telemetry. */
+interface BatteryInfo {
+  current: number;
+  lastSeen: number;
+}
+
+function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchState> }) {
+  const [batteries, setBatteries] = useState<Partial<Record<StationName, BatteryInfo>>>({});
+
+  // Populate TimeSeries (for charts) and track numeric values
+  useTelemetryCallback(
+    useCallback((entry: TelemetryUpdate) => {
+      handleTelemetryUpdate(entry);
+      if (entry.batteryVoltage !== undefined) {
+        setBatteries(prev => ({
+          ...prev,
+          [entry.station]: {
+            current: entry.batteryVoltage,
+            lastSeen: Date.now(),
+          },
+        }));
+      }
+    }, []),
+  );
+
+  // Build the list of robots to display (stations with recent telemetry)
+  const robots = useMemo(() => {
+    const now = Date.now();
+    const result: Array<{
+      station: StationName;
+      teamNumber: number | null;
+      alliance: Alliance | null;
+      ssid: string | null;
+      battery: BatteryInfo;
+    }> = [];
+
+    for (const station of StationNameList) {
+      const batt = batteries[station];
+      if (!batt || now - batt.lastSeen > 15_000) continue;
+
+      // Get team number and alliance from match state
+      const stationState = matchState?.stationStates?.[station];
+      const teamNumber = stationState?.teamNumber ?? null;
+      const alliance = stationState?.alliance ?? null;
+
+      result.push({ station, teamNumber, alliance, ssid: null, battery: batt });
+    }
+
+    return result;
+  }, [batteries, matchState]);
+
+  // Detect duplicate team numbers to show station name as disambiguator
+  const teamCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const r of robots) {
+      if (r.teamNumber) counts.set(r.teamNumber, (counts.get(r.teamNumber) ?? 0) + 1);
+    }
+    return counts;
+  }, [robots]);
+
+  if (robots.length === 0) return null;
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        flexWrap: 'wrap',
+        gap: 1.5,
+        px: 2,
+        pb: 2,
+      }}
+    >
+      {robots.map(robot => {
+        const color =
+          robot.alliance === 'red' ? '#ef5350' : robot.alliance === 'blue' ? '#42a5f5' : 'rgba(255,255,255,0.5)';
+        const bgColor =
+          robot.alliance === 'red'
+            ? 'rgba(239,83,80,0.10)'
+            : robot.alliance === 'blue'
+              ? 'rgba(66,165,245,0.10)'
+              : 'rgba(255,255,255,0.05)';
+        const ts = stationTimeSeries[robot.station];
+        const minFloor = batteryMinState[robot.station]?.floor;
+        const isDuplicate = robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false;
+
+        return (
+          <Box
+            key={robot.station}
+            sx={{
+              border: `1px solid ${color}`,
+              borderRadius: 1,
+              backgroundColor: bgColor,
+              width: 140,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Mini chart */}
+            <Box sx={{ '& canvas': { display: 'block', height: '35px !important' } }}>
+              <SmoothieComponent
+                responsive
+                height={35}
+                streamDelay={-1000}
+                millisPerPixel={200}
+                minValue={5}
+                maxValue={14}
+                grid={{
+                  borderVisible: false,
+                  fillStyle: 'transparent',
+                  strokeStyle: 'rgba(255,255,255,0.05)',
+                  verticalSections: 1,
+                  millisPerLine: 0,
+                }}
+                labels={{ disabled: true }}
+                title={{ text: '' }}
+                yMinFormatter={() => ''}
+                yMaxFormatter={() => ''}
+                yIntermediateFormatter={() => ''}
+                series={[
+                  {
+                    data: ts.batteryVoltage,
+                    strokeStyle: color,
+                    lineWidth: 1.5,
+                  },
+                  {
+                    data: ts.batteryMinVoltage,
+                    strokeStyle: 'rgba(244, 67, 54, 0.6)',
+                    fillStyle: 'rgba(244, 67, 54, 0.08)',
+                    lineWidth: 1,
+                  },
+                ]}
+              />
+            </Box>
+
+            {/* Numeric values and team label */}
+            <Box sx={{ px: 1, py: 0.5, borderTop: `1px solid rgba(255,255,255,0.1)` }}>
+              {/* Voltage values */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color,
+                  }}
+                >
+                  {robot.battery.current.toFixed(1)}V
+                </Typography>
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.7rem',
+                    color: 'rgba(244, 67, 54, 0.8)',
+                  }}
+                >
+                  {!isNaN(minFloor) ? `↓${minFloor.toFixed(1)}V` : ''}
+                </Typography>
+              </Box>
+
+              {/* Team number */}
+              <Typography
+                sx={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: 'rgba(255,255,255,0.6)',
+                  textAlign: 'center',
+                  mt: 0.25,
+                }}
+              >
+                {robot.teamNumber ?? robot.station}
+                {isDuplicate && (
+                  <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                    {' '}
+                    ({robot.station.replace('slot', '#')})
+                  </span>
+                )}
+              </Typography>
+            </Box>
+          </Box>
+        );
+      })}
     </Box>
   );
 }

@@ -25,7 +25,7 @@ interface StationChartProps {
 }
 
 // Create TimeSeries instances at module level so they persist across component mounts/unmounts
-const stationTimeSeries: Record<
+export const stationTimeSeries: Record<
   StationName,
   {
     dataAgeMs: TimeSeries;
@@ -211,7 +211,7 @@ export function handleStatusUpdate(entry: StatusEntry) {
 const RELAX_TAU = 5000; // 5-second exponential time constant
 
 /** Per-station state for the min-voltage derived series. */
-const batteryMinState: Record<StationName, { floor: number; lastTs: number }> = {} as any;
+export const batteryMinState: Record<StationName, { floor: number; lastTs: number }> = {} as any;
 for (const s of StationNameList) {
   batteryMinState[s] = { floor: NaN, lastTs: 0 };
 }
