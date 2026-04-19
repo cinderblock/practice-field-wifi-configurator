@@ -3,15 +3,26 @@
 # Ensure bun is in PATH (installed at ~/.bun/bin by default)
 export PATH="$HOME/.bun/bin:$PATH"
 
-if [ "$1" == "clean" ]; then
-  shift
+FORCE=false
+CLEAN=false
+
+for arg in "$@"; do
+  case "$arg" in
+    clean) CLEAN=true ;;
+    force) FORCE=true ;;
+    continue) ;; # handled below
+  esac
+done
+
+if $CLEAN; then
   rm -rf node_modules
 fi
 
 # Run the latest version of this script after updating
-if [ "$1" != "continue" ]; then
+if [[ ! " $* " =~ " continue " ]]; then
   git pull
-  exec "$(realpath "$0")" continue
+  # Forward all original args plus 'continue'
+  exec "$(realpath "$0")" continue "$@"
 fi
 
 bun install
@@ -29,19 +40,33 @@ rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
 # Copy the public.html to the public directory
 cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
-# Check if a match is in progress before reloading
-MATCH_PHASE=$(curl -sf http://localhost:9005/health 2>/dev/null | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).phase' 2>/dev/null || echo "unknown")
+# Helper: get the current match phase from the backend
+get_match_phase() {
+  curl -sf http://localhost:9005/health 2>/dev/null \
+    | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).phase' 2>/dev/null \
+    || echo "unknown"
+}
+
+# Wait for any active match to finish before reloading
+MATCH_PHASE=$(get_match_phase)
 
 if [ "$MATCH_PHASE" != "idle" ] && [ "$MATCH_PHASE" != "unknown" ]; then
-  echo ""
-  echo "⚠️  WARNING: A match is in progress! (phase: $MATCH_PHASE)"
-  echo "   Reloading will kill the active match (match state is in-memory only)."
-  echo ""
-  read -p "   Deploy anyway? [y/N] " -n 1 -r
-  echo ""
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 1
+  if $FORCE; then
+    echo "⚠️  Match in progress (phase: $MATCH_PHASE) — forcing reload (--force)"
+  else
+    echo ""
+    echo "⏳ Match in progress (phase: $MATCH_PHASE) — waiting for it to finish..."
+    echo "   (use './update.sh force' to skip this wait)"
+    echo ""
+    while true; do
+      sleep 5
+      MATCH_PHASE=$(get_match_phase)
+      if [ "$MATCH_PHASE" = "idle" ] || [ "$MATCH_PHASE" = "unknown" ]; then
+        echo "✅ Match finished — proceeding with reload."
+        break
+      fi
+      echo "   Still waiting... (phase: $MATCH_PHASE)"
+    done
   fi
 fi
 
