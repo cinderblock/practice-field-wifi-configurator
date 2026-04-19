@@ -29,6 +29,22 @@ rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
 # Copy the public.html to the public directory
 cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
+# Check if a match is in progress before reloading
+MATCH_PHASE=$(curl -sf http://localhost:9005/health 2>/dev/null | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).phase' 2>/dev/null || echo "unknown")
+
+if [ "$MATCH_PHASE" != "idle" ] && [ "$MATCH_PHASE" != "unknown" ]; then
+  echo ""
+  echo "⚠️  WARNING: A match is in progress! (phase: $MATCH_PHASE)"
+  echo "   Reloading will kill the active match (match state is in-memory only)."
+  echo ""
+  read -p "   Deploy anyway? [y/N] " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 1
+  fi
+fi
+
 echo "Reloading $SERVICE"
 sudo systemctl reload-or-restart "$SERVICE"
 echo "Watching startup logs (10s)..."

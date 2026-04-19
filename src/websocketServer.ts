@@ -153,6 +153,14 @@ export function setupWebSocket(
       }
     }
 
+    // Health/status endpoint — used by update.sh to check for active matches
+    if (req.url === '/health') {
+      const state = matchEngine.getState();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ phase: state.phase }));
+      return;
+    }
+
     // CORS headers for unhandled routes
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
