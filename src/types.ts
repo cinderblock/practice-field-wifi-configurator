@@ -463,6 +463,31 @@ export type DSConnectionInfo = {
   blockedDsIps?: string[];
 };
 
+/** Broadcast state for active drive sessions (DS → station DNAT mappings). */
+export interface DriveSessionState {
+  type: 'driveSessionState';
+  /** Active drive sessions: station → accepted DS IP and last activity. */
+  sessions: Partial<
+    Record<
+      StationName,
+      {
+        dsIp: string;
+        /** Epoch ms of the last FMS message from this DS. */
+        lastActivity: number;
+        /** Seconds until this session is considered stale and cleared. */
+        timeoutRemaining: number;
+      }
+    >
+  >;
+  /** Blocked (duplicate) DS IPs per station. */
+  blockedDs: Partial<Record<StationName, string[]>>;
+}
+
+export function isDriveSessionState(msg: unknown): msg is DriveSessionState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as DriveSessionState).type === 'driveSessionState';
+}
+
 export type MatchState = {
   type: 'matchState';
   phase: MatchPhase;

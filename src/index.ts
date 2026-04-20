@@ -45,7 +45,7 @@ import { SlackBridge } from './slackBridge.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
-import { StationName, StationNameList, TeamCheckResults } from './types.js';
+import { StationName, StationNameList, TeamCheckResults, DriveSessionState } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -632,6 +632,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       return Date.now() - last > DS_STALE_TIMEOUT_MS;
     }
 
+    /** Build and broadcast drive session state to all clients. */
+    function broadcastDriveSessionState() {
+      const now = Date.now();
+      const sessions: DriveSessionState['sessions'] = {};
+      for (const [station, dsIp] of acceptedDsForStation) {
+        const lastActivity = dsLastActivity.get(dsIp) ?? now;
+        const elapsed = now - lastActivity;
+        const timeoutRemaining = connectedDsIps.has(dsIp)
+          ? DS_STALE_TIMEOUT_MS / 1000 // Active TCP — full timeout if it disconnects
+          : Math.max(0, (DS_STALE_TIMEOUT_MS - elapsed) / 1000);
+        sessions[station] = { dsIp, lastActivity, timeoutRemaining: Math.round(timeoutRemaining) };
+      }
+      const blockedDs: DriveSessionState['blockedDs'] = {};
+      for (const [station, blocks] of blockedDsRules) {
+        if (blocks.size > 0) blockedDs[station] = [...blocks.keys()];
+      }
+      broadcast({ type: 'driveSessionState', sessions, blockedDs } satisfies DriveSessionState);
+    }
+
     // Track blocked (duplicate) DS IPs per station. Multiple DSes can be blocked
     // simultaneously (e.g. someone opens 3 Driver Stations). Map: station → ip → vlanInterface
     const blockedDsRules = new Map<StationName, Map<string, string>>();
@@ -916,10 +935,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         }
       });
 
-      // Periodically clean up stale drive sessions so replacement DSes can connect.
+      // Periodically clean up stale drive sessions and broadcast session state.
       // A drive session is stale when the accepted DS has had no TCP/UDP activity
       // for DS_STALE_TIMEOUT_MS (~20s). This handles laptop swaps: close the old
       // DS, wait ~20s, open the new one — it auto-connects.
+      // The 5s interval also keeps the timeout countdown in the UI fresh.
       setInterval(() => {
         for (const [station, dsIp] of [...acceptedDsForStation]) {
           if (!connectedDsIps.has(dsIp) && isDsStale(dsIp)) {
@@ -938,7 +958,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
             broadcastRouteState();
           }
         }
-      }, 10_000);
+        // Broadcast drive session state so the UI can show DS IPs and timeout countdowns
+        broadcastDriveSessionState();
+      }, 5_000);
 
       // Track which stations have already had checks triggered this session,
       // so we don't re-run on every DS UDP heartbeat.

@@ -29,6 +29,7 @@ import {
   useSubnetScan,
   useMdnsActivity,
   useRoutePreferenceState,
+  useDriveSessionState,
   sendDrive,
 } from '../hooks/useBackend';
 import { MatchPanel } from './MatchPanel';
@@ -117,6 +118,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const latest = useLatest();
   const matchState = useMatchState();
   const routeState = useRoutePreferenceState();
+  const driveSession = useDriveSessionState();
   const yourIp = routeState?.yourIp;
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const stagedChanges = useBackendStagedChanges();
@@ -212,11 +214,33 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
     <>
       {full && <MatchPanel station={station} />}
       <RoutePreferenceBanner station={station} />
-      {matchState?.connectedStations[station]?.blockedDsIps &&
-        matchState.connectedStations[station]!.blockedDsIps!.length > 0 &&
-        (() => {
-          const blocked = matchState.connectedStations[station]!.blockedDsIps!;
-          const activeIp = matchState.connectedStations[station]!.ip;
+      {/* Drive session info: DS IP, blocked DSes, timeout countdown */}
+      {(() => {
+        const session = driveSession?.sessions?.[station];
+        const blocked = driveSession?.blockedDs?.[station];
+        const isYouBlocked = blocked?.includes(yourIp ?? '');
+        const isSessionStale = session && session.timeoutRemaining < 20;
+
+        // Prominent banner when YOUR browser IP is a blocked DS for this station
+        if (isYouBlocked && session) {
+          return (
+            <Alert
+              severity="warning"
+              sx={{ mb: 1, fontWeight: 700, fontSize: '1.1rem', '& .MuiAlert-icon': { fontSize: '1.5rem' } }}
+            >
+              YOUR DRIVER STATION IS BLOCKED
+              <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 400 }}>
+                Another DS (<strong>{session.dsIp}</strong>) is active on this station.
+                {isSessionStale
+                  ? ` It will time out in ${session.timeoutRemaining}s.`
+                  : ' Close the other DS to take over (~20s timeout).'}
+              </Typography>
+            </Alert>
+          );
+        }
+
+        // Multiple DS alert (duplicate detection)
+        if (blocked && blocked.length > 0 && session) {
           return (
             <Alert
               severity="error"
@@ -225,8 +249,8 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               MULTIPLE DRIVER STATIONS DETECTED
               <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
                 <li>
-                  <strong>{activeIp}</strong>
-                  {activeIp === yourIp && (
+                  <strong>{session.dsIp}</strong>
+                  {session.dsIp === yourIp && (
                     <Chip label="YOU" size="small" color="info" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                   )}
                   {' — active'}
@@ -246,7 +270,10 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               </Typography>
             </Alert>
           );
-        })()}
+        }
+
+        return null;
+      })()}
       <Card
         style={{
           marginBottom: full ? undefined : '1rem',
@@ -267,6 +294,20 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                     <Chip label="(clear)" size="small" variant="outlined" color="warning" sx={{ height: 20 }} />
                   )}
                 </>
+              )}
+              {/* DS IP indicator */}
+              {driveSession?.sessions?.[station] && (
+                <Tooltip
+                  title={`Driver Station: ${driveSession.sessions[station]!.dsIp}${driveSession.sessions[station]!.timeoutRemaining < 20 ? ` (timeout in ${driveSession.sessions[station]!.timeoutRemaining}s)` : ''}`}
+                >
+                  <Chip
+                    label={`DS ${driveSession.sessions[station]!.dsIp}`}
+                    size="small"
+                    variant="outlined"
+                    color={driveSession.sessions[station]!.timeoutRemaining < 20 ? 'warning' : 'success'}
+                    sx={{ height: 20, fontSize: '0.65rem', ml: 1 }}
+                  />
+                </Tooltip>
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>

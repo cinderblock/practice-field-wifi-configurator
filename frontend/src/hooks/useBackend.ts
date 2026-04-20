@@ -39,6 +39,8 @@ import {
   isSupportChatIncoming,
   isAdminAuthResult,
   isSlackConfigState,
+  isDriveSessionState,
+  DriveSessionState,
   isExternalAccessState,
   isExternalAccessTokenCreated,
   ExternalAccessState,
@@ -550,6 +552,11 @@ function receiveMessage(detail: Message) {
 
   if (isExternalAccessState(detail)) {
     handleExternalAccessState(detail);
+    return;
+  }
+
+  if (isDriveSessionState(detail)) {
+    handleDriveSessionState(detail);
     return;
   }
 
@@ -1285,6 +1292,28 @@ export function sendCreateExternalAccessToken(label: string) {
 
 export function sendRevokeExternalAccessToken(id: string) {
   ws?.send(JSON.stringify({ type: 'revokeExternalAccessToken', id }));
+}
+
+// ── Drive Session State ──────────────────────────────────────────────
+
+let currentDriveSessionState: DriveSessionState | null = null;
+
+function handleDriveSessionState(state: DriveSessionState) {
+  currentDriveSessionState = state;
+  events.dispatchEvent(new CustomEvent('driveSessionState', { detail: state }));
+}
+
+export function useDriveSessionState(): DriveSessionState | null {
+  const [state, setState] = useState<DriveSessionState | null>(currentDriveSessionState);
+
+  useEffect(() => {
+    setState(currentDriveSessionState);
+    const handler = (e: Event) => setState((e as CustomEvent<DriveSessionState>).detail);
+    events.addEventListener('driveSessionState', handler);
+    return () => events.removeEventListener('driveSessionState', handler);
+  }, []);
+
+  return state;
 }
 
 export function sendScoreReset() {
