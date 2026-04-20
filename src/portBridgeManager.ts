@@ -1,7 +1,11 @@
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { NetworkBackend } from './node-ip/index.js';
 import type { PortConfig, PortBridgeState, StationName } from './types.js';
 import { bridgeName } from './networkManager.js';
 import { appInfo, appWarn } from './appLogger.js';
+
+const execFile = promisify(execFileCb);
 
 /**
  * Manages runtime port-to-slot bridge mapping.
@@ -82,6 +86,19 @@ export class PortBridgeManager {
     await this.net.createVlan({ parent: this.physicalInterface, vlanId: portVlanId, name: portIf });
     await this.net.addBridgeMember(brName, portIf);
     await this.net.setInterfaceUp(portIf);
+
+    // Enable hairpin mode on both the port interface and the station's radio
+    // VLAN interface. Both are sub-interfaces of the same physical NIC, so
+    // bridged traffic needs to exit the same port it entered (different VLAN).
+    // Without hairpin, the bridge silently drops these frames.
+    const stationIf = `${this.physicalInterface}.${station}`;
+    try {
+      await execFile('bridge', ['link', 'set', 'dev', portIf, 'hairpin', 'on']);
+      await execFile('bridge', ['link', 'set', 'dev', stationIf, 'hairpin', 'on']);
+      appInfo(`Enabled hairpin mode on ${portIf} and ${stationIf}`);
+    } catch (err) {
+      appWarn(`Failed to enable hairpin mode: ${(err as Error).message}`);
+    }
 
     // Verify the interface was created and is in the right bridge
     try {
