@@ -453,15 +453,15 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
               border: `1px solid ${color}`,
               borderRadius: 1,
               backgroundColor: bgColor,
-              width: 140,
+              width: 210,
               overflow: 'hidden',
             }}
           >
             {/* Mini chart */}
-            <Box sx={{ '& canvas': { display: 'block', height: '35px !important' } }}>
+            <Box sx={{ '& canvas': { display: 'block', height: '52px !important' } }}>
               <SmoothieComponent
                 responsive
-                height={35}
+                height={52}
                 streamDelay={-1000}
                 millisPerPixel={200}
                 minValue={5}
@@ -501,7 +501,7 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
                 <Typography
                   sx={{
                     fontFamily: 'monospace',
-                    fontSize: '0.85rem',
+                    fontSize: '1.7rem',
                     fontWeight: 700,
                     color,
                   }}
@@ -511,7 +511,7 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
                 <Typography
                   sx={{
                     fontFamily: 'monospace',
-                    fontSize: '0.7rem',
+                    fontSize: '1.4rem',
                     color: 'rgba(244, 67, 54, 0.8)',
                   }}
                 >
@@ -522,7 +522,7 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
               {/* Team number */}
               <Typography
                 sx={{
-                  fontSize: '0.75rem',
+                  fontSize: '1.5rem',
                   fontWeight: 600,
                   color: 'rgba(255,255,255,0.6)',
                   textAlign: 'center',
