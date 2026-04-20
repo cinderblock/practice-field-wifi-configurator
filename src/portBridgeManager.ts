@@ -1,11 +1,7 @@
-import { execFile as execFileCb } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { NetworkBackend } from './node-ip/index.js';
 import type { PortConfig, PortBridgeState, StationName } from './types.js';
 import { bridgeName } from './networkManager.js';
 import { appInfo, appWarn } from './appLogger.js';
-
-const execFile = promisify(execFileCb);
 
 /**
  * Manages runtime port-to-slot bridge mapping.
@@ -93,8 +89,8 @@ export class PortBridgeManager {
     // Without hairpin, the bridge silently drops these frames.
     const stationIf = `${this.physicalInterface}.${station}`;
     try {
-      await execFile('bridge', ['link', 'set', 'dev', portIf, 'hairpin', 'on']);
-      await execFile('bridge', ['link', 'set', 'dev', stationIf, 'hairpin', 'on']);
+      await this.net.setBridgeHairpin(portIf, true);
+      await this.net.setBridgeHairpin(stationIf, true);
       appInfo(`Enabled hairpin mode on ${portIf} and ${stationIf}`);
     } catch (err) {
       appWarn(`Failed to enable hairpin mode: ${(err as Error).message}`);

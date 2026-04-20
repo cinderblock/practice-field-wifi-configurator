@@ -328,6 +328,10 @@ export function createLinuxBackend(): NetworkBackend {
       await ip('link', 'set', member, 'nomaster');
     },
 
+    async setBridgeHairpin(member: string, enabled: boolean): Promise<void> {
+      await execFile('bridge', ['link', 'set', 'dev', member, 'hairpin', enabled ? 'on' : 'off']);
+    },
+
     async flushRulesByComment(commentPrefix: string): Promise<void> {
       if (!commentPrefix) throw new Error('Refusing to flush iptables rules with empty comment prefix');
 

@@ -81,4 +81,10 @@ export interface NetworkBackend {
 
   /** Remove an interface from its bridge (set nomaster). */
   removeBridgeMember(bridge: string, member: string): Promise<void>;
+
+  /** Enable or disable hairpin (reflective relay) mode on a bridge member.
+   *  Required when two VLAN sub-interfaces of the same physical NIC are
+   *  bridged together — without hairpin the bridge drops frames that would
+   *  exit the same physical port they entered. */
+  setBridgeHairpin(member: string, enabled: boolean): Promise<void>;
 }

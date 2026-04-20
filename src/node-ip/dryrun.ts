@@ -130,5 +130,9 @@ export function createDryRunBackend(inner?: NetworkBackend): NetworkBackend {
     async removeBridgeMember(_bridge: string, member: string) {
       console.log(`[dry-run] Would remove ${member} from its bridge`);
     },
+
+    async setBridgeHairpin(member: string, enabled: boolean) {
+      console.log(`[dry-run] Would set hairpin ${enabled ? 'on' : 'off'} on ${member}`);
+    },
   };
 }
