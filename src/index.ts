@@ -612,6 +612,26 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // Used to prevent DNAT thrashing when two DSes compete for the same station.
     const connectedDsIps = new Set<string>();
 
+    // Track last activity (TCP or UDP) timestamp per accepted DS IP.
+    // Used to detect stale drive sessions: if a DS hasn't been seen for
+    // DS_STALE_TIMEOUT_MS, its drive session is cleared so a replacement
+    // DS can auto-connect. This handles laptop swaps without needing a
+    // manual "takeover" button.
+    const DS_STALE_TIMEOUT_MS = 20_000; // 20 seconds (covers ~3 DS TCP flap cycles)
+    const dsLastActivity = new Map<string, number>();
+
+    /** Update the last-activity timestamp for a DS IP. */
+    function touchDsActivity(dsIp: string) {
+      dsLastActivity.set(dsIp, Date.now());
+    }
+
+    /** Check if a DS IP is considered stale (no activity for DS_STALE_TIMEOUT_MS). */
+    function isDsStale(dsIp: string): boolean {
+      const last = dsLastActivity.get(dsIp);
+      if (!last) return true;
+      return Date.now() - last > DS_STALE_TIMEOUT_MS;
+    }
+
     // Track blocked (duplicate) DS IPs per station. Multiple DSes can be blocked
     // simultaneously (e.g. someone opens 3 Driver Stations). Map: station → ip → vlanInterface
     const blockedDsRules = new Map<StationName, Map<string, string>>();
@@ -703,14 +723,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         matchEngine.setDSAddress(station, dsIp);
         return true;
       }
-      // Different IP, but current DS still has an active TCP connection — block this one
-      if (connectedDsIps.has(accepted)) {
+      // Different IP — check if the current DS is still active.
+      // "Active" means it has a TCP connection AND has been seen recently.
+      // This prevents instant takeover during TCP flaps (6s cycle) while
+      // still allowing takeover when the old DS is truly gone (~20s).
+      if (connectedDsIps.has(accepted) || !isDsStale(accepted)) {
         blockDuplicateDS(station, dsIp).catch(err => {
           console.error(`Failed to block duplicate DS for ${station}:`, err);
         });
         return false;
       }
-      // Current DS is gone — accept the new one
+      // Current DS is stale — accept the new one
+      appInfo(`DS takeover: ${dsIp} replacing stale DS ${accepted} on ${station}`);
       acceptedDsForStation.set(station, dsIp);
       matchEngine.setDSAddress(station, dsIp);
       return true;
@@ -872,15 +896,15 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     runFMS().then(fms => {
       if (!fms) return;
 
-      fms.on('dsConnected', ({ address }) => connectedDsIps.add(address));
+      fms.on('dsConnected', ({ address }) => {
+        connectedDsIps.add(address);
+        touchDsActivity(address);
+      });
       fms.on('dsDisconnected', ({ address }) => {
         connectedDsIps.delete(address);
-        // Drive sessions (DNAT, route preference, accepted DS) are NOT cleaned up here.
-        // DS TCP flaps every ~6s — cleaning up would destroy the drive session each cycle.
-        // Drive sessions are torn down by:
-        //   - Explicit "stop driving" from the user (sendDrive(null))
-        //   - Station reconfiguration (config change listener)
-        //   - stopDrive() called from onDriveAction
+        // Drive sessions (DNAT, route preference, accepted DS) are NOT cleaned up
+        // on disconnect — DS TCP flaps every ~6s. Instead, the periodic stale
+        // session cleanup below handles old DSes that are truly gone.
 
         // Clean up blocked DS FORWARD DROP rules when a blocked DS disconnects
         for (const [station, stationBlocks] of [...blockedDsRules]) {
@@ -891,6 +915,30 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           }
         }
       });
+
+      // Periodically clean up stale drive sessions so replacement DSes can connect.
+      // A drive session is stale when the accepted DS has had no TCP/UDP activity
+      // for DS_STALE_TIMEOUT_MS (~20s). This handles laptop swaps: close the old
+      // DS, wait ~20s, open the new one — it auto-connects.
+      setInterval(() => {
+        for (const [station, dsIp] of [...acceptedDsForStation]) {
+          if (!connectedDsIps.has(dsIp) && isDsStale(dsIp)) {
+            appInfo(
+              `Clearing stale drive session: ${dsIp} on ${station} (no activity for ${DS_STALE_TIMEOUT_MS / 1000}s)`,
+            );
+            // Clean up the drive session so a new DS can take over
+            removeDnatRule(station).catch(err => console.error(`Failed to remove stale DNAT for ${station}:`, err));
+            clearRoutePreference(dsIp).catch(err =>
+              console.error(`Failed to clear stale route preference for ${dsIp}:`, err),
+            );
+            unblockAllDS(station).catch(err => console.error(`Failed to unblock DSes for ${station}:`, err));
+            acceptedDsForStation.delete(station);
+            matchEngine.clearDSAddress(station);
+            dsLastActivity.delete(dsIp);
+            broadcastRouteState();
+          }
+        }
+      }, 10_000);
 
       // Track which stations have already had checks triggered this session,
       // so we don't re-run on every DS UDP heartbeat.
@@ -947,6 +995,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           // TCP remoteAddress may be IPv6-mapped (::ffff:10.x.x.x) — normalize to plain IPv4
           const address = msg.address.replace(/^::ffff:/, '');
 
+          // Track activity for staleness detection
+          touchDsActivity(address);
+
           // Ignore connections from team subnets — these are devices on the robot
           // network (roboRIO, coprocessors), not Driver Stations.
           isTeamSubnetAddress(address)
@@ -969,16 +1020,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
                 return;
               }
 
-              // Common case: unique team on one station — auto-drive (full setup)
+              // Common case: unique team on one station — auto-drive (full setup).
+              // If another DS already has a drive session, startDrive → trySetDSAddress
+              // will handle the staleness check and either block or allow takeover.
               const station = radioManager.getStationForTeam(teamNumber);
               if (station) {
-                // If another DS already has a drive session (DNAT rule) for this station,
-                // don't auto-drive. Check the DNAT rule, not TCP state, because TCP flaps
-                // every ~6s and we don't want a second DS sneaking in during the gap.
-                const existingDnat = activeDnatRules.get(station);
-                if (existingDnat && existingDnat.dsIp !== address) {
-                  return;
-                }
                 startDrive(address, station, teamNumber).catch(err => {
                   console.error('Auto-drive failed:', err);
                 });

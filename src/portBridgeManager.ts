@@ -78,12 +78,23 @@ export class PortBridgeManager {
     const brName = bridgeName(station);
 
     // Create the port VLAN sub-interface and add it to the station's bridge
+    appInfo(`Bridging port "${port.name}": creating ${portIf} (VLAN ${portVlanId}) → ${brName}`);
     await this.net.createVlan({ parent: this.physicalInterface, vlanId: portVlanId, name: portIf });
     await this.net.addBridgeMember(brName, portIf);
     await this.net.setInterfaceUp(portIf);
 
-    this.activeBridges.set(portVlanId, station);
-    appInfo(`Bridged port "${port.name}" (VLAN ${portVlanId}) to ${station} (${brName})`);
+    // Verify the interface was created and is in the right bridge
+    try {
+      const ifaces = await this.net.listInterfaces(portIf);
+      const info = ifaces[0];
+      appInfo(
+        `Bridged port "${port.name}" (VLAN ${portVlanId}) to ${station} (${brName}) — ` +
+          `${portIf} state=${info?.state ?? 'unknown'}, ` +
+          `addrs=[${info?.addresses?.map(a => a.address).join(', ') ?? 'none'}]`,
+      );
+    } catch {
+      appInfo(`Bridged port "${port.name}" (VLAN ${portVlanId}) to ${station} (${brName}) — verification skipped`);
+    }
     this.onChange?.();
   }
 
