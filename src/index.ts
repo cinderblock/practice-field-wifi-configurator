@@ -35,6 +35,7 @@ import { RobotTestMonitor } from './robotTestMonitor.js';
 import { RobotPacketCapture } from './robotPacketCapture.js';
 import { FirmwareStore } from './firmwareStore.js';
 import { handleFirmwareRequest } from './firmwareApi.js';
+import { handleTeamAvatarRequest } from './teamAvatarApi.js';
 import { ScoringEngine } from './scoringEngine.js';
 import { handleScoringRequest } from './scoringApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
@@ -251,6 +252,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       (req: IncomingMessage, res: ServerResponse) => handleExternalAccessAuth(req, res, externalAccessStore),
       (req, res) => handleScoringRequest(req, res, scoringEngine, apiKeyStore, trustedProxyMatcher),
       (req, res) => handleFirmwareRequest(req, res, firmwareStore),
+      handleTeamAvatarRequest,
     ],
     (wpaKey, wpaKey24, skipReconfigure) => {
       if (!robotTestMonitor) return;

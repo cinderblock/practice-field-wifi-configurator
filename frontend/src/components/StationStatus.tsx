@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { TeamAvatar } from './TeamAvatar';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
@@ -85,6 +86,7 @@ function RoutePreferenceBanner({ station }: { station: StationName }) {
             color: 'white',
           }}
         >
+          <TeamAvatar teamNumber={parseInt(team, 10) || null} size={20} />
           <Typography variant="body2" sx={{ flex: 1 }}>
             Team {team} is on {stations.length} stations
             {otherSelected && ` (driving ${prettyStationName(routeState.preference!)})`}

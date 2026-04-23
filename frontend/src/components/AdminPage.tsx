@@ -9,6 +9,7 @@ import Grid from '@mui/material/Grid';
 import { MatchTimeline } from './MatchTimeline';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { TeamAvatar } from './TeamAvatar';
 
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -120,7 +121,8 @@ function StationControlCard({ station }: { station: StationName }) {
     <Card sx={{ mb: 1 }}>
       <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TeamAvatar teamNumber={teamNumber} size={28} />
             <Typography variant="subtitle1" fontWeight="bold">
               {title}
               {subtitle && (

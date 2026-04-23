@@ -4,3 +4,4 @@ node_modules
 active-config.json
 debug.log
 bugs.md
+.env

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import { TeamAvatar } from './TeamAvatar';
 import SmoothieComponent from 'react-smoothie';
 
 import { useScoreState, useMatchState, useTelemetryCallback, sendCastReceiverRegister } from '../hooks/useBackend';
@@ -679,23 +680,24 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
               </Box>
 
               {/* Team number */}
-              <Typography
-                sx={{
-                  fontSize: '1.5rem',
-                  fontWeight: 600,
-                  color: 'rgba(255,255,255,0.6)',
-                  textAlign: 'center',
-                  mt: 0.25,
-                }}
-              >
-                {robot.teamNumber ?? robot.station}
-                {isDuplicate && (
-                  <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
-                    {' '}
-                    ({robot.station.replace('slot', '#')})
-                  </span>
-                )}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.25 }}>
+                <TeamAvatar teamNumber={robot.teamNumber} size={24} />
+                <Typography
+                  sx={{
+                    fontSize: '1.5rem',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.6)',
+                  }}
+                >
+                  {robot.teamNumber ?? robot.station}
+                  {isDuplicate && (
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                      {' '}
+                      ({robot.station.replace('slot', '#')})
+                    </span>
+                  )}
+                </Typography>
+              </Box>
             </Box>
           </Box>
         );
@@ -783,16 +785,22 @@ function AllianceScoreBox({
       </Typography>
       {/* Team numbers display */}
       {teams && teams.length > 0 && (
-        <Typography
-          sx={{
-            color: 'rgba(255,255,255,0.4)',
-            fontSize: '0.85rem',
-            fontFamily: 'monospace',
-            mt: 0.5,
-          }}
-        >
-          {teams.join(' \u00B7 ')}
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
+          {teams.map(t => (
+            <Box key={t} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <TeamAvatar teamNumber={t} size={20} />
+              <Typography
+                sx={{
+                  color: 'rgba(255,255,255,0.4)',
+                  fontSize: '0.85rem',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {t}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
       )}
     </Box>
   );

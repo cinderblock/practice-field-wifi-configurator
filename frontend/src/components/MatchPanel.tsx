@@ -5,6 +5,7 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
+import { TeamAvatar } from './TeamAvatar';
 import { MatchPhase, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
@@ -204,6 +205,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
             {joinedStations.map(s => (
               <Chip
                 key={s}
+                avatar={<TeamAvatar teamNumber={stationStates[s]?.teamNumber} size={20} />}
                 label={stationChipLabel(s, stationStates[s], stationStates)}
                 size="small"
                 color={stationStates[s]?.ready ? 'success' : 'default'}
@@ -407,6 +409,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
                       {redStations.map(s => (
                         <Chip
                           key={s}
+                          avatar={<TeamAvatar teamNumber={stationStates[s]?.teamNumber} size={20} />}
                           label={controlChipLabel(s, stationStates[s])}
                           size="small"
                           color={stationStates[s]?.ready ? 'success' : 'default'}
@@ -426,6 +429,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
                       {blueStations.map(s => (
                         <Chip
                           key={s}
+                          avatar={<TeamAvatar teamNumber={stationStates[s]?.teamNumber} size={20} />}
                           label={controlChipLabel(s, stationStates[s])}
                           size="small"
                           color={stationStates[s]?.ready ? 'success' : 'default'}

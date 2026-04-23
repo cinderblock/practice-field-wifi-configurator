@@ -6,6 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
+import { TeamAvatar } from './TeamAvatar';
 import { Alliance, MatchPhase, MatchState, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
@@ -324,6 +325,7 @@ function ParticipantRow({
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <TeamAvatar teamNumber={state?.teamNumber} size={22} />
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {teamLabel(state)}
         </Typography>
@@ -570,6 +572,7 @@ function ActiveParticipantRow({ station, state }: { station: StationName; state:
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <TeamAvatar teamNumber={state?.teamNumber} size={22} />
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {teamLabel(state)}
         </Typography>
@@ -688,7 +691,20 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     {redStations.map(s => (
-                      <Box key={s} sx={{ px: 1.5, py: 0.5, borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                      <Box
+                        key={s}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: 1,
+                          border: 1,
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <TeamAvatar teamNumber={stationStates[s]?.teamNumber} size={20} />
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {teamLabel(stationStates[s])}
                         </Typography>
@@ -704,7 +720,20 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                     {blueStations.map(s => (
-                      <Box key={s} sx={{ px: 1.5, py: 0.5, borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                      <Box
+                        key={s}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: 1,
+                          border: 1,
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <TeamAvatar teamNumber={stationStates[s]?.teamNumber} size={20} />
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {teamLabel(stationStates[s])}
                         </Typography>
