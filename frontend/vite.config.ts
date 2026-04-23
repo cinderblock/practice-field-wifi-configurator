@@ -59,6 +59,12 @@ function stationRoutes(): Plugin {
           res.end();
           return;
         }
+
+        // Fallback: serve 404 page for unrecognized paths (skip assets/files with extensions)
+        if (url && !url.includes('.') && url !== '/') {
+          req.url = '/404.html';
+        }
+
         next();
       });
     },
@@ -110,6 +116,7 @@ export default defineConfig({
         scores: 'scores.html',
         match: 'match.html',
         overview: 'overview.html',
+        notfound: '404.html',
       },
     },
   },
