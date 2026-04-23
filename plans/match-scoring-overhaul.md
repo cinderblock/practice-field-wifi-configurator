@@ -61,6 +61,20 @@ Total "both active" from game start: 20 + 3 + 10 + 3(grace) = 36 seconds.
 6. **Half-freeplay**: if one alliance has no robots, show that side in freeplay style
 7. **Inactive scores**: show "off-goal" count during match for clarity
 
+## Round 2 Fixes (post-deploy testing)
+
+After deploying commit d162974, 9 issues were identified:
+
+1. **Timeline at top** — already in code, was a deploy-timing issue ✓
+2. **Battery always visible, outside 50/50** — was already outside the grid ✓
+3. **Battery sorted by alliance** — sorted left alliance first, right second, unassigned last. White border/text for non-match-participant robots ✓
+4. **Pulse + abrupt transition** — removed 2s CSS transitions; score desaturation now switches abruptly (no fade) ✓
+5. **Off-goal scoring bug** — root cause: `autoWinnerAlliance` stayed null on tie/no-scores during auto, making `getAllianceShiftState` always return null (all goals always "active"). Fix: random tiebreak on tie, matching REBUILT behavior ✓
+6. **Auto winner below score** — moved "Auto Winner" label from center panel to below the winning alliance's AllianceScoreBox ✓
+7. **Remove team numbers from score boxes** — removed teams prop/display from AllianceScoreBox ✓
+8. **Score boxes with desaturation swap** — off-goal count now uses alliance color with larger font (clamp 1.5-3rem), swaps saturation prominence with main score ✓
+9. **Client-side timer interpolation** — track `matchReceivedAt` timestamp, subtract elapsed client time each render to keep timer smooth between 250ms server ticks ✓
+
 ## Progress
 
 - [x] Create shared shiftState (`src/shiftState.ts`, frontend re-exports)
@@ -68,3 +82,8 @@ Total "both active" from game start: 20 + 3 + 10 + 3(grace) = 36 seconds.
 - [x] Fix scoring engine (transition bug + per-alliance mode + goal-active scoring)
 - [x] Update frontend scoreboard (bg color, 50/50 split, title, half-freeplay, inactive scores)
 - [x] Typecheck passes clean
+- [x] Round 2: Fix auto winner tie → random tiebreak
+- [x] Round 2: Score box redesign (no teams, auto winner badge, desaturation swap, abrupt transitions)
+- [x] Round 2: Battery panel sorted by alliance, white for non-participants
+- [x] Round 2: Client-side timer interpolation
+- [x] Round 2: Typecheck passes clean

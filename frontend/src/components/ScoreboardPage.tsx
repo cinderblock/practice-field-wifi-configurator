@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { TeamAvatar } from './TeamAvatar';
 import SmoothieComponent from 'react-smoothie';
 
 import { useScoreState, useMatchState, useTelemetryCallback, sendCastReceiverRegister } from '../hooks/useBackend';
-import type { Alliance, ScoreBatch, StationControlState, StationName, TelemetryUpdate } from '../../../src/types';
+import type { Alliance, ScoreBatch, StationName, TelemetryUpdate } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
 import { getAllianceShiftState } from '../utils/shiftState';
 import { MatchTimeline } from './MatchTimeline';
@@ -98,11 +98,22 @@ function getInitialSwap(): boolean {
   return localStorage.getItem('scoreboard-swap') === '1';
 }
 
+/** Phases where the countdown timer is actively counting down. */
+const COUNTING_PHASES = new Set(['countdown', 'auto', 'autoPause', 'teleop', 'endgame']);
+
 export function ScoreboardPage() {
   const score = useScoreState();
   const matchState = useMatchState();
   const [, setTick] = useState(0);
   const [swapped, setSwapped] = useState(getInitialSwap);
+
+  // Track when we last received a match state for client-side time interpolation
+  const matchReceivedAt = useRef(0);
+  const lastMatchRef = useRef(matchState);
+  if (matchState !== lastMatchRef.current) {
+    lastMatchRef.current = matchState;
+    matchReceivedAt.current = Date.now();
+  }
 
   const toggleSwap = () => {
     setSwapped(s => {
@@ -155,37 +166,6 @@ export function ScoreboardPage() {
     };
   }, []);
 
-  // Extract team numbers per alliance from match state
-  const teamsByAlliance = useMemo(() => {
-    const result: Record<Alliance, number[]> = { red: [], blue: [] };
-    if (!matchState?.stationStates) return result;
-
-    for (const [, state] of Object.entries(matchState.stationStates) as [
-      StationName,
-      StationControlState | undefined,
-    ][]) {
-      if (state?.joined && state.alliance && state.teamNumber) {
-        result[state.alliance].push(state.teamNumber);
-      }
-    }
-    // Sort for stable display
-    result.red.sort((a, b) => a - b);
-    result.blue.sort((a, b) => a - b);
-    return result;
-  }, [matchState]);
-
-  // Compute alliance shift state for REBUILT (raw, used for background colour)
-  const inactiveAlliance = useMemo(() => {
-    if (!matchState) return null;
-    return getAllianceShiftState(
-      matchState.phase,
-      matchState.remainingTime,
-      matchState.config.teleopDuration,
-      matchState.config.endgameDuration,
-      matchState.autoWinnerAlliance,
-    );
-  }, [matchState]);
-
   /** Is this alliance's scoring currently counting? Mirrors backend isGoalActive
    *  including the 3-second grace period after a goal turns off. */
   const isScoringActive = useCallback(
@@ -220,9 +200,18 @@ export function ScoreboardPage() {
   // An alliance is "in match" if the scoring engine says so
   const matchAlliances = score?.matchAlliances ?? [];
   const isMatchMode = score?.mode === 'match';
-  const hasTeams = teamsByAlliance.red.length > 0 || teamsByAlliance.blue.length > 0;
   const leftInMatch = matchAlliances.includes(left);
   const rightInMatch = matchAlliances.includes(right);
+
+  // Client-interpolated remaining time — subtracts elapsed client time since last server update.
+  // Keeps the timer smooth between 250ms server ticks. Uses setTick to re-evaluate each second.
+  const displayRemaining = (() => {
+    if (!matchState) return 0;
+    const { phase, remainingTime } = matchState;
+    if (phase === 'paused' || !COUNTING_PHASES.has(phase)) return remainingTime;
+    const elapsed = (Date.now() - matchReceivedAt.current) / 1000;
+    return Math.max(0, remainingTime - elapsed);
+  })();
 
   // Timer colour and pulse for match mode
   const activeColor = matchState ? getActiveColor(matchState) : '#9e9e9e';
@@ -232,7 +221,7 @@ export function ScoreboardPage() {
       matchState.phase === 'teleop' ||
       matchState.phase === 'endgame' ||
       matchState.phase === 'countdown');
-  const shouldPulse = !!(isActivePeriod && matchState && matchState.remainingTime > 0 && matchState.remainingTime <= 3);
+  const shouldPulse = !!(isActivePeriod && matchState && displayRemaining > 0 && displayRemaining <= 3);
 
   // Match timeline progress (0-1) — shown whenever any alliance is in a match
   const anyMatchActive = matchAlliances.length > 0;
@@ -345,7 +334,7 @@ export function ScoreboardPage() {
             progress={matchProgress}
             autoWinnerAlliance={autoWinner}
             phase={matchState.phase}
-            remainingTime={matchState.remainingTime}
+            remainingTime={displayRemaining}
           />
         </Box>
       )}
@@ -395,9 +384,9 @@ export function ScoreboardPage() {
             alliance={left}
             total={score[left].total}
             active={leftActive}
-            teams={leftInMatch && hasTeams ? teamsByAlliance[left] : undefined}
             inactiveTotal={leftInMatch ? leftInactive : undefined}
             freePlayLabel={leftLabel}
+            isAutoWinner={isMatchMode && autoWinner === left}
           />
         </Box>
 
@@ -406,26 +395,11 @@ export function ScoreboardPage() {
           {/* Match countdown timer */}
           {isMatchMode && matchState && matchProgress !== null && (
             <MatchTimer
-              remainingTime={matchState.remainingTime}
+              remainingTime={displayRemaining}
               color={activeColor}
               pulse={shouldPulse}
               fontSize="clamp(2.5rem, 6vw, 5rem)"
             />
-          )}
-
-          {/* Auto winner badge */}
-          {isMatchMode && autoWinner && (
-            <Typography
-              sx={{
-                color: autoWinner === 'red' ? '#ef5350' : '#42a5f5',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 2,
-              }}
-            >
-              Auto: {autoWinner === 'red' ? 'RED' : 'BLUE'}
-            </Typography>
           )}
 
           {isFreePlay && hasWindow && (
@@ -433,7 +407,7 @@ export function ScoreboardPage() {
               {leftWindow?.total ?? 0} / {rightWindow?.total ?? 0} in last {score.windowSeconds}s
             </Typography>
           )}
-          {!hasWindow && !autoWinner && !isMatchMode && (
+          {!hasWindow && !isMatchMode && (
             <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
               —
             </Typography>
@@ -446,9 +420,9 @@ export function ScoreboardPage() {
             alliance={right}
             total={score[right].total}
             active={rightActive}
-            teams={rightInMatch && hasTeams ? teamsByAlliance[right] : undefined}
             inactiveTotal={rightInMatch ? rightInactive : undefined}
             freePlayLabel={rightLabel}
+            isAutoWinner={isMatchMode && autoWinner === right}
           />
         </Box>
       </Box>
@@ -513,7 +487,7 @@ export function ScoreboardPage() {
       )}
 
       {/* Battery voltage for connected robots */}
-      <BatteryPanel matchState={matchState} />
+      <BatteryPanel matchState={matchState} leftAlliance={left} matchAlliances={matchAlliances} />
     </Box>
   );
 }
@@ -526,7 +500,15 @@ interface BatteryInfo {
   lastSeen: number;
 }
 
-function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchState> }) {
+function BatteryPanel({
+  matchState,
+  leftAlliance,
+  matchAlliances,
+}: {
+  matchState: ReturnType<typeof useMatchState>;
+  leftAlliance: Alliance;
+  matchAlliances: Alliance[];
+}) {
   const [batteries, setBatteries] = useState<Partial<Record<StationName, BatteryInfo>>>({});
 
   // Populate TimeSeries (for charts) and track numeric values
@@ -568,8 +550,15 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
       result.push({ station, teamNumber, alliance, ssid: null, battery: batt });
     }
 
+    // Sort: left alliance, then unassigned in the middle, then right alliance
+    const rightAlliance = leftAlliance === 'red' ? 'blue' : 'red';
+    result.sort((a, b) => {
+      const order = (ally: Alliance | null) => (ally === leftAlliance ? 0 : ally === rightAlliance ? 2 : 1);
+      return order(a.alliance) - order(b.alliance);
+    });
+
     return result;
-  }, [batteries, matchState]);
+  }, [batteries, matchState, leftAlliance]);
 
   // Detect duplicate team numbers to show station name as disambiguator
   const teamCounts = useMemo(() => {
@@ -594,14 +583,14 @@ function BatteryPanel({ matchState }: { matchState: ReturnType<typeof useMatchSt
       }}
     >
       {robots.map(robot => {
-        const color =
-          robot.alliance === 'red' ? '#ef5350' : robot.alliance === 'blue' ? '#42a5f5' : 'rgba(255,255,255,0.5)';
-        const bgColor =
-          robot.alliance === 'red'
+        // Robots participating in a match get alliance colors; non-participants get white
+        const inMatch = robot.alliance != null && matchAlliances.includes(robot.alliance);
+        const color = inMatch ? (robot.alliance === 'red' ? '#ef5350' : '#42a5f5') : 'rgba(255,255,255,0.5)';
+        const bgColor = inMatch
+          ? robot.alliance === 'red'
             ? 'rgba(239,83,80,0.10)'
-            : robot.alliance === 'blue'
-              ? 'rgba(66,165,245,0.10)'
-              : 'rgba(255,255,255,0.05)';
+            : 'rgba(66,165,245,0.10)'
+          : 'rgba(255,255,255,0.05)';
         const ts = stationTimeSeries[robot.station];
         const minFloor = batteryMinState[robot.station]?.floor;
         const isDuplicate = robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false;
@@ -710,18 +699,19 @@ function AllianceScoreBox({
   alliance,
   total,
   active,
-  teams,
   inactiveTotal,
   freePlayLabel,
+  isAutoWinner,
 }: {
   alliance: Alliance;
   total: number;
   active?: boolean;
-  teams?: number[];
-  /** Goals scored while the hub was off (displayed as dim secondary count) */
+  /** Goals scored while the hub was off (displayed as secondary count) */
   inactiveTotal?: number;
   /** If set, show this label instead of the alliance name (half-freeplay mode) */
   freePlayLabel?: string | null;
+  /** Whether this alliance won auto */
+  isAutoWinner?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
   const bgColor = alliance === 'red' ? 'rgba(239,83,80,0.08)' : 'rgba(66,165,245,0.08)';
@@ -740,7 +730,7 @@ function AllianceScoreBox({
         minWidth: 200,
       }}
     >
-      {/* Main score — desaturates when goal is off */}
+      {/* Main score — desaturates abruptly when goal is off */}
       <Typography
         sx={{
           fontSize: 'clamp(4rem, 15vw, 12rem)',
@@ -750,25 +740,24 @@ function AllianceScoreBox({
           lineHeight: 1,
           opacity: goalOff ? 0.3 : 1,
           filter: goalOff ? 'saturate(0.3)' : 'none',
-          transition: 'opacity 2s ease, filter 2s ease',
         }}
       >
         {total}
       </Typography>
-      {/* Off-goal count — desaturated when goal is on, saturated when goal is off */}
+      {/* Off-goal count — swaps saturation prominence with main score */}
       {hasInactive && (
         <Typography
           sx={{
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: '1rem',
+            color,
+            fontSize: 'clamp(1.5rem, 4vw, 3rem)',
             fontFamily: 'monospace',
+            fontWeight: 700,
             mt: 0.5,
             opacity: goalOff ? 1 : 0.3,
             filter: goalOff ? 'none' : 'saturate(0.3)',
-            transition: 'opacity 2s ease, filter 2s ease',
           }}
         >
-          +{inactiveTotal} off-goal
+          +{inactiveTotal}
         </Typography>
       )}
       <Typography
@@ -783,24 +772,21 @@ function AllianceScoreBox({
       >
         {freePlayLabel ?? alliance}
       </Typography>
-      {/* Team numbers display */}
-      {teams && teams.length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
-          {teams.map(t => (
-            <Box key={t} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <TeamAvatar teamNumber={t} size={20} />
-              <Typography
-                sx={{
-                  color: 'rgba(255,255,255,0.4)',
-                  fontSize: '0.85rem',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {t}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
+      {/* Auto winner badge — shown below the winning alliance's score */}
+      {isAutoWinner && (
+        <Typography
+          sx={{
+            color,
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: 2,
+            mt: 0.5,
+            opacity: 0.8,
+          }}
+        >
+          Auto Winner
+        </Typography>
       )}
     </Box>
   );

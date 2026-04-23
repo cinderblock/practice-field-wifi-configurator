@@ -707,19 +707,20 @@ export class MatchEngine {
           } else if (scores.blue > scores.red) {
             this.autoWinnerAlliance = 'blue';
           } else {
-            // Tie — no winner (stays null). FMS would assign randomly; we leave it undecided.
-            this.autoWinnerAlliance = null;
+            // Tie — REBUILT picks randomly
+            this.autoWinnerAlliance = Math.random() < 0.5 ? 'red' : 'blue';
           }
+          const tieNote = scores.red === scores.blue ? ', random tiebreak' : '';
           console.log(
-            `Auto winner: ${this.autoWinnerAlliance ?? 'TIE'} (scores: red=${scores.red}, blue=${scores.blue})`,
+            `Auto winner: ${this.autoWinnerAlliance} (scores: red=${scores.red}, blue=${scores.blue}${tieNote})`,
           );
         } catch (err) {
           appError(`Auto score resolver failed: ${err}`);
-          this.autoWinnerAlliance = null;
+          this.autoWinnerAlliance = Math.random() < 0.5 ? 'red' : 'blue';
         }
       } else {
-        this.autoWinnerAlliance = null;
-        console.log('Auto winner: undetermined (no score resolver)');
+        this.autoWinnerAlliance = Math.random() < 0.5 ? 'red' : 'blue';
+        console.log(`Auto winner: ${this.autoWinnerAlliance} (random — no score resolver)`);
       }
     }
   }
