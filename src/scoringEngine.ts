@@ -1,6 +1,7 @@
 import {
   Alliance,
   MatchPhase,
+  MatchConfig,
   MatchState,
   ScoreEvent,
   ScoreState,
@@ -12,10 +13,13 @@ import {
   AllianceScore,
   ElementScore,
 } from './types.js';
+import { getAllianceShiftState } from './shiftState.js';
 
 const DEFAULT_WINDOW_SECONDS = 30;
 const DEFAULT_PHASE_GRACE_SECONDS = 5;
 const DEFAULT_BATCH_TIMEOUT_SECONDS = 100;
+/** After a goal turns off, scores still count for this many seconds */
+const GOAL_GRACE_SECONDS = 3;
 
 function oppositeAlliance(alliance: Alliance): Alliance {
   return alliance === 'red' ? 'blue' : 'red';
@@ -56,6 +60,19 @@ export class ScoringEngine {
   };
   private recentBatches: Record<Alliance, ScoreBatch[]> = { red: [], blue: [] };
   private batchTimers: Record<Alliance, NodeJS.Timeout | null> = { red: null, blue: null };
+
+  // ── Per-alliance match mode ─────────────────────────────────────
+  /** Which alliances are in match mode. Empty = all follow the top-level mode. */
+  private matchAlliances = new Set<Alliance>();
+
+  // ── Goal-active tracking (REBUILT shift scoring) ────────────────
+  /** Last match state received — used to compute shift state at event time */
+  private lastMatchRemainingTime = 0;
+  private lastMatchStateTime = 0;
+  private lastMatchConfig: MatchConfig | null = null;
+  private lastAutoWinnerAlliance: Alliance | null = null;
+  /** The "game-meaningful" phase for shift computation (survives pauses) */
+  private effectivePhaseForShift: MatchPhase = 'idle';
 
   private autoRegisterLimit = 1;
   private suppressBroadcast = false;
@@ -134,6 +151,12 @@ export class ScoringEngine {
       }
     }
 
+    // Check goal-active state for match alliances (REBUILT shift scoring)
+    let goalInactive = false;
+    if (this.matchAlliances.has(awardedTo)) {
+      goalInactive = !this.isGoalActive(awardedTo, now);
+    }
+
     const processed: ProcessedScoreEvent = {
       id: `evt-${nextEventId++}`,
       source: event.source,
@@ -146,6 +169,7 @@ export class ScoringEngine {
       deviceTimestamp: event.timestamp,
       matchPhase: this.mode === 'match' ? effectivePhase : undefined,
       deduplicated: deduplicated || phaseInactive,
+      goalInactive,
     };
 
     this.events.push(processed);
@@ -155,8 +179,8 @@ export class ScoringEngine {
       this.lastDedupTimestamp.set(dedupKey, now);
     }
 
-    // In free play mode, handle batch tracking and sliding window
-    if (this.mode === 'freePlay' && !processed.deduplicated) {
+    // Handle free play tracking for non-match alliances (or when fully in freePlay)
+    if (!this.matchAlliances.has(awardedTo) && !processed.deduplicated) {
       this.addToBatch(awardedTo, processed, now);
       this.ensureWindowTimer();
     }
@@ -211,6 +235,7 @@ export class ScoringEngine {
     this.mode = mode;
     if (mode === 'freePlay') {
       this.lastDedupTimestamp.clear();
+      this.matchAlliances.clear();
       this.resetBatches();
     }
     this.broadcast();
@@ -238,6 +263,7 @@ export class ScoringEngine {
   reset(): void {
     this.events = [];
     this.lastDedupTimestamp.clear();
+    this.matchAlliances.clear();
     this.resetBatches();
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
@@ -253,6 +279,7 @@ export class ScoringEngine {
     this.sources.clear();
     this.elements.clear();
     this.lastDedupTimestamp.clear();
+    this.matchAlliances.clear();
     this.resetBatches();
     if (this.windowTimer) {
       clearTimeout(this.windowTimer);
@@ -272,20 +299,49 @@ export class ScoringEngine {
       this.previousPhase = { phase: prevPhase, endedAt: Date.now() };
     }
 
+    // Track match state for shift/goal-active computation
+    this.lastMatchRemainingTime = state.remainingTime;
+    this.lastMatchStateTime = Date.now();
+    this.lastMatchConfig = state.config;
+    this.lastAutoWinnerAlliance = state.autoWinnerAlliance ?? null;
+
+    // Track the effective phase for shift computation (survives pauses)
+    if (state.phase !== 'paused') {
+      this.effectivePhaseForShift = state.phase;
+    }
+
     // Auto-switch to match mode when a match starts
-    if (prevPhase === 'idle' && state.phase === 'countdown') {
+    if ((prevPhase === 'idle' || prevPhase === 'created') && state.phase === 'countdown') {
       this.mode = 'match';
-      this.events = [];
+
+      // Determine which alliances have joined robots
+      this.matchAlliances.clear();
+      if (state.stationStates) {
+        for (const s of Object.values(state.stationStates)) {
+          if (s?.joined && s.alliance) this.matchAlliances.add(s.alliance);
+        }
+      }
+
+      // Clear events and batches only for match alliances
+      this.events = this.events.filter(e => !this.matchAlliances.has(e.awardedTo));
       this.lastDedupTimestamp.clear();
-      this.resetBatches();
+      for (const alliance of this.matchAlliances) {
+        this.resetBatchForAlliance(alliance);
+      }
+
       this.broadcast();
       return;
     }
 
     // When match ends and resets to idle, switch back to free play
     if (state.phase === 'idle' && prevPhase === 'postMatch') {
+      // Clear events for match alliances
+      this.events = this.events.filter(e => !this.matchAlliances.has(e.awardedTo));
+      for (const alliance of this.matchAlliances) {
+        this.resetBatchForAlliance(alliance);
+      }
+      this.matchAlliances.clear();
       this.mode = 'freePlay';
-      this.resetBatches();
       this.broadcast();
       return;
     }
@@ -320,30 +376,105 @@ export class ScoringEngine {
       elements: Object.fromEntries(this.elements),
     };
 
-    if (this.mode === 'freePlay') {
-      // Primary display: active batch scores
-      state.red = this.calculateBatchScore('red');
-      state.blue = this.calculateBatchScore('blue');
+    // Compute scores per alliance based on their individual mode
+    for (const alliance of ['red', 'blue'] as Alliance[]) {
+      if (this.matchAlliances.has(alliance)) {
+        // Match mode: cumulative scores (excluding goalInactive)
+        state[alliance] = this.calculateMatchScore(alliance);
+      } else {
+        // Free play mode: active batch scores
+        state[alliance] = this.calculateBatchScore(alliance);
+      }
+    }
+
+    // Batch activity for freeplay alliances
+    if (!this.matchAlliances.has('red')) {
       state.redBatchActive = this.activeBatches.red.active;
+    }
+    if (!this.matchAlliances.has('blue')) {
       state.blueBatchActive = this.activeBatches.blue.active;
-      state.recentBatches = {
-        red: this.recentBatches.red,
-        blue: this.recentBatches.blue,
-      };
-      // Secondary display: sliding window
+    }
+
+    // Recent batches for freeplay alliances
+    state.recentBatches = {
+      red: this.matchAlliances.has('red') ? [] : this.recentBatches.red,
+      blue: this.matchAlliances.has('blue') ? [] : this.recentBatches.blue,
+    };
+
+    // Sliding window for freeplay alliances
+    if (!this.matchAlliances.has('red') || !this.matchAlliances.has('blue')) {
       state.slidingWindow = {
-        red: this.calculateSlidingWindowScore('red'),
-        blue: this.calculateSlidingWindowScore('blue'),
+        red: this.matchAlliances.has('red') ? emptyAllianceScore() : this.calculateSlidingWindowScore('red'),
+        blue: this.matchAlliances.has('blue') ? emptyAllianceScore() : this.calculateSlidingWindowScore('blue'),
       };
-    } else {
-      // Match mode: cumulative scores
-      state.red = this.calculateMatchScore('red');
-      state.blue = this.calculateMatchScore('blue');
+    }
+
+    // Match-specific data when any alliance is in match mode
+    if (this.matchAlliances.size > 0) {
       state.matchPhase = this.currentMatchPhase;
+      state.matchAlliances = [...this.matchAlliances];
       state.phaseBreakdown = this.calculatePhaseBreakdown();
+      state.inactiveScores = {
+        red: this.matchAlliances.has('red') ? this.calculateInactiveScore('red') : emptyAllianceScore(),
+        blue: this.matchAlliances.has('blue') ? this.calculateInactiveScore('blue') : emptyAllianceScore(),
+      };
     }
 
     return state;
+  }
+
+  // ── Goal-active computation (REBUILT shift scoring) ─────────────
+
+  /**
+   * Determine if an alliance's goal is currently active (scores should count).
+   * Returns true if:
+   * - Not in teleop shift territory, OR
+   * - This alliance's goal is the active one, OR
+   * - The goal turned off within the last GOAL_GRACE_SECONDS
+   */
+  private isGoalActive(alliance: Alliance, now: number): boolean {
+    const phase = this.effectivePhaseForShift;
+    const config = this.lastMatchConfig;
+    if (!config) return true;
+
+    // During non-teleop phases, both goals are active
+    if (phase !== 'teleop') return true;
+
+    // Estimate current remaining time
+    const elapsed = (now - this.lastMatchStateTime) / 1000;
+    // If paused, don't subtract elapsed time (timer is frozen)
+    const currentRemaining =
+      this.currentMatchPhase === 'paused'
+        ? this.lastMatchRemainingTime
+        : Math.max(0, this.lastMatchRemainingTime - elapsed);
+
+    // Check if this alliance's goal is currently inactive
+    const inactiveNow = getAllianceShiftState(
+      'teleop',
+      currentRemaining,
+      config.teleopDuration,
+      config.endgameDuration,
+      this.lastAutoWinnerAlliance,
+    );
+
+    // If both active or this alliance is not the inactive one, goal is active
+    if (inactiveNow !== alliance) return true;
+
+    // This alliance's goal is currently inactive — check 3-second grace period.
+    // Look at what the shift state was GOAL_GRACE_SECONDS ago:
+    // if this alliance wasn't inactive then, we're within the grace window.
+    const graceRemaining = currentRemaining + GOAL_GRACE_SECONDS;
+    const inactiveAtGrace = getAllianceShiftState(
+      'teleop',
+      graceRemaining,
+      config.teleopDuration,
+      config.endgameDuration,
+      this.lastAutoWinnerAlliance,
+    );
+
+    // If this alliance wasn't inactive at the grace point, the deactivation
+    // happened less than GOAL_GRACE_SECONDS ago — scores still count.
+    return inactiveAtGrace !== alliance;
   }
 
   // ── Batch management (free play) ────────────────────────────────
@@ -409,13 +540,19 @@ export class ScoringEngine {
   /** Clear all batch state. */
   private resetBatches(): void {
     for (const alliance of ['red', 'blue'] as Alliance[]) {
-      if (this.batchTimers[alliance]) {
-        clearTimeout(this.batchTimers[alliance]!);
-        this.batchTimers[alliance] = null;
-      }
-      this.activeBatches[alliance] = { events: [], startedAt: 0, active: false };
+      this.resetBatchForAlliance(alliance);
     }
     this.recentBatches = { red: [], blue: [] };
+  }
+
+  /** Clear batch state for a single alliance. */
+  private resetBatchForAlliance(alliance: Alliance): void {
+    if (this.batchTimers[alliance]) {
+      clearTimeout(this.batchTimers[alliance]!);
+      this.batchTimers[alliance] = null;
+    }
+    this.activeBatches[alliance] = { events: [], startedAt: 0, active: false };
+    this.recentBatches[alliance] = [];
   }
 
   /** Calculate score for the active batch of an alliance. */
@@ -462,13 +599,35 @@ export class ScoringEngine {
     return { total, elements };
   }
 
-  /** Calculate cumulative match score for an alliance. */
+  /** Calculate cumulative match score for an alliance (excluding goalInactive events). */
   private calculateMatchScore(alliance: Alliance): AllianceScore {
     const elements: Record<string, ElementScore> = {};
     let total = 0;
 
     for (const event of this.events) {
       if (event.deduplicated) continue;
+      if (event.goalInactive) continue;
+      if (event.awardedTo !== alliance) continue;
+
+      const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
+      el.count += event.count;
+      el.points += event.count * event.pointValue;
+      el.lastEventTime = Math.max(el.lastEventTime, event.timestamp);
+      elements[event.element] = el;
+      total += event.count * event.pointValue;
+    }
+
+    return { total, elements };
+  }
+
+  /** Calculate scores from events where the alliance's goal was inactive (for display). */
+  private calculateInactiveScore(alliance: Alliance): AllianceScore {
+    const elements: Record<string, ElementScore> = {};
+    let total = 0;
+
+    for (const event of this.events) {
+      if (event.deduplicated) continue;
+      if (!event.goalInactive) continue;
       if (event.awardedTo !== alliance) continue;
 
       const el = elements[event.element] ?? { count: 0, points: 0, lastEventTime: 0 };
@@ -497,6 +656,7 @@ export class ScoringEngine {
 
       for (const event of this.events) {
         if (event.deduplicated) continue;
+        if (event.goalInactive) continue;
         if (event.matchPhase !== phase) continue;
 
         const elems = event.awardedTo === 'red' ? redElements : blueElements;
@@ -521,7 +681,7 @@ export class ScoringEngine {
 
   /** Ensure a timer fires when the next event expires from the sliding window. */
   private ensureWindowTimer(): void {
-    if (this.mode !== 'freePlay') return;
+    if (this.mode !== 'freePlay' && this.matchAlliances.size === 0) return;
 
     const now = Date.now();
     const windowMs = this.windowSeconds * 1000;
@@ -559,9 +719,10 @@ export class ScoringEngine {
 
   /** Remove events that have fallen outside the sliding window. */
   private pruneExpiredEvents(): void {
-    if (this.mode !== 'freePlay') return;
+    if (this.mode !== 'freePlay' && this.matchAlliances.size === 0) return;
     const cutoff = Date.now() - this.windowSeconds * 1000;
-    this.events = this.events.filter(e => e.timestamp > cutoff);
+    // Only prune freeplay alliance events — match events are kept for the match duration
+    this.events = this.events.filter(e => this.matchAlliances.has(e.awardedTo) || e.timestamp > cutoff);
   }
 
   private broadcast(): void {

@@ -20,6 +20,76 @@ declare global {
   }
 }
 
+// ── Background colour per match period ─────────────────────────────
+
+const BG_GREEN = 'rgba(76, 175, 80, 0.12)';
+const BG_GREY = 'rgba(158, 158, 158, 0.10)';
+const BG_RED = 'rgba(239, 83, 80, 0.12)';
+const BG_BLUE = 'rgba(66, 165, 245, 0.12)';
+const BG_GOLD = 'rgba(255, 167, 38, 0.12)';
+const BG_PURPLE = 'rgba(171, 71, 188, 0.12)';
+const BG_BLACK = '#000';
+
+/** Compute the match-period background color (or BG_BLACK for non-match phases). */
+function getMatchBgColor(matchState: ReturnType<typeof useMatchState>): string {
+  if (!matchState) return BG_BLACK;
+
+  const { phase } = matchState;
+
+  switch (phase) {
+    case 'idle':
+    case 'created':
+      return BG_BLACK;
+    case 'countdown':
+      return BG_GREY;
+    case 'auto':
+      return BG_GREEN;
+    case 'autoPause':
+      return BG_GREY;
+    case 'teleop': {
+      const inactive = getAllianceShiftState(
+        phase,
+        matchState.remainingTime,
+        matchState.config.teleopDuration,
+        matchState.config.endgameDuration,
+        matchState.autoWinnerAlliance,
+      );
+      if (!inactive) return BG_GREEN; // transition — both active
+      if (inactive === 'red') return BG_BLUE; // blue scoring
+      return BG_RED; // red scoring
+    }
+    case 'endgame':
+      return BG_GOLD;
+    case 'postMatch':
+      return BG_PURPLE;
+    case 'paused':
+      return BG_GREY;
+    default:
+      return BG_BLACK;
+  }
+}
+
+/**
+ * Build the CSS background value for the scoreboard.
+ * - Both sides in match (or full freeplay): solid color.
+ * - Half-freeplay: hard-stop gradient so only the match half is colored.
+ */
+function getScoreboardBg(
+  matchState: ReturnType<typeof useMatchState>,
+  leftInMatch: boolean,
+  rightInMatch: boolean,
+): string {
+  const matchColor = getMatchBgColor(matchState);
+
+  if (leftInMatch && rightInMatch) return matchColor;
+  if (!leftInMatch && !rightInMatch) return BG_BLACK;
+
+  // Half-freeplay: one side match color, other side black
+  const leftColor = leftInMatch ? matchColor : BG_BLACK;
+  const rightColor = rightInMatch ? matchColor : BG_BLACK;
+  return `linear-gradient(to right, ${leftColor} 50%, ${rightColor} 50%)`;
+}
+
 function getInitialSwap(): boolean {
   const params = new URLSearchParams(window.location.search);
   const param = params.get('swap');
@@ -103,7 +173,7 @@ export function ScoreboardPage() {
     return result;
   }, [matchState]);
 
-  // Compute alliance shift state for REBUILT
+  // Compute alliance shift state for REBUILT (raw, used for background colour)
   const inactiveAlliance = useMemo(() => {
     if (!matchState) return null;
     return getAllianceShiftState(
@@ -115,9 +185,43 @@ export function ScoreboardPage() {
     );
   }, [matchState]);
 
+  /** Is this alliance's scoring currently counting? Mirrors backend isGoalActive
+   *  including the 3-second grace period after a goal turns off. */
+  const isScoringActive = useCallback(
+    (alliance: Alliance): boolean => {
+      if (!matchState) return true;
+      if (matchState.phase !== 'teleop') return true;
+
+      const inactive = getAllianceShiftState(
+        matchState.phase,
+        matchState.remainingTime,
+        matchState.config.teleopDuration,
+        matchState.config.endgameDuration,
+        matchState.autoWinnerAlliance,
+      );
+      if (inactive !== alliance) return true;
+
+      // Currently inactive — check 3-second grace
+      const graceRemaining = matchState.remainingTime + 3;
+      const inactiveAtGrace = getAllianceShiftState(
+        'teleop',
+        graceRemaining,
+        matchState.config.teleopDuration,
+        matchState.config.endgameDuration,
+        matchState.autoWinnerAlliance,
+      );
+      return inactiveAtGrace !== alliance;
+    },
+    [matchState],
+  );
+
   const autoWinner = matchState?.autoWinnerAlliance ?? null;
+  // An alliance is "in match" if the scoring engine says so
+  const matchAlliances = score?.matchAlliances ?? [];
   const isMatchMode = score?.mode === 'match';
   const hasTeams = teamsByAlliance.red.length > 0 || teamsByAlliance.blue.length > 0;
+  const leftInMatch = matchAlliances.includes(left);
+  const rightInMatch = matchAlliances.includes(right);
 
   // Timer colour and pulse for match mode
   const activeColor = matchState ? getActiveColor(matchState) : '#9e9e9e';
@@ -129,9 +233,10 @@ export function ScoreboardPage() {
       matchState.phase === 'countdown');
   const shouldPulse = !!(isActivePeriod && matchState && matchState.remainingTime > 0 && matchState.remainingTime <= 3);
 
-  // Match timeline progress (0-1)
+  // Match timeline progress (0-1) — shown whenever any alliance is in a match
+  const anyMatchActive = matchAlliances.length > 0;
   const matchProgress = useMemo(() => {
-    if (!matchState || !isMatchMode) return null;
+    if (!matchState || !anyMatchActive) return null;
     const { phase } = matchState;
     if (phase === 'idle' || phase === 'created') return null;
     const cfg = matchState.config;
@@ -144,7 +249,10 @@ export function ScoreboardPage() {
       return Math.min(1, (skipOffset + elapsed) / barTotal);
     }
     return Math.min(1, elapsed / barTotal);
-  }, [matchState, isMatchMode]);
+  }, [matchState, anyMatchActive]);
+
+  // Background — split when only one side is in a match
+  const scoreboardBg = getScoreboardBg(matchState, leftInMatch, rightInMatch);
 
   if (!score) {
     return (
@@ -168,17 +276,12 @@ export function ScoreboardPage() {
   const hasBreakdown = elements.length > 1;
   const isFreePlay = score.mode === 'freePlay';
 
-  // Alliance shift desaturation: during match mode teleop, desaturate the inactive side
-  const leftShiftActive = isMatchMode ? inactiveAlliance !== left : true;
-  const rightShiftActive = isMatchMode ? inactiveAlliance !== right : true;
-
-  // Free play batch activity
+  // Desaturation: match alliances desaturate when scoring stops counting
+  // (after the 3-second grace period); freeplay alliances desaturate on batch timeout
   const leftBatchActive = left === 'red' ? score.redBatchActive : score.blueBatchActive;
   const rightBatchActive = right === 'red' ? score.redBatchActive : score.blueBatchActive;
-
-  // Combine: in match mode, use shift logic; in free play, use batch activity
-  const leftActive = isFreePlay ? leftBatchActive : leftShiftActive;
-  const rightActive = isFreePlay ? rightBatchActive : rightShiftActive;
+  const leftActive = leftInMatch ? isScoringActive(left) : isFreePlay ? leftBatchActive : true;
+  const rightActive = rightInMatch ? isScoringActive(right) : isFreePlay ? rightBatchActive : true;
 
   const leftBatches = score.recentBatches?.[left] ?? [];
   const rightBatches = score.recentBatches?.[right] ?? [];
@@ -188,20 +291,39 @@ export function ScoreboardPage() {
   const rightWindow = score.slidingWindow?.[right];
   const hasWindow = isFreePlay && ((leftWindow?.total ?? 0) > 0 || (rightWindow?.total ?? 0) > 0);
 
+  // Inactive scores for match alliances
+  const leftInactive = score.inactiveScores?.[left]?.total ?? 0;
+  const rightInactive = score.inactiveScores?.[right]?.total ?? 0;
+
+  // Title text
+  const titleText = isMatchMode
+    ? (score.matchPhase ?? 'Match')
+        .toString()
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toUpperCase()
+    : 'FREE PLAY';
+
+  // Freeplay-side labels for half-freeplay mode
+  const leftLabel = isMatchMode && !leftInMatch ? 'FREE PLAY' : null;
+  const rightLabel = isMatchMode && !rightInMatch ? 'FREE PLAY' : null;
+
   return (
     <Box
       sx={{
         display: 'flex',
         flexDirection: 'column',
         height: window.__isCastReceiver ? '100vh' : '100dvh',
-        bgcolor: '#000',
+        background: scoreboardBg,
         color: '#fff',
         userSelect: 'none',
+        transition: 'background 1s ease',
       }}
     >
       {/* Controls — top right (hidden on Chromecast receiver) */}
       {!window.__isCastReceiver && (
-        <Box sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box
+          sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center', zIndex: 1 }}
+        >
           <Typography
             onClick={toggleSwap}
             sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
@@ -214,28 +336,72 @@ export function ScoreboardPage() {
         </Box>
       )}
 
-      {/* Main score display */}
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <AllianceScoreBox
-          alliance={left}
-          total={score[left].total}
-          active={leftActive}
-          teams={isMatchMode && hasTeams ? teamsByAlliance[left] : undefined}
-        />
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+      {/* Match timeline progress bar — full width across top */}
+      {matchProgress !== null && matchState && (
+        <Box sx={{ px: 0 }}>
+          <MatchTimeline
+            config={matchState.config}
+            progress={matchProgress}
+            autoWinnerAlliance={autoWinner}
+            phase={matchState.phase}
+            remainingTime={matchState.remainingTime}
+          />
+        </Box>
+      )}
+
+      {/* Title bar at top */}
+      <Box sx={{ pt: 2, pb: 1, textAlign: 'center' }}>
+        <Typography
+          sx={{
+            color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
+            textTransform: 'uppercase',
+            letterSpacing: 6,
+            fontWeight: 800,
+            fontSize: 'clamp(1.2rem, 3vw, 2rem)',
+            textAlign: 'center',
+            transition: 'color 1s ease',
+          }}
+        >
+          {titleText}
+        </Typography>
+        {isFreePlay && (
           <Typography
-            variant="h6"
             sx={{
-              color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.3)',
-              textTransform: 'uppercase',
-              letterSpacing: 4,
-              textAlign: 'center',
-              transition: 'color 1s ease',
+              color: 'rgba(255,255,255,0.35)',
+              fontSize: 'clamp(0.7rem, 1.5vw, 1rem)',
+              mt: 0.25,
             }}
           >
-            {score.mode === 'match' ? (score.matchPhase ?? 'Match') : 'Free Play'}
+            Scores reset after {score.batchTimeoutSeconds}s of inactivity
           </Typography>
+        )}
+      </Box>
 
+      {/* Main score display — forced 50/50 split */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          px: 2,
+          minHeight: 0,
+        }}
+      >
+        {/* Left alliance */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', pr: 2 }}>
+          <AllianceScoreBox
+            alliance={left}
+            total={score[left].total}
+            active={leftActive}
+            teams={leftInMatch && hasTeams ? teamsByAlliance[left] : undefined}
+            inactiveTotal={leftInMatch ? leftInactive : undefined}
+            freePlayLabel={leftLabel}
+          />
+        </Box>
+
+        {/* Center panel */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 120 }}>
           {/* Match countdown timer */}
           {isMatchMode && matchState && matchProgress !== null && (
             <MatchTimer
@@ -262,22 +428,28 @@ export function ScoreboardPage() {
           )}
 
           {isFreePlay && hasWindow && (
-            <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
               {leftWindow?.total ?? 0} / {rightWindow?.total ?? 0} in last {score.windowSeconds}s
             </Typography>
           )}
-          {!hasWindow && !autoWinner && (
+          {!hasWindow && !autoWinner && !isMatchMode && (
             <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
               —
             </Typography>
           )}
         </Box>
-        <AllianceScoreBox
-          alliance={right}
-          total={score[right].total}
-          active={rightActive}
-          teams={isMatchMode && hasTeams ? teamsByAlliance[right] : undefined}
-        />
+
+        {/* Right alliance */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start', pl: 2 }}>
+          <AllianceScoreBox
+            alliance={right}
+            total={score[right].total}
+            active={rightActive}
+            teams={rightInMatch && hasTeams ? teamsByAlliance[right] : undefined}
+            inactiveTotal={rightInMatch ? rightInactive : undefined}
+            freePlayLabel={rightLabel}
+          />
+        </Box>
       </Box>
 
       {/* Element breakdown bar */}
@@ -306,7 +478,7 @@ export function ScoreboardPage() {
         </Box>
       )}
 
-      {/* Recent batches (free play) */}
+      {/* Recent batches (free play only, hidden during match) */}
       {isFreePlay && hasRecentBatches && (
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
           <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} />
@@ -336,19 +508,6 @@ export function ScoreboardPage() {
               </Box>
             </Box>
           ))}
-        </Box>
-      )}
-
-      {/* Match timeline progress bar */}
-      {matchProgress !== null && matchState && (
-        <Box sx={{ px: 3, pb: 2 }}>
-          <MatchTimeline
-            config={matchState.config}
-            progress={matchProgress}
-            autoWinnerAlliance={autoWinner}
-            phase={matchState.phase}
-            remainingTime={matchState.remainingTime}
-          />
         </Box>
       )}
 
@@ -550,15 +709,22 @@ function AllianceScoreBox({
   total,
   active,
   teams,
+  inactiveTotal,
+  freePlayLabel,
 }: {
   alliance: Alliance;
   total: number;
   active?: boolean;
   teams?: number[];
+  /** Goals scored while the hub was off (displayed as dim secondary count) */
+  inactiveTotal?: number;
+  /** If set, show this label instead of the alliance name (half-freeplay mode) */
+  freePlayLabel?: string | null;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
   const bgColor = alliance === 'red' ? 'rgba(239,83,80,0.08)' : 'rgba(66,165,245,0.08)';
-  const desaturated = active === false;
+  const goalOff = active === false;
+  const hasInactive = inactiveTotal != null && inactiveTotal > 0;
 
   return (
     <Box
@@ -570,11 +736,9 @@ function AllianceScoreBox({
         border: `3px solid ${color}`,
         backgroundColor: bgColor,
         minWidth: 200,
-        opacity: desaturated ? 0.3 : 1,
-        filter: desaturated ? 'saturate(0.3)' : 'none',
-        transition: 'opacity 2s ease, filter 2s ease',
       }}
     >
+      {/* Main score — desaturates when goal is off */}
       <Typography
         sx={{
           fontSize: 'clamp(4rem, 15vw, 12rem)',
@@ -582,13 +746,32 @@ function AllianceScoreBox({
           fontFamily: 'monospace',
           color,
           lineHeight: 1,
+          opacity: goalOff ? 0.3 : 1,
+          filter: goalOff ? 'saturate(0.3)' : 'none',
+          transition: 'opacity 2s ease, filter 2s ease',
         }}
       >
         {total}
       </Typography>
+      {/* Off-goal count — desaturated when goal is on, saturated when goal is off */}
+      {hasInactive && (
+        <Typography
+          sx={{
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '1rem',
+            fontFamily: 'monospace',
+            mt: 0.5,
+            opacity: goalOff ? 1 : 0.3,
+            filter: goalOff ? 'none' : 'saturate(0.3)',
+            transition: 'opacity 2s ease, filter 2s ease',
+          }}
+        >
+          +{inactiveTotal} off-goal
+        </Typography>
+      )}
       <Typography
         sx={{
-          color,
+          color: freePlayLabel ? 'rgba(255,255,255,0.35)' : color,
           textTransform: 'uppercase',
           letterSpacing: 6,
           fontWeight: 700,
@@ -596,7 +779,7 @@ function AllianceScoreBox({
           mt: 1,
         }}
       >
-        {alliance}
+        {freePlayLabel ?? alliance}
       </Typography>
       {/* Team numbers display */}
       {teams && teams.length > 0 && (

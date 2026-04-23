@@ -1208,6 +1208,8 @@ export interface ProcessedScoreEvent {
   matchPhase?: MatchPhase;
   /** True if this event was deduplicated (not counted) */
   deduplicated: boolean;
+  /** True if the alliance's goal was inactive (past grace period) when this event arrived */
+  goalInactive?: boolean;
 }
 
 /** Per-element score breakdown */
@@ -1267,6 +1269,10 @@ export interface ScoreState {
   matchPhase?: MatchPhase;
   /** Per-phase breakdown (match mode only) */
   phaseBreakdown?: Record<string, { red: AllianceScore; blue: AllianceScore }>;
+  /** Which alliances are in match mode (omitted or empty = all follow the top-level mode) */
+  matchAlliances?: Alliance[];
+  /** Scores from events where the alliance's goal was inactive (match mode only, for display) */
+  inactiveScores?: { red: AllianceScore; blue: AllianceScore };
   /** Status of all known scoring sources */
   sources: Record<string, ScoringSourceStatus>;
   /** Configured scoring elements */
