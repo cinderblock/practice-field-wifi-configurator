@@ -803,6 +803,11 @@ export function sendRemoveSavedTeam(ssid: string) {
   ws?.send(JSON.stringify({ type: 'removeSavedTeam', ssid }));
 }
 
+/** Enable a previously-saved robot by SSID — server looks up the passphrase. */
+export function sendEnableSavedRobot(station: StationName, ssid: string, stage = false) {
+  ws?.send(JSON.stringify({ type: 'enableSavedRobot', ssid, station, stage }));
+}
+
 export function sendStationLeave(station: StationName) {
   ws?.send(JSON.stringify({ type: 'stationLeave', station }));
 }

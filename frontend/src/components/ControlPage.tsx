@@ -15,6 +15,7 @@ import {
   useSavedTeams,
   sendNewConfig,
   sendSaveTeam,
+  sendEnableSavedRobot,
   sendInternetToggle,
   useLatestTelemetry,
   useUpdateCallback,
@@ -33,7 +34,7 @@ import {
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
 import { StationNetworkCard } from './NetworkPage';
-import { StationName, StationNameList, SavedTeamConfig, PortConfig } from '../../../src/types';
+import { StationName, StationNameList, SavedTeamClientConfig, PortConfig } from '../../../src/types';
 import { createHash } from './cryptoUtils';
 import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { CopyToClipboard } from './CopyToClipboard';
@@ -43,6 +44,7 @@ import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
 import InputAdornment from '@mui/material/InputAdornment';
 import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -349,6 +351,8 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
 
 /**
  * List of saved robot configs for this team + add-robot form.
+ * Includes inline passphrase verification: a "Verify" button expands into a text field,
+ * and a matching passphrase puts a checkmark on the corresponding robot row.
  */
 function RobotList({
   teamNumber,
@@ -361,7 +365,7 @@ function RobotList({
   isMultiRobot,
 }: {
   teamNumber: number;
-  teamConfigs: SavedTeamConfig[];
+  teamConfigs: SavedTeamClientConfig[];
   activeStations: Map<string, StationName>;
   availableStation: StationName | null;
   selectedSsid: string;
@@ -372,14 +376,76 @@ function RobotList({
   const [showAddForm, setShowAddForm] = useState(false);
   const disconnectedStations = useFindDisconnectedStations();
 
+  // Passphrase verification state
+  const [showVerifyField, setShowVerifyField] = useState(false);
+  const [verifyValue, setVerifyValue] = useState('');
+  const [verifiedSsid, setVerifiedSsid] = useState<string | null>(null);
+  const hasHashes = teamConfigs.some(c => c.wpaKeyHash);
+
+  const handleVerifyInput = useCallback(
+    (value: string) => {
+      setVerifyValue(value);
+      if (value.length < 8) {
+        setVerifiedSsid(null);
+        return;
+      }
+      for (const config of teamConfigs) {
+        if (!config.wpaKeyHash) continue;
+        // Hash is SHA-256(ssid + passphrase) — ssid acts as salt (contains team number + robot name)
+        const hash = createHash(config.ssid + value);
+        if (hash === config.wpaKeyHash) {
+          setVerifiedSsid(config.ssid);
+          return;
+        }
+      }
+      setVerifiedSsid(null);
+    },
+    [teamConfigs],
+  );
+
+  const closeVerify = () => {
+    setShowVerifyField(false);
+    setVerifyValue('');
+    setVerifiedSsid(null);
+  };
+
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="h6">Robots</Typography>
-          <Button size="small" startIcon={<AddIcon />} onClick={() => setShowAddForm(!showAddForm)}>
-            Add Robot
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {/* Verify button — only visible when robots with hashes exist */}
+            {teamConfigs.length > 0 &&
+              hasHashes &&
+              (showVerifyField ? (
+                <TextField
+                  size="small"
+                  placeholder="Enter passphrase"
+                  value={verifyValue}
+                  onChange={e => handleVerifyInput(e.target.value)}
+                  autoFocus
+                  error={verifyValue.length >= 8 && !verifiedSsid}
+                  sx={{ width: 200 }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={closeVerify} edge="end">
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              ) : (
+                <Button size="small" onClick={() => setShowVerifyField(true)}>
+                  Verify Passphrase
+                </Button>
+              ))}
+            <Button size="small" startIcon={<AddIcon />} onClick={() => setShowAddForm(!showAddForm)}>
+              Add Robot
+            </Button>
+          </Box>
         </Box>
 
         {!availableStation && disconnectedStations.length > 0 && (
@@ -424,13 +490,11 @@ function RobotList({
                 onSelect={() => onSelectRobot(config.ssid)}
                 routePreference={routePreference}
                 isMultiRobot={isMultiRobot}
+                isVerified={config.ssid === verifiedSsid}
               />
             ))}
           </Box>
         )}
-
-        {/* Passphrase checker for any saved config */}
-        {teamConfigs.length > 0 && <PassphraseChecker teamConfigs={teamConfigs} />}
       </CardContent>
     </Card>
   );
@@ -450,8 +514,9 @@ function RobotRow({
   onSelect,
   routePreference,
   isMultiRobot,
+  isVerified,
 }: {
-  config: SavedTeamConfig;
+  config: SavedTeamClientConfig;
   isActive: boolean;
   isSelected: boolean;
   activeStation: StationName | null;
@@ -460,6 +525,7 @@ function RobotRow({
   onSelect: () => void;
   routePreference: StationName | null;
   isMultiRobot: boolean;
+  isVerified: boolean;
 }) {
   const [showTakeover, setShowTakeover] = useState(false);
   const [pendingDrive, setPendingDrive] = useState(false);
@@ -480,7 +546,7 @@ function RobotRow({
   const handleEnable = (stage: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!availableStation) return;
-    sendNewConfig(availableStation, config.ssid, config.wpaKey, stage);
+    sendEnableSavedRobot(availableStation, config.ssid, stage);
     onSelect(); // Auto-select the robot being enabled
   };
 
@@ -492,7 +558,7 @@ function RobotRow({
 
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
     sendNewConfig(targetStation, '', '', true);
-    sendNewConfig(targetStation, config.ssid, config.wpaKey, stage);
+    sendEnableSavedRobot(targetStation, config.ssid, stage);
     setShowTakeover(false);
     onSelect(); // Auto-select the robot being configured
   };
@@ -521,6 +587,11 @@ function RobotRow({
             <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
               {suffix ?? config.ssid}
             </Typography>
+            {isVerified && (
+              <Tooltip title="Passphrase verified">
+                <CheckCircleIcon sx={{ color: 'success.main', fontSize: 18 }} />
+              </Tooltip>
+            )}
             {isActive && <Chip label="Active" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
             {isActive && isMultiRobot && (routePreference === activeStation || pendingDrive) && (
               <Chip
@@ -838,72 +909,6 @@ function AddRobotForm({
         </Box>
       )}
     </Card>
-  );
-}
-
-/**
- * Passphrase verification feature.
- * Computes SHA-256(ssid + input) on each keypress and compares to saved hashes.
- */
-function PassphraseChecker({ teamConfigs }: { teamConfigs: SavedTeamConfig[] }) {
-  const [checkValue, setCheckValue] = useState('');
-  const [matchedSsid, setMatchedSsid] = useState<string | null>(null);
-
-  const handleCheck = useCallback(
-    (value: string) => {
-      setCheckValue(value);
-
-      if (value.length < 8) {
-        setMatchedSsid(null);
-        return;
-      }
-
-      // Check against all team configs
-      for (const config of teamConfigs) {
-        if (!config.wpaKeyHash) continue;
-        const hash = createHash(config.ssid + value);
-        if (hash === config.wpaKeyHash) {
-          setMatchedSsid(config.ssid);
-          return;
-        }
-      }
-      setMatchedSsid(null);
-    },
-    [teamConfigs],
-  );
-
-  // Only show if there are configs with hashes
-  const hasHashes = teamConfigs.some(c => c.wpaKeyHash);
-  if (!hasHashes) return null;
-
-  return (
-    <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Check passphrase
-      </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <TextField
-          size="small"
-          placeholder="Enter passphrase to verify"
-          value={checkValue}
-          onChange={e => handleCheck(e.target.value)}
-          sx={{ flex: 1 }}
-        />
-        {matchedSsid && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <CheckCircleIcon sx={{ color: 'success.main' }} />
-            <Typography variant="body2" color="success.main" sx={{ fontFamily: 'monospace' }}>
-              {matchedSsid}
-            </Typography>
-          </Box>
-        )}
-        {checkValue.length >= 8 && !matchedSsid && (
-          <Typography variant="body2" color="error">
-            No match
-          </Typography>
-        )}
-      </Box>
-    </Box>
   );
 }
 

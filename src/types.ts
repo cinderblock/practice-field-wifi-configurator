@@ -913,21 +913,24 @@ export function isSavedWiFiSetting(setting: unknown): setting is SavedWiFiSettin
 
 // ── Server-Side Saved Team Configs ──────────────────────────────────
 
-/** A saved team WiFi configuration stored server-side. */
+/** A saved team WiFi configuration stored server-side (includes plaintext key). */
 export interface SavedTeamConfig {
   ssid: string;
   wpaKey: string;
-  /** SHA-256(ssid + wpaKey) for client-side passphrase verification without revealing the key */
+  /** SHA-256(ssid + wpaKey) — salted with team+robot name so clients can verify without the real key */
   wpaKeyHash: string;
   internetAccess?: boolean;
   createdAt: number;
   lastUsedAt: number;
 }
 
-/** Broadcast from server to clients with all saved team configs. */
+/** Client-facing saved team config — wpaKey stripped so passphrases stay server-side. */
+export type SavedTeamClientConfig = Omit<SavedTeamConfig, 'wpaKey'>;
+
+/** Broadcast from server to clients with saved team configs (keys stripped). */
 export interface SavedTeamsState {
   type: 'savedTeamsState';
-  teams: SavedTeamConfig[];
+  teams: SavedTeamClientConfig[];
 }
 
 export function isSavedTeamsState(msg: unknown): msg is SavedTeamsState {
@@ -949,6 +952,24 @@ export function isSaveSavedTeam(msg: unknown): msg is SaveSavedTeam {
   if (typeof msg !== 'object' || !msg) return false;
   const m = msg as SaveSavedTeam;
   return m.type === 'saveSavedTeam' && typeof m.ssid === 'string' && typeof m.wpaKey === 'string';
+}
+
+/** Client request to enable a previously-saved robot by SSID (server looks up the key). */
+export type EnableSavedRobot = {
+  type: 'enableSavedRobot';
+  ssid: string;
+  station: StationName;
+  stage?: boolean;
+};
+export function isEnableSavedRobot(msg: unknown): msg is EnableSavedRobot {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as EnableSavedRobot;
+  return (
+    m.type === 'enableSavedRobot' &&
+    typeof m.ssid === 'string' &&
+    typeof m.station === 'string' &&
+    StationNameRegex.test(m.station)
+  );
 }
 
 // ── mDNS Reflector Activity ─────────────────────────────────────────

@@ -30,6 +30,7 @@ import {
   isRadioConfigureRequest,
   isRemoveSavedTeam,
   isSaveSavedTeam,
+  isEnableSavedRobot,
   isCreateApiKey,
   isRevokeApiKey,
   isReactivateApiKey,
@@ -609,6 +610,30 @@ export function setupWebSocket(
       } else if (isSaveSavedTeam(data)) {
         if (savedTeamStore) {
           savedTeamStore.saveTeam(data.ssid, data.wpaKey);
+        }
+      } else if (isEnableSavedRobot(data)) {
+        // Enable a previously-saved robot by SSID — server looks up the passphrase
+        if (!savedTeamStore) {
+          ws.send(JSON.stringify({ error: 'Saved team store not available' }));
+        } else if (matchEngine.isMatchActive()) {
+          ws.send(JSON.stringify({ error: 'Cannot reconfigure stations during an active match' }));
+        } else {
+          const saved = savedTeamStore.getTeam(data.ssid);
+          if (!saved) {
+            ws.send(JSON.stringify({ error: `No saved config found for SSID "${data.ssid}"` }));
+          } else {
+            radioManager
+              .configure(data.station, {
+                ssid: saved.ssid,
+                wpaKey: saved.wpaKey,
+                stage: data.stage,
+                internetAccess: saved.internetAccess,
+              })
+              .catch(err => {
+                appError(`Error enabling saved robot ${data.ssid} on ${data.station}: ${err.message}`);
+                ws.send(JSON.stringify({ error: 'Failed to configure station', details: err.message }));
+              });
+          }
         }
       } else if (isCastReceiverSwap(data)) {
         // Find the target receiver and send it the swap command

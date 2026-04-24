@@ -62,11 +62,11 @@ export class SavedTeamStore {
     return [...this.teams.values()].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
   }
 
-  /** Get the full broadcast state. */
+  /** Get the client-facing broadcast state (wpaKey stripped). */
   getState(): SavedTeamsState {
     return {
       type: 'savedTeamsState',
-      teams: this.getTeams(),
+      teams: this.getTeams().map(({ wpaKey: _, ...rest }) => rest),
     };
   }
 
