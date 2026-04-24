@@ -659,10 +659,9 @@ export class MatchEngine {
         break;
 
       case 'auto':
-        // Auto just ended — compute auto winner
-        this.computeAutoWinner();
-
         if (this.config.pauseDuration > 0 || this.config.autoWinner === 'pause') {
+          // Enter pause — auto winner computed at end of pause so late-arriving
+          // auto-period balls are included in the winner calculation.
           this.phase = 'autoPause';
           this.remainingTime = this.config.pauseDuration;
           this.disableAll();
@@ -675,7 +674,8 @@ export class MatchEngine {
             console.log('Auto-to-teleop pause');
           }
         } else {
-          // Skip pause — go straight to teleop
+          // Skip pause — compute auto winner now and go straight to teleop
+          this.computeAutoWinner();
           this.phase = 'teleop';
           this.remainingTime = this.config.teleopDuration;
           this.enableParticipating('teleOp');
@@ -684,6 +684,9 @@ export class MatchEngine {
         break;
 
       case 'autoPause':
+        // Compute auto winner at end of pause — all auto-period balls are now counted.
+        // For 'pause' mode this is a no-op (winner was set manually during pause).
+        this.computeAutoWinner();
         this.phase = 'teleop';
         this.remainingTime = this.config.teleopDuration;
         this.enableParticipating('teleOp');

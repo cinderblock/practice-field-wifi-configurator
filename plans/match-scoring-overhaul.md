@@ -87,3 +87,6 @@ After deploying commit d162974, 9 issues were identified:
 - [x] Round 2: Battery panel sorted by alliance, white for non-participants
 - [x] Round 2: Client-side timer interpolation
 - [x] Round 2: Typecheck passes clean
+- [x] Round 3: Move computeAutoWinner from end-of-auto to end-of-autoPause (so balls scored during pause count)
+- [x] Round 3: Make postMatch scores count as 'endgame' in period breakdown
+- [x] Round 3: Remove element breakdown bar from bottom of scoreboard (period breakdown on sides is sufficient)

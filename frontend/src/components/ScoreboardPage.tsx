@@ -263,8 +263,6 @@ export function ScoreboardPage() {
     );
   }
 
-  const elements = Object.values(score.elements);
-  const hasBreakdown = elements.length > 1;
   const isFreePlay = score.mode === 'freePlay';
 
   // Desaturation: match alliances desaturate when scoring stops counting
@@ -451,32 +449,6 @@ export function ScoreboardPage() {
           )}
         </Box>
       </Box>
-
-      {/* Element breakdown bar */}
-      {hasBreakdown && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, pb: 3, px: 4 }}>
-          {elements.map(el => {
-            const leftEl = score[left].elements[el.id];
-            const rightEl = score[right].elements[el.id];
-            if (!leftEl && !rightEl) return null;
-            const leftColor = left === 'red' ? '#ef5350' : '#42a5f5';
-            const rightColor = right === 'red' ? '#ef5350' : '#42a5f5';
-            return (
-              <Box key={el.id} sx={{ textAlign: 'center' }}>
-                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', mb: 0.5 }}>{el.name}</Typography>
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                  <Typography sx={{ color: leftColor, fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
-                    {leftEl?.count ?? 0}
-                  </Typography>
-                  <Typography sx={{ color: rightColor, fontFamily: 'monospace', fontSize: '1.3rem', fontWeight: 700 }}>
-                    {rightEl?.count ?? 0}
-                  </Typography>
-                </Box>
-              </Box>
-            );
-          })}
-        </Box>
-      )}
 
       {/* Recent batches (free play only, hidden during match) */}
       {isFreePlay && hasRecentBatches && (

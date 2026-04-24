@@ -33,7 +33,7 @@ export function getMatchSubPeriod(
   totalTeleopDuration: number,
 ): MatchSubPeriod | null {
   if (phase === 'auto' || phase === 'autoPause') return 'auto';
-  if (phase === 'endgame') return 'endgame';
+  if (phase === 'endgame' || phase === 'postMatch') return 'endgame';
   if (phase !== 'teleop') return null;
 
   const teleopElapsed = totalTeleopDuration - remainingTime;
