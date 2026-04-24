@@ -7,7 +7,8 @@ import SmoothieComponent from 'react-smoothie';
 import { useScoreState, useMatchState, useTelemetryCallback, sendCastReceiverRegister } from '../hooks/useBackend';
 import type { Alliance, ScoreBatch, StationName, TelemetryUpdate } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
-import { getAllianceShiftState } from '../utils/shiftState';
+import { getAllianceShiftState, getAllianceScoringShifts, getMatchSubPeriod } from '../utils/shiftState';
+import type { MatchSubPeriod } from '../utils/shiftState';
 import { MatchTimeline } from './MatchTimeline';
 import { MatchTimer, getActiveColor } from './MatchTimer';
 import { handleTelemetryUpdate, stationTimeSeries, batteryMinState } from './StationChart';
@@ -285,6 +286,12 @@ export function ScoreboardPage() {
   const leftInactive = score.inactiveScores?.[left]?.total ?? 0;
   const rightInactive = score.inactiveScores?.[right]?.total ?? 0;
 
+  // Current sub-period for period breakdown highlight / future detection
+  const currentSubPeriod: MatchSubPeriod | null = useMemo(() => {
+    if (!matchState || !isMatchMode) return null;
+    return getMatchSubPeriod(matchState.phase, displayRemaining, matchState.config.teleopDuration);
+  }, [matchState, isMatchMode, displayRemaining]);
+
   // Title text
   const titleText = isMatchMode
     ? (score.matchPhase ?? 'Match')
@@ -367,7 +374,7 @@ export function ScoreboardPage() {
         )}
       </Box>
 
-      {/* Main score display — forced 50/50 split */}
+      {/* Main score display — forced 50/50 split with period breakdowns on outside */}
       <Box
         sx={{
           flex: 1,
@@ -378,8 +385,17 @@ export function ScoreboardPage() {
           minHeight: 0,
         }}
       >
-        {/* Left alliance */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', pr: 2 }}>
+        {/* Left alliance — period breakdown + score box */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', pr: 2, gap: 2 }}>
+          {isMatchMode && leftInMatch && score.periodBreakdown && (
+            <PeriodBreakdown
+              alliance={left}
+              breakdown={score.periodBreakdown}
+              autoWinner={autoWinner}
+              currentSubPeriod={currentSubPeriod}
+              align="right"
+            />
+          )}
           <AllianceScoreBox
             alliance={left}
             total={score[left].total}
@@ -414,8 +430,8 @@ export function ScoreboardPage() {
           )}
         </Box>
 
-        {/* Right alliance */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-start', pl: 2 }}>
+        {/* Right alliance — score box + period breakdown */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', pl: 2, gap: 2 }}>
           <AllianceScoreBox
             alliance={right}
             total={score[right].total}
@@ -424,6 +440,15 @@ export function ScoreboardPage() {
             freePlayLabel={rightLabel}
             isAutoWinner={isMatchMode && autoWinner === right}
           />
+          {isMatchMode && rightInMatch && score.periodBreakdown && (
+            <PeriodBreakdown
+              alliance={right}
+              breakdown={score.periodBreakdown}
+              autoWinner={autoWinner}
+              currentSubPeriod={currentSubPeriod}
+              align="left"
+            />
+          )}
         </Box>
       </Box>
 
@@ -458,31 +483,6 @@ export function ScoreboardPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
           <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} />
           <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} />
-        </Box>
-      )}
-
-      {/* Phase breakdown (match mode) */}
-      {score.mode === 'match' && score.phaseBreakdown && Object.keys(score.phaseBreakdown).length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, pb: 2 }}>
-          {Object.entries(score.phaseBreakdown).map(([phase, scores]) => (
-            <Box key={phase} sx={{ textAlign: 'center' }}>
-              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                {phase}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center' }}>
-                <Typography
-                  sx={{ color: left === 'red' ? '#ef5350' : '#42a5f5', fontFamily: 'monospace', fontSize: '1rem' }}
-                >
-                  {scores[left].total}
-                </Typography>
-                <Typography
-                  sx={{ color: right === 'red' ? '#ef5350' : '#42a5f5', fontFamily: 'monospace', fontSize: '1rem' }}
-                >
-                  {scores[right].total}
-                </Typography>
-              </Box>
-            </Box>
-          ))}
         </Box>
       )}
 
@@ -694,6 +694,93 @@ function BatteryPanel({
     </Box>
   );
 }
+
+// ── Period Breakdown ──────────────────────────────────────────────────
+
+/** Ordered sub-periods for determining which are "in the future". */
+const SUB_PERIOD_ORDER: MatchSubPeriod[] = ['auto', 'transition', 'shift1', 'shift2', 'shift3', 'shift4', 'endgame'];
+
+function PeriodBreakdown({
+  alliance,
+  breakdown,
+  autoWinner,
+  currentSubPeriod,
+  align,
+}: {
+  alliance: Alliance;
+  breakdown: Record<string, { red: number; blue: number }>;
+  autoWinner: Alliance | null;
+  currentSubPeriod: MatchSubPeriod | null;
+  /** Which side of the score box this panel sits on. */
+  align: 'left' | 'right';
+}) {
+  const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
+  const [scoring1, scoring2] = getAllianceScoringShifts(alliance, autoWinner);
+
+  // Map display rows to their absolute sub-period keys
+  const rows: { label: string; period: MatchSubPeriod }[] = [
+    { label: 'Auto', period: 'auto' },
+    { label: 'Transition', period: 'transition' },
+    { label: 'Period 1', period: scoring1 },
+    { label: 'Period 2', period: scoring2 },
+    { label: 'Endgame', period: 'endgame' },
+  ];
+
+  // Determine which sub-periods are in the future
+  const currentIdx = currentSubPeriod ? SUB_PERIOD_ORDER.indexOf(currentSubPeriod) : -1;
+  const isFuture = (period: MatchSubPeriod) => {
+    if (currentIdx < 0) return true; // no current period = all future (pre-match)
+    return SUB_PERIOD_ORDER.indexOf(period) > currentIdx;
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+      {rows.map(({ label, period }) => {
+        const points = breakdown[period]?.[alliance] ?? 0;
+        const future = isFuture(period);
+        const isCurrent = currentSubPeriod === period;
+
+        return (
+          <Box
+            key={label}
+            sx={{
+              display: 'flex',
+              gap: 1.5,
+              alignItems: 'baseline',
+              flexDirection: align === 'right' ? 'row' : 'row-reverse',
+            }}
+          >
+            <Typography
+              sx={{
+                color: 'rgba(255,255,255,0.35)',
+                fontSize: 'clamp(0.6rem, 1.2vw, 0.8rem)',
+                textTransform: 'uppercase',
+                fontWeight: isCurrent ? 700 : 400,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {label}
+            </Typography>
+            <Typography
+              sx={{
+                color: future ? 'rgba(255,255,255,0.15)' : color,
+                fontFamily: 'monospace',
+                fontSize: 'clamp(0.9rem, 1.8vw, 1.3rem)',
+                fontWeight: 700,
+                minWidth: '2ch',
+                textAlign: align === 'right' ? 'right' : 'left',
+              }}
+            >
+              {future ? '–' : points}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ── Alliance Score Box ────────────────────────────────────────────────
 
 function AllianceScoreBox({
   alliance,

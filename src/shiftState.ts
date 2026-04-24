@@ -20,6 +20,49 @@ import type { Alliance } from './types.js';
 export const TRANSITION_DURATION = 10;
 export const SHIFT_DURATION = 25;
 
+/** Sub-periods within a match for fine-grained score breakdown. */
+export type MatchSubPeriod = 'auto' | 'transition' | 'shift1' | 'shift2' | 'shift3' | 'shift4' | 'endgame';
+
+/**
+ * Given the current match phase and teleop remaining time, return which
+ * sub-period we're in.
+ */
+export function getMatchSubPeriod(
+  phase: string | undefined,
+  remainingTime: number,
+  totalTeleopDuration: number,
+): MatchSubPeriod | null {
+  if (phase === 'auto' || phase === 'autoPause') return 'auto';
+  if (phase === 'endgame') return 'endgame';
+  if (phase !== 'teleop') return null;
+
+  const teleopElapsed = totalTeleopDuration - remainingTime;
+  if (teleopElapsed < TRANSITION_DURATION) return 'transition';
+
+  const shiftElapsed = teleopElapsed - TRANSITION_DURATION;
+  if (shiftElapsed < SHIFT_DURATION) return 'shift1';
+  if (shiftElapsed < SHIFT_DURATION * 2) return 'shift2';
+  if (shiftElapsed < SHIFT_DURATION * 3) return 'shift3';
+  if (shiftElapsed < SHIFT_DURATION * 4) return 'shift4';
+  return 'endgame';
+}
+
+/**
+ * Map absolute shift numbers to per-alliance "scoring period" indices.
+ * Returns the two shifts where the given alliance's goal IS ACTIVE
+ * (i.e., when they can score), ordered chronologically.
+ */
+export function getAllianceScoringShifts(
+  alliance: Alliance,
+  autoWinner: Alliance | null,
+): [MatchSubPeriod, MatchSubPeriod] {
+  if (!autoWinner) return ['shift1', 'shift2']; // fallback
+  // Winner's goal is INACTIVE during shifts 1,3 → winner scores during 2,4
+  // Loser's goal is INACTIVE during shifts 2,4 → loser scores during 1,3
+  if (alliance === autoWinner) return ['shift2', 'shift4'];
+  return ['shift1', 'shift3'];
+}
+
 export function getAllianceShiftState(
   phase: string | undefined,
   remainingTime: number,

@@ -1206,6 +1206,8 @@ export interface ProcessedScoreEvent {
   /** Device-reported time (ms since epoch), if provided */
   deviceTimestamp?: number;
   matchPhase?: MatchPhase;
+  /** Sub-period within the match (auto, transition, shift1-4, endgame) */
+  matchSubPeriod?: string;
   /** True if this event was deduplicated (not counted) */
   deduplicated: boolean;
   /** True if the alliance's goal was inactive (past grace period) when this event arrived */
@@ -1269,6 +1271,8 @@ export interface ScoreState {
   matchPhase?: MatchPhase;
   /** Per-phase breakdown (match mode only) */
   phaseBreakdown?: Record<string, { red: AllianceScore; blue: AllianceScore }>;
+  /** Per-sub-period breakdown: auto, transition, shift1-4, endgame (match mode only) */
+  periodBreakdown?: Record<string, { red: number; blue: number }>;
   /** Which alliances are in match mode (omitted or empty = all follow the top-level mode) */
   matchAlliances?: Alliance[];
   /** Scores from events where the alliance's goal was inactive (match mode only, for display) */

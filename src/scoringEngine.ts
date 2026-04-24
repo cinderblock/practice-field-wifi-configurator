@@ -13,7 +13,7 @@ import {
   AllianceScore,
   ElementScore,
 } from './types.js';
-import { getAllianceShiftState } from './shiftState.js';
+import { getAllianceShiftState, getMatchSubPeriod } from './shiftState.js';
 
 const DEFAULT_WINDOW_SECONDS = 30;
 const DEFAULT_PHASE_GRACE_SECONDS = 5;
@@ -157,6 +157,15 @@ export class ScoringEngine {
       goalInactive = !this.isGoalActive(awardedTo, now);
     }
 
+    // Compute sub-period for period breakdown
+    let matchSubPeriod: string | undefined;
+    if (this.mode === 'match' && this.matchAlliances.has(awardedTo)) {
+      const currentRemaining = this.estimateRemainingTime(now);
+      matchSubPeriod =
+        getMatchSubPeriod(this.effectivePhaseForShift, currentRemaining, this.lastMatchConfig?.teleopDuration ?? 0) ??
+        undefined;
+    }
+
     const processed: ProcessedScoreEvent = {
       id: `evt-${nextEventId++}`,
       source: event.source,
@@ -168,6 +177,7 @@ export class ScoringEngine {
       timestamp: now,
       deviceTimestamp: event.timestamp,
       matchPhase: this.mode === 'match' ? effectivePhase : undefined,
+      matchSubPeriod,
       deduplicated: deduplicated || phaseInactive,
       goalInactive,
     };
@@ -414,6 +424,7 @@ export class ScoringEngine {
       state.matchPhase = this.currentMatchPhase;
       state.matchAlliances = [...this.matchAlliances];
       state.phaseBreakdown = this.calculatePhaseBreakdown();
+      state.periodBreakdown = this.calculatePeriodBreakdown();
       state.inactiveScores = {
         red: this.matchAlliances.has('red') ? this.calculateInactiveScore('red') : emptyAllianceScore(),
         blue: this.matchAlliances.has('blue') ? this.calculateInactiveScore('blue') : emptyAllianceScore(),
@@ -424,6 +435,14 @@ export class ScoringEngine {
   }
 
   // ── Goal-active computation (REBUILT shift scoring) ─────────────
+
+  /** Estimate the current remaining time by interpolating from the last server update. */
+  private estimateRemainingTime(now: number): number {
+    const elapsed = (now - this.lastMatchStateTime) / 1000;
+    return this.currentMatchPhase === 'paused'
+      ? this.lastMatchRemainingTime
+      : Math.max(0, this.lastMatchRemainingTime - elapsed);
+  }
 
   /**
    * Determine if an alliance's goal is currently active (scores should count).
@@ -440,13 +459,7 @@ export class ScoringEngine {
     // During non-teleop phases, both goals are active
     if (phase !== 'teleop') return true;
 
-    // Estimate current remaining time
-    const elapsed = (now - this.lastMatchStateTime) / 1000;
-    // If paused, don't subtract elapsed time (timer is frozen)
-    const currentRemaining =
-      this.currentMatchPhase === 'paused'
-        ? this.lastMatchRemainingTime
-        : Math.max(0, this.lastMatchRemainingTime - elapsed);
+    const currentRemaining = this.estimateRemainingTime(now);
 
     // Check if this alliance's goal is currently inactive
     const inactiveNow = getAllianceShiftState(
@@ -674,6 +687,27 @@ export class ScoringEngine {
         red: { total: redTotal, elements: redElements },
         blue: { total: blueTotal, elements: blueElements },
       };
+    }
+
+    return breakdown;
+  }
+
+  /** Calculate per-sub-period point totals for each alliance (counted scores only). */
+  private calculatePeriodBreakdown(): Record<string, { red: number; blue: number }> {
+    const periods = ['auto', 'transition', 'shift1', 'shift2', 'shift3', 'shift4', 'endgame'];
+    const breakdown: Record<string, { red: number; blue: number }> = {};
+    for (const p of periods) {
+      breakdown[p] = { red: 0, blue: 0 };
+    }
+
+    for (const event of this.events) {
+      if (event.deduplicated) continue;
+      if (event.goalInactive) continue;
+      if (!event.matchSubPeriod) continue;
+
+      const period = breakdown[event.matchSubPeriod];
+      if (!period) continue;
+      period[event.awardedTo] += event.count * event.pointValue;
     }
 
     return breakdown;
