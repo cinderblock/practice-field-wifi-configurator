@@ -274,11 +274,6 @@ export function ScoreboardPage() {
 
   const leftBatches = score.recentBatches?.[left] ?? [];
   const rightBatches = score.recentBatches?.[right] ?? [];
-  const hasRecentBatches = leftBatches.length > 0 || rightBatches.length > 0;
-
-  const leftWindow = score.slidingWindow?.[left];
-  const rightWindow = score.slidingWindow?.[right];
-  const hasWindow = isFreePlay && ((leftWindow?.total ?? 0) > 0 || (rightWindow?.total ?? 0) > 0);
 
   // Inactive scores for match alliances
   const leftInactive = score.inactiveScores?.[left]?.total ?? 0;
@@ -383,8 +378,11 @@ export function ScoreboardPage() {
           minHeight: 0,
         }}
       >
-        {/* Left alliance — period breakdown + score box */}
+        {/* Left alliance — flanking info + score box */}
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', pr: 2, gap: 2 }}>
+          {isFreePlay && leftBatches.length > 0 && (
+            <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} align="right" />
+          )}
           {isMatchMode && leftInMatch && score.periodBreakdown && (
             <PeriodBreakdown
               alliance={left}
@@ -416,12 +414,7 @@ export function ScoreboardPage() {
             />
           )}
 
-          {isFreePlay && hasWindow && (
-            <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.85rem', fontFamily: 'monospace' }}>
-              {leftWindow?.total ?? 0} / {rightWindow?.total ?? 0} in last {score.windowSeconds}s
-            </Typography>
-          )}
-          {!hasWindow && !isMatchMode && (
+          {!isMatchMode && (
             <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
               —
             </Typography>
@@ -447,16 +440,11 @@ export function ScoreboardPage() {
               align="left"
             />
           )}
+          {isFreePlay && rightBatches.length > 0 && (
+            <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} align="left" />
+          )}
         </Box>
       </Box>
-
-      {/* Recent batches (free play only, hidden during match) */}
-      {isFreePlay && hasRecentBatches && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 6, pb: 2 }}>
-          <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} />
-          <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} />
-        </Box>
-      )}
 
       {/* Battery voltage for connected robots */}
       <BatteryPanel matchState={matchState} leftAlliance={left} matchAlliances={matchAlliances} />
@@ -574,12 +562,12 @@ function BatteryPanel({
               border: `1px solid ${color}`,
               borderRadius: 1,
               backgroundColor: bgColor,
-              width: 210,
+              width: 180,
               overflow: 'hidden',
             }}
           >
-            {/* Mini chart */}
-            <Box sx={{ '& canvas': { display: 'block', height: '52px !important' } }}>
+            {/* Chart with overlaid voltages */}
+            <Box sx={{ position: 'relative', '& canvas': { display: 'block', height: '52px !important' } }}>
               <SmoothieComponent
                 responsive
                 height={52}
@@ -613,18 +601,29 @@ function BatteryPanel({
                   },
                 ]}
               />
-            </Box>
-
-            {/* Numeric values and team label */}
-            <Box sx={{ px: 1, py: 0.5, borderTop: `1px solid rgba(255,255,255,0.1)` }}>
-              {/* Voltage values */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              {/* Voltage overlay */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-end',
+                  px: 0.75,
+                  pb: 0.25,
+                  pointerEvents: 'none',
+                }}
+              >
                 <Typography
                   sx={{
                     fontFamily: 'monospace',
-                    fontSize: '1.7rem',
+                    fontSize: '1.3rem',
                     fontWeight: 700,
                     color,
+                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
                   }}
                 >
                   {robot.battery.current.toFixed(1)}V
@@ -632,33 +631,34 @@ function BatteryPanel({
                 <Typography
                   sx={{
                     fontFamily: 'monospace',
-                    fontSize: '1.4rem',
+                    fontSize: '1rem',
                     color: 'rgba(244, 67, 54, 0.8)',
+                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
                   }}
                 >
                   {!isNaN(minFloor) ? `↓${minFloor.toFixed(1)}V` : ''}
                 </Typography>
               </Box>
+            </Box>
 
-              {/* Team number */}
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.25 }}>
-                <TeamAvatar teamNumber={robot.teamNumber} size={24} />
-                <Typography
-                  sx={{
-                    fontSize: '1.5rem',
-                    fontWeight: 600,
-                    color: 'rgba(255,255,255,0.6)',
-                  }}
-                >
-                  {robot.teamNumber ?? robot.station}
-                  {isDuplicate && (
-                    <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
-                      {' '}
-                      ({robot.station.replace('slot', '#')})
-                    </span>
-                  )}
-                </Typography>
-              </Box>
+            {/* Team label */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, py: 0.25 }}>
+              <TeamAvatar teamNumber={robot.teamNumber} size={20} />
+              <Typography
+                sx={{
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  color: 'rgba(255,255,255,0.6)',
+                }}
+              >
+                {robot.teamNumber ?? robot.station}
+                {isDuplicate && (
+                  <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                    {' '}
+                    ({robot.station.replace('slot', '#')})
+                  </span>
+                )}
+              </Typography>
             </Box>
           </Box>
         );
@@ -819,18 +819,20 @@ function AllianceScoreBox({
           +{inactiveTotal}
         </Typography>
       )}
-      <Typography
-        sx={{
-          color: freePlayLabel ? 'rgba(255,255,255,0.35)' : color,
-          textTransform: 'uppercase',
-          letterSpacing: 6,
-          fontWeight: 700,
-          fontSize: '1.2rem',
-          mt: 1,
-        }}
-      >
-        {freePlayLabel ?? alliance}
-      </Typography>
+      {freePlayLabel && (
+        <Typography
+          sx={{
+            color: 'rgba(255,255,255,0.35)',
+            textTransform: 'uppercase',
+            letterSpacing: 6,
+            fontWeight: 700,
+            fontSize: '1.2rem',
+            mt: 1,
+          }}
+        >
+          {freePlayLabel}
+        </Typography>
+      )}
       {/* Auto winner badge — shown below the winning alliance's score */}
       {isAutoWinner && (
         <Typography
@@ -858,29 +860,25 @@ function formatTimeAgo(ts: number): string {
   return `${Math.round(s / 3600)}h ago`;
 }
 
-function BatchList({ batches, color }: { batches: ScoreBatch[]; color: string }) {
+function BatchList({ batches, color, align }: { batches: ScoreBatch[]; color: string; align: 'left' | 'right' }) {
   if (batches.length === 0) return null;
   return (
-    <Box>
-      <Typography
-        sx={{
-          color: 'rgba(255,255,255,0.3)',
-          fontSize: '0.7rem',
-          textTransform: 'uppercase',
-          mb: 0.5,
-          textAlign: 'center',
-        }}
-      >
-        Previous
-      </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
       {batches.map((b, i) => (
-        <Box key={i} sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', opacity: 1 - i * 0.15 }}>
-          <Typography sx={{ color, fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 700 }}>
-            {b.total}
-          </Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.9rem' }}>
+        <Box
+          key={i}
+          sx={{
+            display: 'flex',
+            gap: 1,
+            alignItems: 'baseline',
+            flexDirection: align === 'right' ? 'row' : 'row-reverse',
+            opacity: 1 - i * 0.15,
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
             {formatTimeAgo(b.endedAt)}
           </Typography>
+          <Typography sx={{ color, fontFamily: 'monospace', fontSize: '1rem', fontWeight: 700 }}>{b.total}</Typography>
         </Box>
       ))}
     </Box>
