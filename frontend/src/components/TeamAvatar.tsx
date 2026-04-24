@@ -11,16 +11,16 @@ interface TeamAvatarProps {
 export function TeamAvatar({ teamNumber, size = 24, sx }: TeamAvatarProps) {
   const [hasError, setHasError] = useState(false);
 
-  if (!teamNumber || hasError) return null;
+  if (!teamNumber) return null;
 
   return (
     <Avatar
-      src={`/api/team-avatar/${teamNumber}`}
+      src={hasError ? '/first-logo.png' : `/api/team-avatar/${teamNumber}`}
       alt={`FRC ${teamNumber}`}
-      sx={{ width: size, height: size, ...(sx as object) }}
+      sx={{ width: size, height: size, borderRadius: 1, ...(sx as object) }}
       slotProps={{
         img: {
-          onError: () => setHasError(true),
+          onError: hasError ? undefined : () => setHasError(true),
           loading: 'lazy',
         },
       }}

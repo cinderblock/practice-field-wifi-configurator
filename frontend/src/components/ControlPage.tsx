@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { TeamAvatar } from './TeamAvatar';
 import {
   useLatest,
   useMatchState,
@@ -282,9 +283,12 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
 
   return (
     <Container maxWidth="md" sx={{ py: 2 }}>
-      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>
-        Team {teamNumber}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+        <TeamAvatar teamNumber={teamNumber} size={40} />
+        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          Team {teamNumber}
+        </Typography>
+      </Box>
 
       {/* Network routing banner — shows once connected, with option to switch or disconnect */}
       {routePreference && activeStations.size > 0 && (
