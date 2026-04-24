@@ -242,6 +242,13 @@ export function ScoreboardPage() {
     return Math.min(1, elapsed / barTotal);
   }, [matchState, anyMatchActive]);
 
+  // Current sub-period for period breakdown highlight / future detection
+  // (must be before the early return so hook count is stable)
+  const currentSubPeriod: MatchSubPeriod | null = useMemo(() => {
+    if (!matchState || !isMatchMode) return null;
+    return getMatchSubPeriod(matchState.phase, displayRemaining, matchState.config.teleopDuration);
+  }, [matchState, isMatchMode, displayRemaining]);
+
   // Background — split when only one side is in a match
   const scoreboardBg = getScoreboardBg(matchState, leftInMatch, rightInMatch);
 
@@ -278,12 +285,6 @@ export function ScoreboardPage() {
   // Inactive scores for match alliances
   const leftInactive = score.inactiveScores?.[left]?.total ?? 0;
   const rightInactive = score.inactiveScores?.[right]?.total ?? 0;
-
-  // Current sub-period for period breakdown highlight / future detection
-  const currentSubPeriod: MatchSubPeriod | null = useMemo(() => {
-    if (!matchState || !isMatchMode) return null;
-    return getMatchSubPeriod(matchState.phase, displayRemaining, matchState.config.teleopDuration);
-  }, [matchState, isMatchMode, displayRemaining]);
 
   // Title text
   const titleText = isMatchMode
