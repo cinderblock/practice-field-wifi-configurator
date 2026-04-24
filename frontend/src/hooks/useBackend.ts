@@ -851,6 +851,10 @@ export function sendMatchSwapStation(station: StationName) {
   ws?.send(JSON.stringify({ type: 'matchSwapStation', station }));
 }
 
+export function sendMatchKickStation(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'matchKickStation', station }));
+}
+
 export function sendMatchSetAutoWinner(winner: Alliance) {
   ws?.send(JSON.stringify({ type: 'matchSetAutoWinner', winner }));
 }

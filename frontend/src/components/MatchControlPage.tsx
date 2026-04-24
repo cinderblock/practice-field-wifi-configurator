@@ -14,6 +14,7 @@ import {
   sendMatchCancel,
   sendMatchClear,
   sendMatchSwapStation,
+  sendMatchKickStation,
   sendMatchSetAutoWinner,
   sendStationStartMatch,
   sendStationPauseMatch,
@@ -225,6 +226,7 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
                         station={s}
                         state={stationStates[s]}
                         onSwap={() => sendMatchSwapStation(s)}
+                        onKick={() => sendMatchKickStation(s)}
                       />
                     ))}
                   </Box>
@@ -248,6 +250,7 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
                         station={s}
                         state={stationStates[s]}
                         onSwap={() => sendMatchSwapStation(s)}
+                        onKick={() => sendMatchKickStation(s)}
                       />
                     ))}
                   </Box>
@@ -306,10 +309,12 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
 function ParticipantRow({
   state,
   onSwap,
+  onKick,
 }: {
   station: StationName;
   state: StationControlState | undefined;
   onSwap: () => void;
+  onKick: () => void;
 }) {
   return (
     <Box
@@ -331,9 +336,14 @@ function ParticipantRow({
         </Typography>
         {state?.ready && <Chip label="Ready" color="success" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />}
       </Box>
-      <Button size="small" variant="outlined" onClick={onSwap}>
-        Swap
-      </Button>
+      <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <Button size="small" variant="outlined" onClick={onSwap}>
+          Swap
+        </Button>
+        <Button size="small" variant="outlined" color="error" onClick={onKick}>
+          Kick
+        </Button>
+      </Box>
     </Box>
   );
 }

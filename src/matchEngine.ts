@@ -188,6 +188,25 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Kick a station from the match (controller only, pre-match). */
+  kickStation(station: StationName) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot kick station in phase ${this.phase}`);
+      return;
+    }
+    const state = this.stationStates.get(station)!;
+    if (!state.joined) {
+      appWarn(`Station ${station} is not joined`);
+      return;
+    }
+    state.joined = false;
+    state.ready = false;
+    state.alliance = null;
+    state.matchSlot = null;
+    console.log(`Station ${station} kicked from match`);
+    this.broadcast();
+  }
+
   /** Set the auto winner manually — used for 'pause' mode during autoPause or skip-auto pre-set. */
   setAutoWinner(winner: Alliance) {
     this.autoWinnerAlliance = winner;

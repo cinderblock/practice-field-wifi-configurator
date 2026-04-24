@@ -659,6 +659,13 @@ export function isMatchSwapStation(msg: unknown): msg is MatchSwapStation {
   return m.type === 'matchSwapStation' && StationNameRegex.test(m.station);
 }
 
+export type MatchKickStation = { type: 'matchKickStation'; station: StationName };
+export function isMatchKickStation(msg: unknown): msg is MatchKickStation {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchKickStation;
+  return m.type === 'matchKickStation' && StationNameRegex.test(m.station);
+}
+
 export type MatchSetAutoWinner = { type: 'matchSetAutoWinner'; winner: Alliance };
 export function isMatchSetAutoWinner(msg: unknown): msg is MatchSetAutoWinner {
   if (typeof msg !== 'object' || !msg) return false;
