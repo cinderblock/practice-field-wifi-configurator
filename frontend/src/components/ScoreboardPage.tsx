@@ -385,14 +385,24 @@ export function ScoreboardPage() {
         sx={{
           flex: 1,
           display: 'grid',
-          gridTemplateColumns: '1fr auto 1fr',
+          gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
           alignItems: 'center',
-          px: 2,
+          px: 'max(16px, 3vw)',
           minHeight: 0,
         }}
       >
         {/* Left alliance — flanking info + score box */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', pr: 2, gap: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            pr: 2,
+            gap: 2,
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
           {isFreePlay && leftBatches.length > 0 && (
             <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} align="right" />
           )}
@@ -430,7 +440,17 @@ export function ScoreboardPage() {
         </Box>
 
         {/* Right alliance — score box + period breakdown */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', pl: 2, gap: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'flex-start',
+            alignItems: 'center',
+            pl: 2,
+            gap: 2,
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
           <AllianceScoreBox
             alliance={right}
             total={score[right].total}
@@ -934,7 +954,6 @@ function AllianceScoreBox({
         borderRadius: 2,
         border: `3px solid ${color}`,
         backgroundColor: bgColor,
-        minWidth: 200,
         '@keyframes borderFlourish': {
           '0%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
           '15%': {
