@@ -516,12 +516,14 @@ function GlowSpot({ score, alliance, side }: { score: number; alliance: Alliance
     );
   }
 
-  // Outer element wanders, inner element pulses
+  // Outer element wanders, inner element pulses.
+  // Pad beyond the container so the wander translate never exposes a gap at the edges.
+  const pad = Math.ceil(w * 1.2); // enough to cover max wander displacement
   return (
     <Box
       sx={{
         position: 'absolute',
-        inset: 0,
+        inset: `-${pad}%`,
         '@keyframes glowWander': {
           '0%, 100%': { transform: 'translate(0, 0)' },
           '13%': { transform: `translate(${w * 0.7}%, ${-w * 0.5}%)` },
