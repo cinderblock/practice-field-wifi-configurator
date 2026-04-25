@@ -319,6 +319,9 @@ export function setupWebSocket(
       publicConnections.add(ws);
       console.log('Public scores client connected');
       ws.send(JSON.stringify(matchEngine.getState()));
+      ws.send(
+        JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo),
+      );
       ws.on('close', () => publicConnections.delete(ws));
       ws.on('error', err => {
         console.error('Public WebSocket error:', err.message);
