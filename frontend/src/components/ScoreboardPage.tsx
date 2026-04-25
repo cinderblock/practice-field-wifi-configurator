@@ -423,6 +423,7 @@ export function ScoreboardPage() {
             freePlayLabel={leftLabel}
             isAutoWinner={isMatchMode && autoWinner === left}
             isFreePlay={isFreePlay}
+            side="left"
           />
         </Box>
 
@@ -459,6 +460,7 @@ export function ScoreboardPage() {
             freePlayLabel={rightLabel}
             isAutoWinner={isMatchMode && autoWinner === right}
             isFreePlay={isFreePlay}
+            side="right"
           />
           {isMatchMode && rightInMatch && score.periodBreakdown && (
             <PeriodBreakdown
@@ -883,6 +885,7 @@ function AllianceScoreBox({
   freePlayLabel,
   isAutoWinner,
   isFreePlay,
+  side,
 }: {
   alliance: Alliance;
   total: number;
@@ -895,6 +898,8 @@ function AllianceScoreBox({
   isAutoWinner?: boolean;
   /** Whether scoring is in freePlay mode (enables glow-proof bg + 400pt flourish) */
   isFreePlay?: boolean;
+  /** Which side of the scoreboard this box is on (determines departure animation direction) */
+  side?: 'left' | 'right';
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
   const rgb = alliance === 'red' ? '239, 83, 80' : '66, 165, 245';
@@ -908,24 +913,24 @@ function AllianceScoreBox({
   const goalOff = active === false;
   const hasInactive = inactiveTotal != null && inactiveTotal > 0;
 
-  // Persistent chasing border in freeplay — thickness grows with each 100pt milestone
-  const chaseLevel = isFreePlay ? Math.floor(total / 100) : 0;
+  // Persistent chasing border in freeplay — thickness grows with each 50pt milestone
+  const chaseLevel = isFreePlay ? Math.floor(total / 50) : 0;
   const showChase = chaseLevel > 0;
-  const chaseWidth = showChase ? 2 + Math.min(chaseLevel, 5) : 0; // 3px → 7px
-  const chaseDuration = Math.max(1.5, 3.5 - chaseLevel * 0.3); // 3.2s → 1.5s
-  const chaseAlpha = Math.min(0.85, 0.35 + chaseLevel * 0.1); // 0.45 → 0.85
+  const chaseWidth = showChase ? 2 + Math.min(chaseLevel, 10) : 0; // 3px → 12px
+  const chaseDuration = Math.max(1.5, 3.5 - chaseLevel * 0.15); // slows growth rate for 50pt steps
+  const chaseAlpha = Math.min(0.85, 0.35 + chaseLevel * 0.05); // 0.40 → 0.85
   // Snake segment length grows with level: two snakes chasing around the perimeter
-  const dashLen = 20 + Math.min(chaseLevel, 5) * 10; // 30 → 70 (out of 400 pathLength)
+  const dashLen = 20 + Math.min(chaseLevel, 10) * 5; // 25 → 70 (out of 400 pathLength)
 
-  // Brief flourish on each 100pt crossing: fast chase burst + glow, then gradual decay
+  // Brief flourish on each 50pt crossing: fast chase burst, then gradual decay
   const [flourish, setFlourish] = useState(false);
-  const prevHundred = useRef(Math.floor(total / 100));
+  const prevFifty = useRef(Math.floor(total / 50));
   const flourishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isFreePlay) return;
-    const cur = Math.floor(total / 100);
-    const prev = prevHundred.current;
-    prevHundred.current = cur;
+    const cur = Math.floor(total / 50);
+    const prev = prevFifty.current;
+    prevFifty.current = cur;
     if (cur > prev && cur >= 1) {
       if (flourishTimer.current) clearTimeout(flourishTimer.current);
       setFlourish(true);
@@ -979,6 +984,42 @@ function AllianceScoreBox({
     return () => cancelAnimationFrame(rafId);
   }, [showChase, chaseDuration]);
 
+  // Score departure animation: when freeplay batch times out, animate the score
+  // flying toward the batch list instead of just desaturating in place
+  const [departingScore, setDepartingScore] = useState<number | null>(null);
+  const prevTotalRef = useRef(total);
+  const prevActiveRef = useRef(active);
+  const departTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!isFreePlay) {
+      prevTotalRef.current = total;
+      prevActiveRef.current = active;
+      return;
+    }
+    const wasActive = prevActiveRef.current !== false;
+    const isNowInactive = active === false;
+
+    if (wasActive && isNowInactive && prevTotalRef.current > 0) {
+      // Batch just timed out — capture the old score and animate its departure
+      if (departTimerRef.current) clearTimeout(departTimerRef.current);
+      setDepartingScore(prevTotalRef.current);
+      departTimerRef.current = setTimeout(() => {
+        setDepartingScore(null);
+        departTimerRef.current = null;
+      }, 900);
+    }
+    if (!wasActive && !isNowInactive) {
+      // Scoring resumed — cancel any in-progress departure
+      if (departTimerRef.current) clearTimeout(departTimerRef.current);
+      setDepartingScore(null);
+      departTimerRef.current = null;
+    }
+
+    prevTotalRef.current = total;
+    prevActiveRef.current = active;
+  }, [active, total, isFreePlay]);
+
   return (
     <Box
       sx={{
@@ -989,8 +1030,7 @@ function AllianceScoreBox({
         borderRadius: 2,
         border: `3px solid ${showChase ? 'transparent' : color}`,
         backgroundColor: bgColor,
-        boxShadow: flourish ? `0 0 20px 4px rgba(${rgb}, 0.5), inset 0 0 15px rgba(${rgb}, 0.15)` : 'none',
-        transition: flourish ? 'box-shadow 0.15s ease-in' : 'box-shadow 2s ease-out',
+        transition: 'none',
       }}
     >
       {/* Chasing border — SVG rect with animated stroke-dashoffset for perimeter-following snakes */}
@@ -1029,7 +1069,7 @@ function AllianceScoreBox({
           />
         </svg>
       )}
-      {/* Main score — desaturates abruptly when goal is off */}
+      {/* Main score — fades in as "0" when batch times out, desaturates when goal is off */}
       <Typography
         sx={{
           fontSize: 'clamp(4rem, 15vw, 12rem)',
@@ -1037,12 +1077,57 @@ function AllianceScoreBox({
           fontFamily: 'monospace',
           color,
           lineHeight: 1,
+          // Hold width during departure via ch units (monospace = uniform char width),
+          // then smoothly shrink after the departing clone finishes its animation
+          minWidth: `${(departingScore ?? total).toString().length}ch`,
+          transition: `min-width 0.5s ease-out${goalOff ? '' : ', opacity 0.4s ease, filter 0.4s ease'}`,
           opacity: goalOff ? 0.3 : 1,
           filter: goalOff ? 'saturate(0.3)' : 'none',
+          textAlign: 'center',
+          '@keyframes fadeInZero': {
+            from: { opacity: 0 },
+          },
+          ...(departingScore !== null && {
+            animation: 'fadeInZero 0.8s ease-out',
+          }),
         }}
       >
         {total}
       </Typography>
+      {/* Departing score clone — flies toward the batch list on timeout */}
+      {departingScore !== null && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            '@keyframes departLeft': {
+              from: { transform: 'scale(1)', opacity: 1 },
+              to: { transform: 'translateX(-70%) scale(0.15)', opacity: 0 },
+            },
+            '@keyframes departRight': {
+              from: { transform: 'scale(1)', opacity: 1 },
+              to: { transform: 'translateX(70%) scale(0.15)', opacity: 0 },
+            },
+            animation: `${side === 'left' ? 'departLeft' : 'departRight'} 0.85s ease-in forwards`,
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 'clamp(4rem, 15vw, 12rem)',
+              fontWeight: 800,
+              fontFamily: 'monospace',
+              color,
+              lineHeight: 1,
+            }}
+          >
+            {departingScore}
+          </Typography>
+        </Box>
+      )}
       {/* Off-goal count — swaps saturation prominence with main score */}
       {hasInactive && (
         <Typography
