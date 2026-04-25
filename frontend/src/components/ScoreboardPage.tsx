@@ -514,12 +514,12 @@ function GlowSpot({ score, alliance, side }: { score: number; alliance: Alliance
   // Core glow parameters — scale with score intensity
   const radius = 15 + t * 55; // 15% → 70%
   const opacity = 0.04 + t * 0.36; // 0.04 → 0.40
-  const pulseDuration = 8 - t * 6.5; // 8 s → 1.5 s
-  const pulseScale = 1 + t * 0.25; // 1.0× → 1.25×
+  const pulseDuration = 12 - t * 5; // 12 s → 7 s (gentle breathing)
+  const pulseScale = 1 + t * 0.08; // 1.0× → 1.08× (subtle)
 
-  // Wander parameters — more movement at higher scores
-  const w = 2 + t * 6; // 2% → 8% wander range
-  const wanderDuration = 25 - t * 10; // 25 s → 15 s
+  // Wander parameters — gentle drift, not jumpy
+  const w = 1 + t * 2.5; // 1% → 3.5% wander range
+  const wanderDuration = 40 - t * 10; // 40 s → 30 s
 
   const cx = side === 'left' ? '25%' : '75%';
 
@@ -546,12 +546,9 @@ function GlowSpot({ score, alliance, side }: { score: number; alliance: Alliance
         inset: `-${pad}%`,
         '@keyframes glowWander': {
           '0%, 100%': { transform: 'translate(0, 0)' },
-          '13%': { transform: `translate(${w * 0.7}%, ${-w * 0.5}%)` },
-          '27%': { transform: `translate(${-w * 0.4}%, ${-w * 0.8}%)` },
-          '41%': { transform: `translate(${-w * 0.9}%, ${w * 0.3}%)` },
-          '55%': { transform: `translate(${w * 0.3}%, ${w * 0.7}%)` },
-          '68%': { transform: `translate(${w * 0.8}%, ${-w * 0.2}%)` },
-          '82%': { transform: `translate(${-w * 0.5}%, ${w * 0.6}%)` },
+          '25%': { transform: `translate(${w * 0.6}%, ${-w * 0.4}%)` },
+          '50%': { transform: `translate(${-w * 0.5}%, ${w * 0.3}%)` },
+          '75%': { transform: `translate(${-w * 0.3}%, ${-w * 0.6}%)` },
         },
         animation: `glowWander ${wanderDuration}s ease-in-out infinite`,
       }}
