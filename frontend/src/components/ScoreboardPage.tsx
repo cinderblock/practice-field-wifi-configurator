@@ -427,12 +427,6 @@ export function ScoreboardPage() {
               fontSize="clamp(2.5rem, 6vw, 5rem)"
             />
           )}
-
-          {!isMatchMode && (
-            <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.5rem', fontFamily: 'monospace' }}>
-              —
-            </Typography>
-          )}
         </Box>
 
         {/* Right alliance — score box + period breakdown */}
@@ -895,20 +889,39 @@ function AllianceScoreBox({
   const goalOff = active === false;
   const hasInactive = inactiveTotal != null && inactiveTotal > 0;
 
-  // 400-point border flourish (freeplay only)
-  const [flourish, setFlourish] = useState(false);
-  const was400 = useRef(total >= 400);
+  // Border flourish at every 100-point crossing, intensity scales with level (freeplay only).
+  // Uses a ref-managed timeout instead of effect cleanup so score updates don't cancel it early.
+  const [flourishLevel, setFlourishLevel] = useState(0); // 0 = idle, 1+ = which hundred was crossed
+  const prevHundred = useRef(Math.floor(total / 100));
+  const flourishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isFreePlay) return;
-    const was = was400.current;
-    was400.current = total >= 400;
-    if (total >= 400 && !was) {
-      setFlourish(true);
-      const t = setTimeout(() => setFlourish(false), 1600);
-      return () => clearTimeout(t);
+    const cur = Math.floor(total / 100);
+    const prev = prevHundred.current;
+    prevHundred.current = cur;
+    if (cur > prev && cur >= 1) {
+      if (flourishTimer.current) clearTimeout(flourishTimer.current);
+      setFlourishLevel(cur);
+      flourishTimer.current = setTimeout(() => {
+        setFlourishLevel(0);
+        flourishTimer.current = null;
+      }, 1600);
     }
-    if (total < 400) setFlourish(false);
+    if (cur < prev) {
+      if (flourishTimer.current) clearTimeout(flourishTimer.current);
+      setFlourishLevel(0);
+      flourishTimer.current = null;
+    }
   }, [total, isFreePlay]);
+
+  // Flourish intensity: 0.4 at 100 → 1.0 at 400+
+  const fi = flourishLevel > 0 ? Math.min(1, (flourishLevel + 0.6) / 4.6) * 0.75 + 0.25 : 0;
+  const peakBorder = flourishLevel >= 4 ? '#fff' : flourishLevel >= 3 ? `rgba(255,255,255,0.7)` : color;
+  const peakOuterBlur = 15 + fi * 35;
+  const peakOuterSpread = 4 + fi * 8;
+  const peakOuterAlpha = 0.4 + fi * 0.5;
+  const peakInnerBlur = 10 + fi * 25;
+  const peakInnerAlpha = 0.15 + fi * 0.2;
 
   return (
     <Box
@@ -923,16 +936,16 @@ function AllianceScoreBox({
         '@keyframes borderFlourish': {
           '0%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
           '15%': {
-            borderColor: '#fff',
-            boxShadow: `0 0 40px 8px rgba(${rgb}, 0.8), inset 0 0 30px rgba(${rgb}, 0.3)`,
+            borderColor: peakBorder,
+            boxShadow: `0 0 ${peakOuterBlur}px ${peakOuterSpread}px rgba(${rgb}, ${peakOuterAlpha}), inset 0 0 ${peakInnerBlur}px rgba(${rgb}, ${peakInnerAlpha})`,
           },
           '50%': {
             borderColor: color,
-            boxShadow: `0 0 25px 4px rgba(${rgb}, 0.4), inset 0 0 15px rgba(${rgb}, 0.1)`,
+            boxShadow: `0 0 ${peakOuterBlur * 0.6}px ${peakOuterSpread * 0.5}px rgba(${rgb}, ${peakOuterAlpha * 0.5}), inset 0 0 ${peakInnerBlur * 0.5}px rgba(${rgb}, ${peakInnerAlpha * 0.3})`,
           },
           '100%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
         },
-        animation: flourish ? 'borderFlourish 1.5s ease-out' : undefined,
+        animation: flourishLevel > 0 ? `borderFlourish 1.5s ease-out` : undefined,
       }}
     >
       {/* Main score — desaturates abruptly when goal is off */}
