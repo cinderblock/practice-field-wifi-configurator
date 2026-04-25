@@ -301,6 +301,8 @@ export function ScoreboardPage() {
   return (
     <Box
       sx={{
+        position: 'relative',
+        isolation: 'isolate',
         display: 'flex',
         flexDirection: 'column',
         height: window.__isCastReceiver ? '100vh' : '100dvh',
@@ -310,6 +312,16 @@ export function ScoreboardPage() {
         transition: 'background 1s ease',
       }}
     >
+      {/* Freeplay score-reactive glow backgrounds */}
+      {isFreePlay && (
+        <FreeplayGlow
+          leftScore={score[left].total}
+          rightScore={score[right].total}
+          leftAlliance={left}
+          rightAlliance={right}
+        />
+      )}
+
       {/* Controls — top right (hidden on Chromecast receiver) */}
       {!window.__isCastReceiver && (
         <Box
@@ -453,6 +465,118 @@ export function ScoreboardPage() {
   );
 }
 
+// ── Freeplay Glow ─────────────────────────────────────────────────────
+
+const GLOW_RGB = { red: '239, 83, 80', blue: '66, 165, 245' } as const;
+
+function FreeplayGlow({
+  leftScore,
+  rightScore,
+  leftAlliance,
+  rightAlliance,
+}: {
+  leftScore: number;
+  rightScore: number;
+  leftAlliance: Alliance;
+  rightAlliance: Alliance;
+}) {
+  const [leftFlourish, setLeftFlourish] = useState(false);
+  const [rightFlourish, setRightFlourish] = useState(false);
+  const leftWas400 = useRef(leftScore >= 400);
+  const rightWas400 = useRef(rightScore >= 400);
+
+  useEffect(() => {
+    const was = leftWas400.current;
+    leftWas400.current = leftScore >= 400;
+    if (leftScore >= 400 && !was) {
+      setLeftFlourish(true);
+      const t = setTimeout(() => setLeftFlourish(false), 1600);
+      return () => clearTimeout(t);
+    }
+    if (leftScore < 400) setLeftFlourish(false);
+  }, [leftScore]);
+
+  useEffect(() => {
+    const was = rightWas400.current;
+    rightWas400.current = rightScore >= 400;
+    if (rightScore >= 400 && !was) {
+      setRightFlourish(true);
+      const t = setTimeout(() => setRightFlourish(false), 1600);
+      return () => clearTimeout(t);
+    }
+    if (rightScore < 400) setRightFlourish(false);
+  }, [rightScore]);
+
+  return (
+    <Box sx={{ position: 'absolute', inset: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }}>
+      <GlowSpot score={leftScore} alliance={leftAlliance} side="left" flourish={leftFlourish} />
+      <GlowSpot score={rightScore} alliance={rightAlliance} side="right" flourish={rightFlourish} />
+    </Box>
+  );
+}
+
+function GlowSpot({
+  score,
+  alliance,
+  side,
+  flourish,
+}: {
+  score: number;
+  alliance: Alliance;
+  side: 'left' | 'right';
+  flourish: boolean;
+}) {
+  if (score <= 0) return null;
+
+  const rgb = GLOW_RGB[alliance];
+  // Normalized intensity 0→1 over the 0→400 range
+  const t = Math.min(1, score / 400);
+
+  // Core glow parameters — scale with score intensity
+  const radius = 15 + t * 55; // 15% → 70%
+  const opacity = 0.04 + t * 0.36; // 0.04 → 0.40
+  const pulseDuration = 8 - t * 6.5; // 8 s → 1.5 s
+  const pulseScale = 1 + t * 0.25; // 1.0× → 1.25×
+
+  const cx = side === 'left' ? '25%' : '75%';
+
+  // Primary gradient: multi-stop for natural radiance
+  const layers = [
+    `radial-gradient(circle at ${cx} 50%, rgba(${rgb}, ${opacity}) 0%, rgba(${rgb}, ${opacity * 0.4}) ${radius * 0.5}%, rgba(${rgb}, ${opacity * 0.1}) ${radius * 0.8}%, transparent ${radius}%)`,
+  ];
+
+  // Secondary haze layer at higher scores (>100 pts)
+  if (t > 0.25) {
+    const hazeOpacity = (t - 0.25) * 0.12;
+    layers.unshift(
+      `radial-gradient(circle at ${cx} 50%, rgba(${rgb}, ${hazeOpacity}) 0%, transparent ${radius * 1.5}%)`,
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        background: layers.join(', '),
+        transformOrigin: `${cx} 50%`,
+        '@keyframes glowPulse': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: `scale(${pulseScale})` },
+        },
+        '@keyframes flourishBurst': {
+          '0%': { transform: 'scale(1)', filter: 'brightness(1) saturate(1)' },
+          '12%': { transform: 'scale(2.8)', filter: 'brightness(3) saturate(1.5)' },
+          '40%': { transform: 'scale(1.4)', filter: 'brightness(1.3) saturate(1.1)' },
+          '70%': { transform: 'scale(1.1)', filter: 'brightness(1.05) saturate(1)' },
+          '100%': { transform: 'scale(1)', filter: 'brightness(1) saturate(1)' },
+        },
+        animation: flourish ? 'flourishBurst 1.5s ease-out' : `glowPulse ${pulseDuration}s ease-in-out infinite`,
+      }}
+    />
+  );
+}
+
 // ── Battery Panel ────────────────────────────────────────────────────
 
 /** Per-station battery state tracked from telemetry. */
@@ -567,7 +691,7 @@ function BatteryPanel({
               overflow: 'hidden',
             }}
           >
-            {/* Chart with overlaid voltages */}
+            {/* Chart with all info overlaid */}
             <Box sx={{ position: 'relative', '& canvas': { display: 'block', height: '52px !important' } }}>
               <SmoothieComponent
                 responsive
@@ -602,7 +726,7 @@ function BatteryPanel({
                   },
                 ]}
               />
-              {/* Voltage overlay */}
+              {/* Full overlay: team left, voltages right */}
               <Box
                 sx={{
                   position: 'absolute',
@@ -612,54 +736,60 @@ function BatteryPanel({
                   bottom: 0,
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'flex-end',
+                  alignItems: 'center',
                   px: 0.75,
-                  pb: 0.25,
                   pointerEvents: 'none',
                 }}
               >
-                <Typography
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontSize: '1.3rem',
-                    fontWeight: 700,
-                    color,
-                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                  }}
-                >
-                  {robot.battery.current.toFixed(1)}V
-                </Typography>
-                <Typography
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontSize: '1rem',
-                    color: 'rgba(244, 67, 54, 0.8)',
-                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                  }}
-                >
-                  {!isNaN(minFloor) ? `↓${minFloor.toFixed(1)}V` : ''}
-                </Typography>
+                {/* Team number + avatar */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <TeamAvatar teamNumber={robot.teamNumber} size={18} />
+                  <Typography
+                    sx={{
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      color: 'rgba(255,255,255,0.7)',
+                      textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                    }}
+                  >
+                    {robot.teamNumber ?? robot.station}
+                    {isDuplicate && (
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>
+                        {' '}
+                        ({robot.station.replace('slot', '#')})
+                      </span>
+                    )}
+                  </Typography>
+                </Box>
+                {/* Voltages stacked */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <Typography
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '1.1rem',
+                      fontWeight: 700,
+                      lineHeight: 1.1,
+                      color,
+                      textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                    }}
+                  >
+                    {robot.battery.current.toFixed(1)}V
+                  </Typography>
+                  {!isNaN(minFloor) && (
+                    <Typography
+                      sx={{
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                        lineHeight: 1.1,
+                        color: 'rgba(244, 67, 54, 0.8)',
+                        textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                      }}
+                    >
+                      ↓{minFloor.toFixed(1)}V
+                    </Typography>
+                  )}
+                </Box>
               </Box>
-            </Box>
-
-            {/* Team label */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, py: 0.25 }}>
-              <TeamAvatar teamNumber={robot.teamNumber} size={20} />
-              <Typography
-                sx={{
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  color: 'rgba(255,255,255,0.6)',
-                }}
-              >
-                {robot.teamNumber ?? robot.station}
-                {isDuplicate && (
-                  <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
-                    {' '}
-                    ({robot.station.replace('slot', '#')})
-                  </span>
-                )}
-              </Typography>
             </Box>
           </Box>
         );
