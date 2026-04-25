@@ -412,6 +412,7 @@ export function ScoreboardPage() {
             inactiveTotal={leftInMatch ? leftInactive : undefined}
             freePlayLabel={leftLabel}
             isAutoWinner={isMatchMode && autoWinner === left}
+            isFreePlay={isFreePlay}
           />
         </Box>
 
@@ -443,6 +444,7 @@ export function ScoreboardPage() {
             inactiveTotal={rightInMatch ? rightInactive : undefined}
             freePlayLabel={rightLabel}
             isAutoWinner={isMatchMode && autoWinner === right}
+            isFreePlay={isFreePlay}
           />
           {isMatchMode && rightInMatch && score.periodBreakdown && (
             <PeriodBreakdown
@@ -480,52 +482,15 @@ function FreeplayGlow({
   leftAlliance: Alliance;
   rightAlliance: Alliance;
 }) {
-  const [leftFlourish, setLeftFlourish] = useState(false);
-  const [rightFlourish, setRightFlourish] = useState(false);
-  const leftWas400 = useRef(leftScore >= 400);
-  const rightWas400 = useRef(rightScore >= 400);
-
-  useEffect(() => {
-    const was = leftWas400.current;
-    leftWas400.current = leftScore >= 400;
-    if (leftScore >= 400 && !was) {
-      setLeftFlourish(true);
-      const t = setTimeout(() => setLeftFlourish(false), 1600);
-      return () => clearTimeout(t);
-    }
-    if (leftScore < 400) setLeftFlourish(false);
-  }, [leftScore]);
-
-  useEffect(() => {
-    const was = rightWas400.current;
-    rightWas400.current = rightScore >= 400;
-    if (rightScore >= 400 && !was) {
-      setRightFlourish(true);
-      const t = setTimeout(() => setRightFlourish(false), 1600);
-      return () => clearTimeout(t);
-    }
-    if (rightScore < 400) setRightFlourish(false);
-  }, [rightScore]);
-
   return (
     <Box sx={{ position: 'absolute', inset: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }}>
-      <GlowSpot score={leftScore} alliance={leftAlliance} side="left" flourish={leftFlourish} />
-      <GlowSpot score={rightScore} alliance={rightAlliance} side="right" flourish={rightFlourish} />
+      <GlowSpot score={leftScore} alliance={leftAlliance} side="left" />
+      <GlowSpot score={rightScore} alliance={rightAlliance} side="right" />
     </Box>
   );
 }
 
-function GlowSpot({
-  score,
-  alliance,
-  side,
-  flourish,
-}: {
-  score: number;
-  alliance: Alliance;
-  side: 'left' | 'right';
-  flourish: boolean;
-}) {
+function GlowSpot({ score, alliance, side }: { score: number; alliance: Alliance; side: 'left' | 'right' }) {
   if (score <= 0) return null;
 
   const rgb = GLOW_RGB[alliance];
@@ -537,6 +502,10 @@ function GlowSpot({
   const opacity = 0.04 + t * 0.36; // 0.04 → 0.40
   const pulseDuration = 8 - t * 6.5; // 8 s → 1.5 s
   const pulseScale = 1 + t * 0.25; // 1.0× → 1.25×
+
+  // Wander parameters — more movement at higher scores
+  const w = 2 + t * 6; // 2% → 8% wander range
+  const wanderDuration = 25 - t * 10; // 25 s → 15 s
 
   const cx = side === 'left' ? '25%' : '75%';
 
@@ -553,27 +522,38 @@ function GlowSpot({
     );
   }
 
+  // Outer element wanders, inner element pulses
   return (
     <Box
       sx={{
         position: 'absolute',
         inset: 0,
-        background: layers.join(', '),
-        transformOrigin: `${cx} 50%`,
-        '@keyframes glowPulse': {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: `scale(${pulseScale})` },
+        '@keyframes glowWander': {
+          '0%, 100%': { transform: 'translate(0, 0)' },
+          '13%': { transform: `translate(${w * 0.7}%, ${-w * 0.5}%)` },
+          '27%': { transform: `translate(${-w * 0.4}%, ${-w * 0.8}%)` },
+          '41%': { transform: `translate(${-w * 0.9}%, ${w * 0.3}%)` },
+          '55%': { transform: `translate(${w * 0.3}%, ${w * 0.7}%)` },
+          '68%': { transform: `translate(${w * 0.8}%, ${-w * 0.2}%)` },
+          '82%': { transform: `translate(${-w * 0.5}%, ${w * 0.6}%)` },
         },
-        '@keyframes flourishBurst': {
-          '0%': { transform: 'scale(1)', filter: 'brightness(1) saturate(1)' },
-          '12%': { transform: 'scale(2.8)', filter: 'brightness(3) saturate(1.5)' },
-          '40%': { transform: 'scale(1.4)', filter: 'brightness(1.3) saturate(1.1)' },
-          '70%': { transform: 'scale(1.1)', filter: 'brightness(1.05) saturate(1)' },
-          '100%': { transform: 'scale(1)', filter: 'brightness(1) saturate(1)' },
-        },
-        animation: flourish ? 'flourishBurst 1.5s ease-out' : `glowPulse ${pulseDuration}s ease-in-out infinite`,
+        animation: `glowWander ${wanderDuration}s ease-in-out infinite`,
       }}
-    />
+    >
+      <Box
+        sx={{
+          width: '100%',
+          height: '100%',
+          background: layers.join(', '),
+          transformOrigin: `${cx} 50%`,
+          '@keyframes glowPulse': {
+            '0%, 100%': { transform: 'scale(1)' },
+            '50%': { transform: `scale(${pulseScale})` },
+          },
+          animation: `glowPulse ${pulseDuration}s ease-in-out infinite`,
+        }}
+      />
+    </Box>
   );
 }
 
@@ -726,69 +706,66 @@ function BatteryPanel({
                   },
                 ]}
               />
-              {/* Full overlay: team left, voltages right */}
+              {/* Overlay: team, current V, min V — all on baseline */}
               <Box
                 sx={{
                   position: 'absolute',
-                  top: 0,
                   left: 0,
                   right: 0,
                   bottom: 0,
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  alignItems: 'baseline',
+                  gap: 1,
                   px: 0.75,
+                  pb: 0.25,
                   pointerEvents: 'none',
                 }}
               >
-                {/* Team number + avatar */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <TeamAvatar teamNumber={robot.teamNumber} size={18} />
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
+                  <TeamAvatar teamNumber={robot.teamNumber} size={16} />
                   <Typography
                     sx={{
-                      fontSize: '0.95rem',
+                      fontSize: '0.9rem',
                       fontWeight: 700,
                       color: 'rgba(255,255,255,0.7)',
                       textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {robot.teamNumber ?? robot.station}
                     {isDuplicate && (
-                      <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.75rem' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
                         {' '}
                         ({robot.station.replace('slot', '#')})
                       </span>
                     )}
                   </Typography>
                 </Box>
-                {/* Voltages stacked */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                <Typography
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '1.1rem',
+                    fontWeight: 700,
+                    color,
+                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {robot.battery.current.toFixed(1)}V
+                </Typography>
+                {!isNaN(minFloor) && (
                   <Typography
                     sx={{
                       fontFamily: 'monospace',
-                      fontSize: '1.1rem',
-                      fontWeight: 700,
-                      lineHeight: 1.1,
-                      color,
+                      fontSize: '0.8rem',
+                      color: 'rgba(244, 67, 54, 0.8)',
                       textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {robot.battery.current.toFixed(1)}V
+                    ↓{minFloor.toFixed(1)}V
                   </Typography>
-                  {!isNaN(minFloor) && (
-                    <Typography
-                      sx={{
-                        fontFamily: 'monospace',
-                        fontSize: '0.8rem',
-                        lineHeight: 1.1,
-                        color: 'rgba(244, 67, 54, 0.8)',
-                        textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                      }}
-                    >
-                      ↓{minFloor.toFixed(1)}V
-                    </Typography>
-                  )}
-                </Box>
+                )}
               </Box>
             </Box>
           </Box>
@@ -892,6 +869,7 @@ function AllianceScoreBox({
   inactiveTotal,
   freePlayLabel,
   isAutoWinner,
+  isFreePlay,
 }: {
   alliance: Alliance;
   total: number;
@@ -902,11 +880,35 @@ function AllianceScoreBox({
   freePlayLabel?: string | null;
   /** Whether this alliance won auto */
   isAutoWinner?: boolean;
+  /** Whether scoring is in freePlay mode (enables glow-proof bg + 400pt flourish) */
+  isFreePlay?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
-  const bgColor = alliance === 'red' ? 'rgba(239,83,80,0.08)' : 'rgba(66,165,245,0.08)';
+  const rgb = alliance === 'red' ? '239, 83, 80' : '66, 165, 245';
+  const bgColor = isFreePlay
+    ? alliance === 'red'
+      ? 'rgba(15, 3, 3, 0.65)'
+      : 'rgba(3, 8, 18, 0.65)'
+    : alliance === 'red'
+      ? 'rgba(239,83,80,0.08)'
+      : 'rgba(66,165,245,0.08)';
   const goalOff = active === false;
   const hasInactive = inactiveTotal != null && inactiveTotal > 0;
+
+  // 400-point border flourish (freeplay only)
+  const [flourish, setFlourish] = useState(false);
+  const was400 = useRef(total >= 400);
+  useEffect(() => {
+    if (!isFreePlay) return;
+    const was = was400.current;
+    was400.current = total >= 400;
+    if (total >= 400 && !was) {
+      setFlourish(true);
+      const t = setTimeout(() => setFlourish(false), 1600);
+      return () => clearTimeout(t);
+    }
+    if (total < 400) setFlourish(false);
+  }, [total, isFreePlay]);
 
   return (
     <Box
@@ -918,6 +920,19 @@ function AllianceScoreBox({
         border: `3px solid ${color}`,
         backgroundColor: bgColor,
         minWidth: 200,
+        '@keyframes borderFlourish': {
+          '0%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
+          '15%': {
+            borderColor: '#fff',
+            boxShadow: `0 0 40px 8px rgba(${rgb}, 0.8), inset 0 0 30px rgba(${rgb}, 0.3)`,
+          },
+          '50%': {
+            borderColor: color,
+            boxShadow: `0 0 25px 4px rgba(${rgb}, 0.4), inset 0 0 15px rgba(${rgb}, 0.1)`,
+          },
+          '100%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
+        },
+        animation: flourish ? 'borderFlourish 1.5s ease-out' : undefined,
       }}
     >
       {/* Main score — desaturates abruptly when goal is off */}
