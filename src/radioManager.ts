@@ -373,6 +373,19 @@ class RadioManager {
         delete this.activeConfig[stationId];
         this.lastLinked.delete(stationId);
       }
+
+      // Clear any stale staged change for this station — the direct apply
+      // supersedes whatever was staged, so keeping it around would leave
+      // the "pending changes" banner stuck.
+      if (this.stagedChanges[stationId] !== undefined) {
+        delete this.stagedChanges[stationId];
+        this.saveStagedConfig();
+        const hasStagedChanges = StationNameList.some(s => this.stagedChanges[s] !== undefined);
+        if (!hasStagedChanges && !this._deferredCommit) {
+          this.setPendingCommit(false);
+        }
+      }
+
       this.saveActiveConfig();
       this.notifyConfigChange();
       await this.commitConfiguration();

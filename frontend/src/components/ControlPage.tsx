@@ -534,6 +534,7 @@ function RobotRow({
   const [showTakeover, setShowTakeover] = useState(false);
   const [pendingDrive, setPendingDrive] = useState(false);
   const [showEnableHint, setShowEnableHint] = useState(false);
+  const [configCooldown, setConfigCooldown] = useState(false);
   const suffix = config.ssid.includes('-') ? config.ssid.split('-').slice(1).join('-') : null;
   const canTakeover = !isActive && !availableStation && disconnectedStations.length > 0;
 
@@ -547,20 +548,29 @@ function RobotRow({
     if (isActive) setShowEnableHint(false);
   }, [isActive]);
 
+  const startCooldown = () => {
+    setConfigCooldown(true);
+    setTimeout(() => setConfigCooldown(false), 2000);
+  };
+
   const handleEnable = (stage: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!availableStation) return;
+    if (!availableStation || configCooldown) return;
+    startCooldown();
     sendEnableSavedRobot(availableStation, config.ssid, stage);
     onSelect(); // Auto-select the robot being enabled
   };
 
   const handleRelease = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!activeStation) return;
+    if (!activeStation || configCooldown) return;
+    startCooldown();
     sendNewConfig(activeStation, '', '', true);
   };
 
   const handleTakeover = (targetStation: StationName, stage: boolean) => {
+    if (configCooldown) return;
+    startCooldown();
     sendNewConfig(targetStation, '', '', true);
     sendEnableSavedRobot(targetStation, config.ssid, stage);
     setShowTakeover(false);
@@ -634,17 +644,23 @@ function RobotRow({
                 </Button>
               )}
               <Tooltip title="Release this robot's radio slot">
-                <Button size="small" variant="outlined" color="warning" onClick={e => handleRelease(e)}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  disabled={configCooldown}
+                  onClick={e => handleRelease(e)}
+                >
                   Release
                 </Button>
               </Tooltip>
             </>
           ) : availableStation ? (
             <>
-              <Button size="small" variant="outlined" onClick={e => handleEnable(true, e)}>
+              <Button size="small" variant="outlined" disabled={configCooldown} onClick={e => handleEnable(true, e)}>
                 Stage
               </Button>
-              <Button size="small" variant="contained" onClick={e => handleEnable(false, e)}>
+              <Button size="small" variant="contained" disabled={configCooldown} onClick={e => handleEnable(false, e)}>
                 Enable
               </Button>
             </>
@@ -677,6 +693,7 @@ function RobotRow({
           disconnectedStations={disconnectedStations}
           onSelect={(station, stage) => handleTakeover(station, stage)}
           onCancel={() => setShowTakeover(false)}
+          disabled={configCooldown}
         />
       )}
 
@@ -697,10 +714,12 @@ function TakeoverPicker({
   disconnectedStations,
   onSelect,
   onCancel,
+  disabled,
 }: {
   disconnectedStations: DisconnectedStation[];
   onSelect: (station: StationName, stage: boolean) => void;
   onCancel: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Card variant="outlined" sx={{ mx: 2, mb: 1, p: 1.5 }}>
@@ -734,10 +753,10 @@ function TakeoverPicker({
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
-              <Button size="small" variant="outlined" onClick={() => onSelect(station, true)}>
+              <Button size="small" variant="outlined" disabled={disabled} onClick={() => onSelect(station, true)}>
                 Stage
               </Button>
-              <Button size="small" variant="contained" onClick={() => onSelect(station, false)}>
+              <Button size="small" variant="contained" disabled={disabled} onClick={() => onSelect(station, false)}>
                 Apply Now
               </Button>
             </Box>
