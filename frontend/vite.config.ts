@@ -2,6 +2,41 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { Plugin } from 'vite';
 import { execFileSync } from 'node:child_process';
+import { resolve, join } from 'node:path';
+import { createReadStream, statSync } from 'node:fs';
+
+/** Serve /sounds/* from the project-root sounds/ directory during dev. */
+function serveSounds(): Plugin {
+  const soundsDir = resolve(__dirname, '..', 'sounds');
+  return {
+    name: 'serve-sounds',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0];
+        if (!url?.startsWith('/sounds/')) return next();
+
+        const fileName = url.slice('/sounds/'.length);
+        // Prevent directory traversal
+        if (fileName.includes('..') || fileName.includes('/')) {
+          res.statusCode = 400;
+          res.end();
+          return;
+        }
+
+        const filePath = join(soundsDir, fileName);
+        try {
+          const stat = statSync(filePath);
+          res.setHeader('Content-Type', 'audio/wav');
+          res.setHeader('Content-Length', stat.size);
+          createReadStream(filePath).pipe(res);
+        } catch {
+          res.statusCode = 404;
+          res.end();
+        }
+      });
+    },
+  };
+}
 
 function stationRoutes(): Plugin {
   return {
@@ -85,7 +120,7 @@ export default defineConfig({
   define: {
     __BUILD_VERSION__: JSON.stringify(gitVersion()),
   },
-  plugins: [react(), stationRoutes()],
+  plugins: [react(), serveSounds(), stationRoutes()],
   server: {
     proxy: {
       '/ws': {

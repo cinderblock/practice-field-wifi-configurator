@@ -37,6 +37,9 @@ echo "Deploying to $DEPLOY_BASE"
 # Synchronize the internal directory with the frontend build output
 rsync -av --delete frontend/dist/ $DEPLOY_BASE/internal/
 
+# Deploy sound files so the browser can play match audio
+rsync -av sounds/ $DEPLOY_BASE/internal/sounds/
+
 # Copy the public.html to the public directory
 cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
