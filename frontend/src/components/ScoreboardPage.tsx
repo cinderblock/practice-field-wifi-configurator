@@ -908,9 +908,17 @@ function AllianceScoreBox({
   const goalOff = active === false;
   const hasInactive = inactiveTotal != null && inactiveTotal > 0;
 
-  // Border flourish at every 100-point crossing, intensity scales with level (freeplay only).
-  // Uses a ref-managed timeout instead of effect cleanup so score updates don't cancel it early.
-  const [flourishLevel, setFlourishLevel] = useState(0); // 0 = idle, 1+ = which hundred was crossed
+  // Persistent chasing border in freeplay — thickness grows with each 100pt milestone
+  const chaseLevel = isFreePlay ? Math.floor(total / 100) : 0;
+  const showChase = chaseLevel > 0;
+  const chaseWidth = showChase ? 2 + Math.min(chaseLevel, 5) : 0; // 3px → 7px
+  const chaseDuration = Math.max(1.5, 3.5 - chaseLevel * 0.3); // 3.2s → 1.5s
+  const chaseAlpha = Math.min(0.85, 0.35 + chaseLevel * 0.1); // 0.45 → 0.85
+  // Snake segment length grows with level: two snakes chasing around the perimeter
+  const dashLen = 20 + Math.min(chaseLevel, 5) * 10; // 30 → 70 (out of 400 pathLength)
+
+  // Brief flourish on each 100pt crossing: fast chase burst + glow, then gradual decay
+  const [flourish, setFlourish] = useState(false);
   const prevHundred = useRef(Math.floor(total / 100));
   const flourishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -920,52 +928,107 @@ function AllianceScoreBox({
     prevHundred.current = cur;
     if (cur > prev && cur >= 1) {
       if (flourishTimer.current) clearTimeout(flourishTimer.current);
-      setFlourishLevel(cur);
-      flourishTimer.current = setTimeout(() => {
-        setFlourishLevel(0);
-        flourishTimer.current = null;
-      }, 1600);
+      setFlourish(true);
+      flourishTimer.current = setTimeout(
+        () => {
+          setFlourish(false);
+          flourishTimer.current = null;
+        },
+        2 * chaseDuration * 1000,
+      ); // 2 full chase loops at fast speed
     }
     if (cur < prev) {
       if (flourishTimer.current) clearTimeout(flourishTimer.current);
-      setFlourishLevel(0);
+      setFlourish(false);
       flourishTimer.current = null;
     }
-  }, [total, isFreePlay]);
+  }, [total, isFreePlay, chaseDuration]);
 
-  // Flourish intensity: 0.4 at 100 → 1.0 at 400+
-  const fi = flourishLevel > 0 ? Math.min(1, (flourishLevel + 0.6) / 4.6) * 0.75 + 0.25 : 0;
-  const peakBorder = flourishLevel >= 4 ? '#fff' : flourishLevel >= 3 ? `rgba(255,255,255,0.7)` : color;
-  const peakOuterBlur = 15 + fi * 35;
-  const peakOuterSpread = 4 + fi * 8;
-  const peakOuterAlpha = 0.4 + fi * 0.5;
-  const peakInnerBlur = 10 + fi * 25;
-  const peakInnerAlpha = 0.15 + fi * 0.2;
+  // JS-driven chase animation — smooth speed & color transitions via rAF
+  const chaseRectRef = useRef<SVGRectElement>(null);
+  const chaseOffsetRef = useRef(0);
+  const chaseSpeedRef = useRef(0); // current pixels-per-ms in pathLength units
+  const flourishRef = useRef(false);
+  flourishRef.current = flourish;
+
+  useEffect(() => {
+    if (!showChase) return;
+    // Speed in pathLength-units per second: 400 / chaseDuration
+    const normalSpeed = 400 / chaseDuration;
+    const flourishSpeed = 400 / (chaseDuration * 0.4); // 2.5× faster
+    if (chaseSpeedRef.current === 0) chaseSpeedRef.current = normalSpeed;
+
+    let lastTime: number | null = null;
+    let rafId: number;
+
+    const tick = (now: number) => {
+      if (lastTime != null) {
+        const dt = Math.min(now - lastTime, 50) / 1000; // seconds, capped to avoid jumps
+        const targetSpeed = flourishRef.current ? flourishSpeed : normalSpeed;
+        // Asymmetric lerp: snap fast on speed-up, decay gradually
+        const lerpRate = targetSpeed > chaseSpeedRef.current ? 0.25 : 0.03;
+        chaseSpeedRef.current += (targetSpeed - chaseSpeedRef.current) * lerpRate;
+        chaseOffsetRef.current = (chaseOffsetRef.current - chaseSpeedRef.current * dt) % 400;
+        chaseRectRef.current?.setAttribute('stroke-dashoffset', String(chaseOffsetRef.current));
+      }
+      lastTime = now;
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [showChase, chaseDuration]);
 
   return (
     <Box
       sx={{
+        position: 'relative',
         textAlign: 'center',
         px: 6,
         py: 3,
         borderRadius: 2,
-        border: `3px solid ${color}`,
+        border: `3px solid ${showChase ? 'transparent' : color}`,
         backgroundColor: bgColor,
-        '@keyframes borderFlourish': {
-          '0%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
-          '15%': {
-            borderColor: peakBorder,
-            boxShadow: `0 0 ${peakOuterBlur}px ${peakOuterSpread}px rgba(${rgb}, ${peakOuterAlpha}), inset 0 0 ${peakInnerBlur}px rgba(${rgb}, ${peakInnerAlpha})`,
-          },
-          '50%': {
-            borderColor: color,
-            boxShadow: `0 0 ${peakOuterBlur * 0.6}px ${peakOuterSpread * 0.5}px rgba(${rgb}, ${peakOuterAlpha * 0.5}), inset 0 0 ${peakInnerBlur * 0.5}px rgba(${rgb}, ${peakInnerAlpha * 0.3})`,
-          },
-          '100%': { borderColor: color, boxShadow: `0 0 0 0 rgba(${rgb}, 0)` },
-        },
-        animation: flourishLevel > 0 ? `borderFlourish 1.5s ease-out` : undefined,
+        boxShadow: flourish ? `0 0 20px 4px rgba(${rgb}, 0.5), inset 0 0 15px rgba(${rgb}, 0.15)` : 'none',
+        transition: flourish ? 'box-shadow 0.15s ease-in' : 'box-shadow 2s ease-out',
       }}
     >
+      {/* Chasing border — SVG rect with animated stroke-dashoffset for perimeter-following snakes */}
+      {showChase && (
+        <svg
+          style={{
+            position: 'absolute',
+            top: -3,
+            left: -3,
+            width: 'calc(100% + 6px)',
+            height: 'calc(100% + 6px)',
+            overflow: 'visible',
+            pointerEvents: 'none',
+          }}
+        >
+          {/* Static base border */}
+          <rect x="0" y="0" width="100%" height="100%" rx={8} ry={8} fill="none" stroke={color} strokeWidth={3} />
+          {/* Animated chase snakes — JS-driven via rAF for smooth speed transitions */}
+          <rect
+            ref={chaseRectRef}
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            rx={8}
+            ry={8}
+            fill="none"
+            strokeWidth={chaseWidth}
+            pathLength={400}
+            strokeDasharray={`${dashLen} ${200 - dashLen}`}
+            strokeLinecap="round"
+            style={{
+              stroke: flourish ? '#fff' : `rgba(${rgb}, ${chaseAlpha})`,
+              transition: flourish ? 'stroke 0.15s ease-in' : 'stroke 2s ease-out',
+            }}
+          />
+        </svg>
+      )}
       {/* Main score — desaturates abruptly when goal is off */}
       <Typography
         sx={{
