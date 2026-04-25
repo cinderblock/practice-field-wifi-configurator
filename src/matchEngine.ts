@@ -411,6 +411,27 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Abort the countdown and return to the created (pre-match) phase. */
+  abortCountdown() {
+    if (this.phase !== 'countdown') {
+      appWarn(`Cannot abort countdown in phase ${this.phase}`);
+      return;
+    }
+    this.phase = 'created';
+    this.remainingTime = 0;
+    this.stopTick();
+    // Keep stations joined and ready so the operator can re-start immediately
+    for (const state of this.stationStates.values()) {
+      if (state.joined) {
+        state.enabled = false;
+        state.mode = 'teleOp';
+      }
+    }
+    this.sendPacketsToAll();
+    console.log(`Match ${this.matchNumber} countdown aborted — back to setup`);
+    this.broadcast();
+  }
+
   stopMatch() {
     if (!this.isMatchActive()) return;
     this.disableAll();
@@ -627,7 +648,15 @@ export class MatchEngine {
       if (this.remainingTime <= 0) {
         this.remainingTime = 0;
         this.stopTick();
-        console.log('Post-match counting period complete');
+        // Release stations so teams regain DS control
+        for (const state of this.stationStates.values()) {
+          state.joined = false;
+          state.ready = false;
+          state.alliance = null;
+          state.matchSlot = null;
+        }
+        this.broadcast();
+        console.log('Post-match counting period complete — stations released');
       }
       return;
     }

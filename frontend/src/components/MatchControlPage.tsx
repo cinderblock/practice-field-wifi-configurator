@@ -12,6 +12,7 @@ import {
   useMatchState,
   sendMatchCreate,
   sendMatchCancel,
+  sendMatchAbortCountdown,
   sendMatchClear,
   sendMatchSwapStation,
   sendMatchKickStation,
@@ -283,7 +284,7 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
               onClick={sendStationStartMatch}
               sx={{ px: 6, fontWeight: 'bold' }}
             >
-              Start Match
+              Start Countdown
             </Button>
             <Button variant="outlined" color="error" onClick={sendMatchCancel}>
               Cancel Match
@@ -532,6 +533,13 @@ function ActiveMatchView({
             Match Controls
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {/* Abort countdown — returns to created/setup phase */}
+            {phase === 'countdown' && (
+              <Button variant="outlined" color="warning" onClick={sendMatchAbortCountdown}>
+                Abort Countdown
+              </Button>
+            )}
+
             {/* Pause (not during countdown, autoPause, or already paused) */}
             {!isPaused && phase !== 'countdown' && phase !== 'autoPause' && (
               <Button variant="outlined" color="warning" onClick={sendStationPauseMatch}>

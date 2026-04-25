@@ -844,6 +844,10 @@ export function sendMatchCreate() {
   ws?.send(JSON.stringify({ type: 'matchCreate' }));
 }
 
+export function sendMatchAbortCountdown() {
+  ws?.send(JSON.stringify({ type: 'matchAbortCountdown' }));
+}
+
 export function sendMatchCancel() {
   ws?.send(JSON.stringify({ type: 'matchCancel' }));
 }

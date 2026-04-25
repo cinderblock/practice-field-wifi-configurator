@@ -41,6 +41,7 @@ import {
   isPortBridgeRequest,
   isMatchCreate,
   isMatchCancel,
+  isMatchAbortCountdown,
   isMatchClear,
   isMatchSwapStation,
   isMatchKickStation,
@@ -556,6 +557,8 @@ export function setupWebSocket(
         matchEngine.createMatch();
       } else if (isMatchCancel(data)) {
         matchEngine.cancelMatch();
+      } else if (isMatchAbortCountdown(data)) {
+        matchEngine.abortCountdown();
       } else if (isMatchClear(data)) {
         matchEngine.clearMatch();
       } else if (isMatchSwapStation(data)) {

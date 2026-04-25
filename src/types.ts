@@ -652,6 +652,12 @@ export function isMatchCancel(msg: unknown): msg is MatchCancel {
   return (msg as MatchCancel).type === 'matchCancel';
 }
 
+export type MatchAbortCountdown = { type: 'matchAbortCountdown' };
+export function isMatchAbortCountdown(msg: unknown): msg is MatchAbortCountdown {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MatchAbortCountdown).type === 'matchAbortCountdown';
+}
+
 export type MatchSwapStation = { type: 'matchSwapStation'; station: StationName };
 export function isMatchSwapStation(msg: unknown): msg is MatchSwapStation {
   if (typeof msg !== 'object' || !msg) return false;
