@@ -26,15 +26,27 @@ async function detectPlayer(): Promise<string | null> {
 
 export class MatchAudio {
   private player: string | null = null;
+  private device: string | null = null;
   private availableSounds = new Set<SoundName>();
 
-  async init(): Promise<void> {
+  /**
+   * @param device ALSA device string (e.g. "plughw:1,0"). If omitted, audio is
+   *   disabled entirely. Use "default" to use the system default ALSA device.
+   */
+  async init(device?: string): Promise<void> {
+    if (!device) {
+      console.log('Match audio: no AUDIO_DEVICE configured, sounds disabled');
+      return;
+    }
+
     this.player = await detectPlayer();
 
     if (!this.player) {
       console.log('Match audio: no playback binary found, sounds disabled');
       return;
     }
+
+    this.device = device;
 
     // Cache which sound files exist
     const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'pause'];
@@ -50,16 +62,21 @@ export class MatchAudio {
       return;
     }
 
-    console.log(`Match audio: using ${this.player}`);
+    console.log(`Match audio: using ${this.player} on device ${this.device}`);
   }
 
   play(sound: SoundName): void {
-    if (!this.player) return;
+    if (!this.player || !this.device) return;
     if (!this.availableSounds.has(sound)) return;
 
     const file = resolve(SOUNDS_DIR, `${sound}.wav`);
 
-    const args = this.player === 'ffplay' ? ['-nodisp', '-autoexit', file] : [file];
+    const args =
+      this.player === 'ffplay'
+        ? ['-nodisp', '-autoexit', file]
+        : this.player === 'aplay'
+          ? ['-D', this.device, file]
+          : [file];
 
     const child = spawn(this.player, args, {
       stdio: 'ignore',

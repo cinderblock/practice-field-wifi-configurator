@@ -91,6 +91,9 @@ const trustedProxyMatcher = process.env.TRUSTED_PROXIES
 const RadioClearSchedule = process.env.RADIO_CLEAR_SCHEDULE;
 const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
+// ALSA device for match audio (e.g. "plughw:1,0"). Omit to disable. "default" for system default.
+const AudioDevice = process.env.AUDIO_DEVICE;
+
 (async () => {
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
@@ -208,7 +211,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize match audio (plays FRC field sounds on phase transitions)
   const matchAudio = new MatchAudio();
-  await matchAudio.init();
+  await matchAudio.init(AudioDevice);
   matchAudio.attachToEngine(matchEngine);
 
   // Initialize saved team store (server-side WiFi credential persistence)
