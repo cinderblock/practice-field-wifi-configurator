@@ -1193,19 +1193,18 @@ function BatchList({ batches, color, align }: { batches: ScoreBatch[]; color: st
         <Box
           key={i}
           sx={{
-            display: 'flex',
-            gap: 1,
-            alignItems: 'baseline',
-            flexDirection: align === 'right' ? 'row' : 'row-reverse',
             opacity: 1 - i * 0.15,
+            textAlign: align,
           }}
         >
-          <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.65rem', lineHeight: 1.2 }}>
             {formatTimeAgo(b.endedAt)}
           </Typography>
-          <Typography sx={{ color, fontFamily: 'monospace', fontSize: '1rem', fontWeight: 700 }}>{b.total}</Typography>
-          <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-            in {Math.round((Math.max(...Object.values(b.elements).map(e => e.lastEventTime)) - b.startedAt) / 1000)}s
+          <Typography sx={{ color, fontFamily: 'monospace', fontSize: '1rem', fontWeight: 700, lineHeight: 1.2 }}>
+            {b.total}{' '}
+            <Typography component="span" sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.7rem', fontWeight: 400 }}>
+              in {Math.round((Math.max(...Object.values(b.elements).map(e => e.lastEventTime)) - b.startedAt) / 1000)}s
+            </Typography>
           </Typography>
         </Box>
       ))}
