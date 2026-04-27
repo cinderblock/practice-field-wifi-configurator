@@ -1204,6 +1204,9 @@ function BatchList({ batches, color, align }: { batches: ScoreBatch[]; color: st
             {formatTimeAgo(b.endedAt)}
           </Typography>
           <Typography sx={{ color, fontFamily: 'monospace', fontSize: '1rem', fontWeight: 700 }}>{b.total}</Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+            in {Math.round((Math.max(...Object.values(b.elements).map(e => e.lastEventTime)) - b.startedAt) / 1000)}s
+          </Typography>
         </Box>
       ))}
     </Box>
