@@ -60,6 +60,10 @@ import {
   isTestSlackConnection,
   isCreateExternalAccessToken,
   isRevokeExternalAccessToken,
+  isStationTestModeRequest,
+  isStationTestModeStop,
+  isStationRadioConfigureRequest,
+  isStationFirmwareUpdateRequest,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -120,6 +124,22 @@ export type RadioConfigureCallback = (
  */
 export type DriveActionCallback = (dsIp: string, station: StationName | null) => void;
 
+export type StationTestModeCallback = (station: StationName, portVlanId: number) => void;
+export type StationTestModeStopCallback = (station: StationName) => void;
+export type StationRadioConfigureCallback = (
+  station: StationName,
+  teamNumber: number,
+  wpaKey6: string,
+  wpaKey24: string | undefined,
+  ssidSuffix: string | undefined,
+) => void;
+export type StationFirmwareUpdateCallback = (
+  station: StationName,
+  wpaKey: string | undefined,
+  wpaKey24: string | undefined,
+  skipReconfigure: boolean,
+) => void;
+
 export function setupWebSocket(
   radioManager: RadioManager,
   matchEngine: MatchEngine,
@@ -138,6 +158,10 @@ export function setupWebSocket(
   slackBridge?: SlackBridge,
   adminAuth?: AdminAuth,
   externalAccessStore?: ExternalAccessStore,
+  onStationTestMode?: StationTestModeCallback,
+  onStationTestModeStop?: StationTestModeStopCallback,
+  onStationRadioConfigure?: StationRadioConfigureCallback,
+  onStationFirmwareUpdate?: StationFirmwareUpdateCallback,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -692,6 +716,16 @@ export function setupWebSocket(
             ws.send(JSON.stringify({ error: 'Failed to bridge port', details: err.message }));
           });
         }
+
+        // ── Station Test Port Mode ─────────────────────────────────
+      } else if (isStationTestModeRequest(data)) {
+        onStationTestMode?.(data.station, data.portVlanId);
+      } else if (isStationTestModeStop(data)) {
+        onStationTestModeStop?.(data.station);
+      } else if (isStationRadioConfigureRequest(data)) {
+        onStationRadioConfigure?.(data.station, data.teamNumber, data.wpaKey6, data.wpaKey24, data.ssidSuffix);
+      } else if (isStationFirmwareUpdateRequest(data)) {
+        onStationFirmwareUpdate?.(data.station, data.wpaKey, data.wpaKey24, !!data.skipReconfigure);
 
         // ── Support System ──────────────────────────────────────────
       } else if (isSubmitSupportIssue(data)) {

@@ -16,8 +16,8 @@ const execFile = promisify(execFileCb);
 
 const LINK_POLL_MS = 200;
 const CHECK_INTERVAL_MS = 1_500;
-/** Secondary IP added to the test interface so we can reach factory-default radios at 192.168.69.1. */
-const FACTORY_PROBE_IP = '192.168.69.8';
+/** Default secondary IP added to the test interface so we can reach factory-default radios at 192.168.69.1. */
+const DEFAULT_FACTORY_PROBE_IP = '192.168.69.8';
 const FACTORY_PROBE_PREFIX = 24;
 
 /** Parse a team number from an IP in the 10.TE.AM.x range. */
@@ -97,6 +97,7 @@ export class RobotTestMonitor {
     private readonly dryRun = false,
     private readonly hasClients?: () => boolean,
     private readonly onRadioConfigureProgress?: (progress: RadioConfigureProgress) => void,
+    private readonly factoryProbeIp: string = DEFAULT_FACTORY_PROBE_IP,
   ) {}
 
   async start(): Promise<void> {
@@ -190,7 +191,7 @@ export class RobotTestMonitor {
       this.net
         .addAddress({
           interfaceName: this.interfaceName,
-          address: FACTORY_PROBE_IP,
+          address: this.factoryProbeIp,
           prefixLength: FACTORY_PROBE_PREFIX,
         })
         .catch(() => {}); // May already exist from a previous link cycle
@@ -319,7 +320,7 @@ export class RobotTestMonitor {
   private async handleDhcpSuccess(): Promise<void> {
     try {
       // Read the assigned IP directly from the interface
-      const addr = await getInterfaceIp(this.interfaceName, [FACTORY_PROBE_IP]);
+      const addr = await getInterfaceIp(this.interfaceName, [this.factoryProbeIp]);
       if (!addr) {
         console.log('RobotTestMonitor: dhcpcd succeeded but no IP on interface');
         return;
@@ -459,7 +460,7 @@ export class RobotTestMonitor {
         this.checks = [];
         this.killDhcp();
         if (!this.dryRun && oldIp) {
-          // Remove only the DHCP address, keep the factory probe IP (192.168.69.8)
+          // Remove only the DHCP address, keep the factory probe IP
           this.net
             .removeAddress({ interfaceName: this.interfaceName, address: oldIp, prefixLength: oldPrefix })
             .catch(() => {});

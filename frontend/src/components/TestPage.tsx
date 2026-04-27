@@ -29,6 +29,7 @@ import {
   sendRadioConfigureRequest,
 } from '../hooks/useBackend';
 import { StatusIcon } from './TeamChecksPanel';
+import { CheckResultRow, SettlingBanner } from './SharedTestComponents';
 
 const PULSE_STYLES = {
   '@keyframes test-pulse': {
@@ -127,112 +128,6 @@ function StartupTimer() {
           Restart
         </Button>
       )}
-    </Box>
-  );
-}
-
-/** Shows a contextual banner while the network settles after a radio reconfiguration or firmware update. */
-function SettlingBanner({
-  reconfiguredAt,
-  timeoutMs,
-  type,
-}: {
-  reconfiguredAt: number;
-  timeoutMs: number;
-  type?: 'radio' | 'firmware';
-}) {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const tick = () => setElapsed(Date.now() - reconfiguredAt);
-    tick();
-    const id = setInterval(tick, 500);
-    return () => clearInterval(id);
-  }, [reconfiguredAt]);
-
-  const label = type === 'firmware' ? 'firmware update' : 'reconfiguration';
-  const expectedMs = type === 'firmware' ? 60_000 : 40_000;
-  const secs = Math.round(elapsed / 1000);
-
-  if (elapsed > timeoutMs) {
-    return (
-      <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>
-        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-          Network did not stabilize after {label} ({secs}s). Something may have gone wrong — try power-cycling the
-          robot.
-        </Typography>
-      </Alert>
-    );
-  }
-
-  if (elapsed > expectedMs) {
-    return (
-      <Alert severity="warning" sx={{ mb: 1.5, py: 0.5 }}>
-        <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-          Network is taking longer than usual to settle after {label} ({secs}s). Please wait...
-        </Typography>
-      </Alert>
-    );
-  }
-
-  return (
-    <Alert severity="info" sx={{ mb: 1.5, py: 0.5 }}>
-      <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-        Radio was just {type === 'firmware' ? 'updated' : 'reconfigured'}. The network is settling — this is normal (
-        {secs}s).
-      </Typography>
-    </Alert>
-  );
-}
-
-function CheckResultRow({ check }: { check: CheckResult }) {
-  const failed = check.status === 'fail' || check.status === 'error' || check.status === 'warn';
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 0.25 }}>
-      <StatusIcon status={check.status} />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
-          {check.name}
-        </Typography>
-        {check.status === 'pass' && (check.actual || check.message) && (
-          <Typography
-            variant="caption"
-            sx={{ color: 'text.secondary', fontFamily: check.actual ? 'monospace' : undefined, fontSize: '0.75rem' }}
-          >
-            {check.actual ?? check.message}
-          </Typography>
-        )}
-        {failed && (
-          <Box>
-            {check.expected && check.actual && (
-              <Typography variant="caption" sx={{ fontSize: '0.75rem', display: 'block' }}>
-                <Box component="span" sx={{ color: 'text.secondary' }}>
-                  expected{' '}
-                </Box>
-                <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                  {check.expected}
-                </Box>
-                <Box component="span" sx={{ color: 'text.secondary' }}>
-                  , got{' '}
-                </Box>
-                <Box component="span" sx={{ fontFamily: 'monospace', color: 'error.main' }}>
-                  {check.actual}
-                </Box>
-              </Typography>
-            )}
-            {check.message && !check.expected && (
-              <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                {check.message}
-              </Typography>
-            )}
-            {check.helpUrl && (
-              <Link href={check.helpUrl} target="_blank" rel="noopener" sx={{ fontSize: '0.75rem', display: 'block' }}>
-                How to fix
-              </Link>
-            )}
-          </Box>
-        )}
-      </Box>
     </Box>
   );
 }

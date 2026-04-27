@@ -154,6 +154,34 @@ export class PortBridgeManager {
   }
 
   /**
+   * Create a port's VLAN sub-interface without bridging it.
+   * Used by test port mode to get an isolated interface for diagnostics.
+   * Returns the interface name (e.g., `eno1.p101`).
+   */
+  async createStandalonePort(portVlanId: number): Promise<string> {
+    const port = this.portConfigs.find(p => p.vlanId === portVlanId);
+    if (!port) throw new Error(`Unknown port VLAN ID: ${portVlanId}`);
+
+    const portIf = this.portIfName(portVlanId);
+    appInfo(`Creating standalone port interface ${portIf} (VLAN ${portVlanId}) for test mode`);
+    await this.net.createVlan({ parent: this.physicalInterface, vlanId: portVlanId, name: portIf });
+    await this.net.setInterfaceUp(portIf);
+    return portIf;
+  }
+
+  /** Delete a standalone port interface (cleanup after test mode). */
+  async deleteStandalonePort(portVlanId: number): Promise<void> {
+    const portIf = this.portIfName(portVlanId);
+    try {
+      await this.net.setInterfaceDown(portIf);
+      await this.net.deleteInterface(portIf);
+      appInfo(`Deleted standalone port interface ${portIf}`);
+    } catch (err) {
+      appWarn(`Failed to delete port interface ${portIf}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Clean up all port VLAN interfaces on startup.
    * Called on non-KEEP_NETWORK restarts to remove stale port interfaces.
    */

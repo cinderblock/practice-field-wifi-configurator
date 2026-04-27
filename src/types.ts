@@ -1927,3 +1927,106 @@ export function isRevokeExternalAccessToken(msg: unknown): msg is RevokeExternal
   const m = msg as RevokeExternalAccessToken;
   return m.type === 'revokeExternalAccessToken' && typeof m.id === 'string';
 }
+
+// ── Station Test Port Mode ─────────────────────────────────────────
+
+export interface WpaKeyCheckResult {
+  band: '6GHz' | '2.4GHz';
+  status: 'pass' | 'mismatch' | 'unknown';
+  message: string;
+}
+
+/** Per-station test port mode state, wrapping the underlying RobotTestState. */
+export interface StationTestState {
+  type: 'stationTestState';
+  station: StationName;
+  /** The underlying robot test state (without the top-level type discriminator). */
+  testState: Omit<RobotTestState, 'type'>;
+  /** VLAN ID of the port being used. */
+  portVlanId: number;
+  /** Human-readable port name (e.g. "Port A"). */
+  portName: string;
+  /** Per-band WPA key check results — populated once radio checks complete. */
+  wpaKeyChecks?: WpaKeyCheckResult[];
+  /** Seconds remaining before test mode auto-exits due to inactivity. */
+  timeoutRemaining: number;
+  /** Epoch ms when test mode was started. */
+  startedAt: number;
+}
+
+export function isStationTestState(msg: unknown): msg is StationTestState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as StationTestState).type === 'stationTestState';
+}
+
+/** Client → server: request to start test port mode for a station. */
+export interface StationTestModeRequest {
+  type: 'stationTestModeRequest';
+  station: StationName;
+  portVlanId: number;
+}
+
+export function isStationTestModeRequest(msg: unknown): msg is StationTestModeRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationTestModeRequest;
+  return (
+    m.type === 'stationTestModeRequest' &&
+    typeof m.station === 'string' &&
+    StationNameList.includes(m.station) &&
+    typeof m.portVlanId === 'number'
+  );
+}
+
+/** Client → server: request to stop test port mode for a station. */
+export interface StationTestModeStop {
+  type: 'stationTestModeStop';
+  station: StationName;
+}
+
+export function isStationTestModeStop(msg: unknown): msg is StationTestModeStop {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationTestModeStop;
+  return m.type === 'stationTestModeStop' && typeof m.station === 'string' && StationNameList.includes(m.station);
+}
+
+/** Client → server: configure a robot radio via station test port mode. */
+export interface StationRadioConfigureRequest {
+  type: 'stationRadioConfigureRequest';
+  station: StationName;
+  teamNumber: number;
+  /** WPA passphrase for the 6 GHz band. */
+  wpaKey6: string;
+  /** WPA passphrase for the 2.4 GHz band. Defaults to wpaKey6 if omitted. */
+  wpaKey24?: string;
+  /** SSID suffix appended after the team number. */
+  ssidSuffix?: string;
+}
+
+export function isStationRadioConfigureRequest(msg: unknown): msg is StationRadioConfigureRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationRadioConfigureRequest;
+  return (
+    m.type === 'stationRadioConfigureRequest' &&
+    typeof m.station === 'string' &&
+    StationNameList.includes(m.station) &&
+    typeof m.teamNumber === 'number' &&
+    typeof m.wpaKey6 === 'string'
+  );
+}
+
+/** Client → server: firmware update via station test port mode. */
+export interface StationFirmwareUpdateRequest {
+  type: 'stationFirmwareUpdateRequest';
+  station: StationName;
+  wpaKey?: string;
+  wpaKey24?: string;
+  skipReconfigure?: boolean;
+}
+
+export function isStationFirmwareUpdateRequest(msg: unknown): msg is StationFirmwareUpdateRequest {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationFirmwareUpdateRequest;
+  return (
+    m.type === 'stationFirmwareUpdateRequest' && typeof m.station === 'string' && StationNameList.includes(m.station)
+  );
+}

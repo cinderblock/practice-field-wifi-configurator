@@ -41,6 +41,7 @@ import { handleScoringRequest } from './scoringApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
 import { ApiKeyStore } from './apiKeyStore.js';
 import { PortBridgeManager, parseFieldPorts } from './portBridgeManager.js';
+import { StationTestManager } from './stationTestManager.js';
 import { SupportStore } from './supportStore.js';
 import { SlackBridge } from './slackBridge.js';
 import { AdminAuth } from './adminAuth.js';
@@ -242,6 +243,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Initialize WebSocket server (callbacks are set below after subsystems are created)
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
   let onDriveAction: ((dsIp: string, station: StationName | null) => void) | undefined;
+  let stationTestManager: StationTestManager | undefined;
   const { wss, broadcast, broadcastRouteState, publicConnections } = setupWebSocket(
     radioManager,
     matchEngine,
@@ -278,6 +280,27 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     slackBridge,
     adminAuth,
     externalAccessStore,
+    // Station test port mode callbacks
+    (station, portVlanId) => {
+      stationTestManager?.startTestMode(station, portVlanId).catch(err => {
+        console.error(`Station test mode start failed for ${station}:`, err.message);
+      });
+    },
+    station => {
+      stationTestManager?.stopTestMode(station).catch(err => {
+        console.error(`Station test mode stop failed for ${station}:`, err.message);
+      });
+    },
+    (station, teamNumber, wpaKey6, wpaKey24, ssidSuffix) => {
+      stationTestManager?.configureRadio(station, teamNumber, wpaKey6, wpaKey24, ssidSuffix).catch(err => {
+        console.error(`Station radio configure failed for ${station}:`, err.message);
+      });
+    },
+    (station, wpaKey, wpaKey24, skipReconfigure) => {
+      stationTestManager?.startFirmwareUpdate(station, wpaKey, wpaKey24, skipReconfigure).catch(err => {
+        console.error(`Station firmware update failed for ${station}:`, err.message);
+      });
+    },
   );
   setBroadcast(broadcast);
 
@@ -408,6 +431,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     await robotTestMonitor.start();
   }
 
+  // Station test port mode — per-station robot diagnostics via a bridged physical port
+  if (portBridgeManager?.enabled) {
+    const testNet = process.env.DRY_RUN ? createDryRunBackend() : (net ?? createBackend());
+    stationTestManager = new StationTestManager(
+      portBridgeManager,
+      testNet,
+      firmwareStore,
+      radioManager,
+      state => broadcast(state),
+      // Per-station firmware/radio progress is not broadcast as top-level messages
+      // to avoid conflating with the global test monitor's progress handlers.
+      // The inline UI derives progress from StationTestState (settling banners, etc.).
+      () => {},
+      () => {},
+      !!process.env.DRY_RUN,
+      () => wss.clients.size > 0,
+    );
+  }
+
   // Passive robot packet capture — sniff robot→DS UDP to extract battery voltage
   // and robot status without taking FMS control of the Driver Station.
   let robotPacketCapture: RobotPacketCapture | undefined;
@@ -439,6 +481,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       ws.send(JSON.stringify(results));
     }
     if (robotTestMonitor) ws.send(JSON.stringify(robotTestMonitor.getState()));
+    if (stationTestManager) {
+      for (const state of stationTestManager.getAllStates()) {
+        ws.send(JSON.stringify(state));
+      }
+    }
     ws.send(JSON.stringify({ type: 'firmwareStoreUpdate', entries: firmwareStore.getEntries() }));
   });
 
@@ -1098,6 +1145,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   if (net) {
     const fullCleanup = () => {
       robotTestMonitor?.stop();
+      stationTestManager?.stopAll();
       robotPacketCapture?.stop();
       stopAllDHCP();
       console.log('Cleaning up network rules...');
@@ -1118,6 +1166,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     // the iptables flush and restores routing preferences from the kernel.
     const gracefulExit = () => {
       robotTestMonitor?.stop();
+      stationTestManager?.stopAll();
       robotPacketCapture?.stop();
       stopAllDHCP();
       console.log('Graceful exit: network rules preserved.');

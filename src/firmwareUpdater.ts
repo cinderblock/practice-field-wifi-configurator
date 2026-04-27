@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { FirmwareUpdateProgress } from './types.js';
 import { teamSubnet } from './teamChecker.js';
 import type { FirmwareStore } from './firmwareStore.js';
+import { hashWpaKey } from './wpaKeyUtils.js';
 
 // ── Radio status type ───────────────────────────────────────────────
 
@@ -16,13 +16,6 @@ interface RadioStatus {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-/** The radio hashes WPA keys as SHA-256(passphrase + salt). */
-function hashWpaKey(passphrase: string, salt: string): string {
-  return createHash('sha256')
-    .update(passphrase + salt)
-    .digest('hex');
-}
 
 async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number } = {}): Promise<Response> {
   const { timeout = 5000, ...fetchOptions } = options;

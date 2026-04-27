@@ -43,8 +43,10 @@ import {
   DriveSessionState,
   isExternalAccessState,
   isExternalAccessTokenCreated,
+  isStationTestState,
   ExternalAccessState,
   ExternalAccessTokenCreated,
+  StationTestState,
   CastReceiverList,
   CastReceiverRegister,
   CastReceiverSwap,
@@ -502,6 +504,11 @@ function receiveMessage(detail: Message) {
 
   if (isRobotTestState(detail)) {
     handleRobotTestState(detail);
+    return;
+  }
+
+  if (isStationTestState(detail)) {
+    handleStationTestState(detail);
     return;
   }
 
@@ -1010,6 +1017,72 @@ export function useRobotTestState(): RobotTestState | null {
   }, []);
 
   return state;
+}
+
+// ── Station Test Port Mode State ─────────────────────────────────────
+
+const currentStationTestStates = new Map<StationName, StationTestState>();
+
+/** A stopped session is signaled by phase 'disabled' with zeroed port fields. */
+function isStationTestStopped(state: StationTestState): boolean {
+  return state.testState.phase === 'disabled' && state.portVlanId === 0;
+}
+
+function handleStationTestState(state: StationTestState) {
+  if (isStationTestStopped(state)) {
+    currentStationTestStates.delete(state.station);
+  } else {
+    currentStationTestStates.set(state.station, state);
+  }
+  events.dispatchEvent(new CustomEvent('stationTestState', { detail: state }));
+}
+
+/** Get the test port mode state for a specific station. */
+export function useStationTestState(station: StationName): StationTestState | null {
+  const [state, setState] = useState<StationTestState | null>(currentStationTestStates.get(station) ?? null);
+
+  useEffect(() => {
+    setState(currentStationTestStates.get(station) ?? null);
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<StationTestState>).detail;
+      if (detail.station === station) {
+        setState(isStationTestStopped(detail) ? null : detail);
+      }
+    };
+    events.addEventListener('stationTestState', handler);
+    return () => events.removeEventListener('stationTestState', handler);
+  }, [station]);
+
+  return state;
+}
+
+export function sendStationTestModeRequest(station: StationName, portVlanId: number) {
+  ws?.send(JSON.stringify({ type: 'stationTestModeRequest', station, portVlanId }));
+}
+
+export function sendStationTestModeStop(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationTestModeStop', station }));
+}
+
+export function sendStationRadioConfigureRequest(
+  station: StationName,
+  teamNumber: number,
+  wpaKey6: string,
+  wpaKey24?: string,
+  ssidSuffix?: string,
+) {
+  ws?.send(
+    JSON.stringify({ type: 'stationRadioConfigureRequest', station, teamNumber, wpaKey6, wpaKey24, ssidSuffix }),
+  );
+}
+
+export function sendStationFirmwareUpdateRequest(
+  station: StationName,
+  wpaKey?: string,
+  wpaKey24?: string,
+  skipReconfigure?: boolean,
+) {
+  ws?.send(JSON.stringify({ type: 'stationFirmwareUpdateRequest', station, wpaKey, wpaKey24, skipReconfigure }));
 }
 
 // ── Firmware Update Progress ─────────────────────────────────────────

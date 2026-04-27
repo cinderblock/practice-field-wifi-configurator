@@ -32,6 +32,12 @@ import {
   useRoutePreferenceState,
   useDriveSessionState,
   sendDrive,
+  useLastLinked,
+  usePortBridgeState,
+  useStationTestState,
+  sendStationTestModeRequest,
+  sendStationTestModeStop,
+  sendStationRadioConfigureRequest,
 } from '../hooks/useBackend';
 import { MatchPanel } from './MatchPanel';
 import { StationNetworkCard } from './NetworkPage';
@@ -50,6 +56,8 @@ import PublicIcon from '@mui/icons-material/Public';
 import PublicOffIcon from '@mui/icons-material/PublicOff';
 import { StationChart, GroupedChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
 import { TeamChecksPanel } from './TeamChecksPanel';
+import { WaitingForRobot } from './WaitingForRobot';
+import { InlineTestPortMode } from './InlineTestPortMode';
 import Chip from '@mui/material/Chip';
 
 // Helper function to format numbers with thin space as thousands separator
@@ -135,6 +143,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const networkStats = useNetworkStats();
   const subnetScan = useSubnetScan();
   const mdnsActivity = useMdnsActivity();
+  const lastLinked = useLastLinked();
+  const portBridgeState = usePortBridgeState();
+  const stationTestState = useStationTestState(station);
 
   const {
     ssid: stationSsid,
@@ -423,7 +434,22 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                     not linked
                   </Typography>
                 ))}
-              {chartMode && stationSsid ? (
+              {stationTestState ? (
+                <InlineTestPortMode
+                  testState={stationTestState}
+                  onStop={() => sendStationTestModeStop(station)}
+                  onConfigureRadio={(teamNumber, wpaKey6, wpaKey24, ssidSuffix) =>
+                    sendStationRadioConfigureRequest(station, teamNumber, wpaKey6, wpaKey24, ssidSuffix)
+                  }
+                />
+              ) : stationSsid && !isLinked ? (
+                <WaitingForRobot
+                  stationSsid={stationSsid}
+                  lastLinkedTimestamp={lastLinked[station]}
+                  portBridgeState={portBridgeState}
+                  onStartTestPortMode={portVlanId => sendStationTestModeRequest(station, portVlanId)}
+                />
+              ) : chartMode && stationSsid ? (
                 <Box
                   sx={{
                     overflowY: 'auto',
