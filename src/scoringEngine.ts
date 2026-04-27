@@ -545,8 +545,8 @@ export class ScoringEngine {
     }
     this.batchTimers[alliance] = setTimeout(() => {
       this.batchTimers[alliance] = null;
-      this.activeBatches[alliance].active = false;
-      this.broadcast(); // Frontend will desaturate
+      this.archiveBatch(alliance, Date.now());
+      this.broadcast();
     }, this.batchTimeoutSeconds * 1000);
   }
 
