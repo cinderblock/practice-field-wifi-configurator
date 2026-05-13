@@ -2030,3 +2030,69 @@ export function isStationFirmwareUpdateRequest(msg: unknown): msg is StationFirm
     m.type === 'stationFirmwareUpdateRequest' && typeof m.station === 'string' && StationNameList.includes(m.station)
   );
 }
+
+// ── Audio Device Management ────────────────────────────────────────
+
+/** Info about an available ALSA audio device. */
+export interface AudioDeviceInfo {
+  /** Card index (e.g. 1) */
+  cardIndex: number;
+  /** Short name in brackets from /proc/asound/cards (e.g. "Audio") */
+  shortName: string;
+  /** Driver name (e.g. "USB-Audio") */
+  driver: string;
+  /** Long descriptive name (e.g. "AB13X USB Audio") */
+  name: string;
+  /** ALSA device string for playback (e.g. "plughw:1,0") */
+  alsaDevice: string;
+}
+
+/** Server → Client: audio device state broadcast. */
+export interface AudioDeviceState {
+  type: 'audioDeviceState';
+  /** All currently available audio devices */
+  available: AudioDeviceInfo[];
+  /** The device name the user has locked to (null = disabled) */
+  selectedDeviceName: string | null;
+  /** Resolved ALSA device string if the selected device is currently connected */
+  resolvedDevice: string | null;
+  /** Current status */
+  status: 'active' | 'disconnected' | 'disabled';
+}
+
+export function isAudioDeviceState(msg: unknown): msg is AudioDeviceState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as AudioDeviceState).type === 'audioDeviceState';
+}
+
+/** Client → Server: select an audio device by name (null to disable). */
+export interface SaveAudioDeviceConfig {
+  type: 'saveAudioDeviceConfig';
+  deviceName: string | null;
+}
+
+export function isSaveAudioDeviceConfig(msg: unknown): msg is SaveAudioDeviceConfig {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as SaveAudioDeviceConfig;
+  return m.type === 'saveAudioDeviceConfig' && (m.deviceName === null || typeof m.deviceName === 'string');
+}
+
+/** Client → Server: play a test sound. */
+export interface TestAudioDevice {
+  type: 'testAudioDevice';
+}
+
+export function isTestAudioDevice(msg: unknown): msg is TestAudioDevice {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as TestAudioDevice).type === 'testAudioDevice';
+}
+
+/** Client → Server: refresh the list of available audio devices. */
+export interface RefreshAudioDevices {
+  type: 'refreshAudioDevices';
+}
+
+export function isRefreshAudioDevices(msg: unknown): msg is RefreshAudioDevices {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as RefreshAudioDevices).type === 'refreshAudioDevices';
+}

@@ -39,6 +39,8 @@ import {
   isSupportChatIncoming,
   isAdminAuthResult,
   isSlackConfigState,
+  isAudioDeviceState,
+  AudioDeviceState,
   isDriveSessionState,
   DriveSessionState,
   isExternalAccessState,
@@ -387,6 +389,7 @@ function handlePortBridgeState(state: PortBridgeState) {
 
 let currentSupportState: SupportState | null = null;
 let currentSlackConfigState: SlackConfigState | null = null;
+let currentAudioDeviceState: AudioDeviceState | null = null;
 let currentAdminAuth: AdminAuthResult | null = null;
 
 function handleSupportState(state: SupportState) {
@@ -416,6 +419,11 @@ function handleAdminAuthResult(result: AdminAuthResult) {
 function handleSlackConfigState(state: SlackConfigState) {
   currentSlackConfigState = state;
   events.dispatchEvent(new CustomEvent('slackConfigState', { detail: state }));
+}
+
+function handleAudioDeviceState(state: AudioDeviceState) {
+  currentAudioDeviceState = state;
+  events.dispatchEvent(new CustomEvent('audioDeviceState', { detail: state }));
 }
 
 function handleSupportIssueCreated(msg: { type: string; issueId: string }) {
@@ -599,6 +607,11 @@ function receiveMessage(detail: Message) {
 
   if (isSlackConfigState(detail)) {
     handleSlackConfigState(detail);
+    return;
+  }
+
+  if (isAudioDeviceState(detail)) {
+    handleAudioDeviceState(detail);
     return;
   }
 
@@ -1575,6 +1588,33 @@ export function useSlackTestResult(callback: (result: { ok: boolean; error?: str
     events.addEventListener('slackTestResult', handler);
     return () => events.removeEventListener('slackTestResult', handler);
   }, [callback]);
+}
+
+// ── Audio Device ────────────────────────────────────────────────────
+
+export function useAudioDeviceState(): AudioDeviceState | null {
+  const [state, setState] = useState<AudioDeviceState | null>(currentAudioDeviceState);
+
+  useEffect(() => {
+    setState(currentAudioDeviceState);
+    const handler = (e: Event) => setState((e as CustomEvent<AudioDeviceState>).detail);
+    events.addEventListener('audioDeviceState', handler);
+    return () => events.removeEventListener('audioDeviceState', handler);
+  }, []);
+
+  return state;
+}
+
+export function sendSaveAudioDeviceConfig(deviceName: string | null) {
+  ws?.send(JSON.stringify({ type: 'saveAudioDeviceConfig', deviceName }));
+}
+
+export function sendTestAudioDevice() {
+  ws?.send(JSON.stringify({ type: 'testAudioDevice' }));
+}
+
+export function sendRefreshAudioDevices() {
+  ws?.send(JSON.stringify({ type: 'refreshAudioDevices' }));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

@@ -63,7 +63,16 @@ import {
   useExternalAccessTokenCreatedEvent,
   sendCreateExternalAccessToken,
   sendRevokeExternalAccessToken,
+  useAudioDeviceState,
+  sendSaveAudioDeviceConfig,
+  sendTestAudioDevice,
+  sendRefreshAudioDevices,
 } from '../hooks/useBackend';
+
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
 
 const phaseColors: Record<MatchPhase, string> = {
   idle: 'text.secondary',
@@ -308,9 +317,104 @@ export function AdminPage() {
       <ApiKeySection />
       <ExternalAccessSection />
       <StationControlSection />
+      <AudioDeviceSection />
       <SlackConfigSection />
       <FirmwareSection />
     </Container>
+  );
+}
+
+// ── Audio Device ────────────────────────────────────────────────────
+
+function AudioDeviceSection() {
+  const audioState = useAudioDeviceState();
+  const [selected, setSelected] = useState('');
+
+  useEffect(() => {
+    if (audioState?.selectedDeviceName != null) {
+      setSelected(audioState.selectedDeviceName);
+    } else {
+      setSelected('');
+    }
+  }, [audioState?.selectedDeviceName]);
+
+  if (!audioState) return null;
+
+  const handleSave = () => {
+    sendSaveAudioDeviceConfig(selected || null);
+  };
+
+  const hasChanged = (selected || null) !== (audioState.selectedDeviceName || null);
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="h5">Match Audio</Typography>
+          <Chip
+            label={
+              audioState.status === 'active'
+                ? 'Active'
+                : audioState.status === 'disconnected'
+                  ? 'Disconnected'
+                  : 'Disabled'
+            }
+            size="small"
+            color={
+              audioState.status === 'active' ? 'success' : audioState.status === 'disconnected' ? 'warning' : 'default'
+            }
+          />
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Select an audio output device for match phase sounds (start horn, end buzzer, etc.). The device is locked by
+          name so it auto-recovers if the USB device moves to a different port.
+        </Typography>
+
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+          <FormControl size="small" sx={{ minWidth: 250, flex: 1 }}>
+            <InputLabel>Audio Device</InputLabel>
+            <Select value={selected} label="Audio Device" onChange={e => setSelected(e.target.value)}>
+              <MenuItem value="">
+                <em>Disabled</em>
+              </MenuItem>
+              {audioState.available.map(d => (
+                <MenuItem key={d.cardIndex} value={d.name}>
+                  {d.name} ({d.driver})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <Button variant="contained" size="small" onClick={handleSave} disabled={!hasChanged}>
+            Save
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={sendTestAudioDevice}
+            disabled={audioState.status !== 'active'}
+          >
+            Test
+          </Button>
+          <Button variant="text" size="small" onClick={sendRefreshAudioDevices}>
+            Refresh
+          </Button>
+        </Box>
+
+        {audioState.status === 'disconnected' && audioState.selectedDeviceName && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            Device "{audioState.selectedDeviceName}" is not connected. It will auto-reconnect when plugged in.
+          </Alert>
+        )}
+
+        {audioState.status === 'active' && audioState.resolvedDevice && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Resolved to {audioState.resolvedDevice}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

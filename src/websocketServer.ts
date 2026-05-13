@@ -64,6 +64,9 @@ import {
   isStationTestModeStop,
   isStationRadioConfigureRequest,
   isStationFirmwareUpdateRequest,
+  isSaveAudioDeviceConfig,
+  isTestAudioDevice,
+  isRefreshAudioDevices,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -84,6 +87,7 @@ import type { SupportStore } from './supportStore.js';
 import type { SlackBridge } from './slackBridge.js';
 import type { AdminAuth } from './adminAuth.js';
 import type { ExternalAccessStore } from './externalAccessStore.js';
+import type { MatchAudio } from './matchAudio.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -162,6 +166,7 @@ export function setupWebSocket(
   onStationTestModeStop?: StationTestModeStopCallback,
   onStationRadioConfigure?: StationRadioConfigureCallback,
   onStationFirmwareUpdate?: StationFirmwareUpdateCallback,
+  matchAudio?: MatchAudio,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -313,6 +318,8 @@ export function setupWebSocket(
   // Broadcast external access token state changes to all clients
   externalAccessStore?.addListener(broadcast);
 
+  matchAudio?.addStateListener(broadcast);
+
   // Handle incoming Slack messages and forward to appropriate chat WebSocket clients
   if (slackBridge && supportStore) {
     slackBridge.onSlackMessage = (threadTs, senderName, text) => {
@@ -420,6 +427,11 @@ export function setupWebSocket(
     // Send external access token state
     if (externalAccessStore) {
       ws.send(JSON.stringify(externalAccessStore.getState()));
+    }
+
+    // Send audio device state
+    if (matchAudio) {
+      ws.send(JSON.stringify(matchAudio.getState()));
     }
 
     ws.on('close', () => {
@@ -969,6 +981,23 @@ export function setupWebSocket(
           externalAccessStore.revokeToken(data.id);
         } else if (externalAccessStore) {
           ws.send(JSON.stringify({ error: 'Admin authentication required' }));
+        }
+        // ── Audio Device Management ───────────────────────────────────
+      } else if (isSaveAudioDeviceConfig(data)) {
+        if (matchAudio && adminConnections.has(ws)) {
+          matchAudio.selectDevice(data.deviceName);
+        } else if (matchAudio) {
+          ws.send(JSON.stringify({ error: 'Admin authentication required' }));
+        }
+      } else if (isTestAudioDevice(data)) {
+        if (matchAudio && adminConnections.has(ws)) {
+          matchAudio.play('start');
+        } else if (matchAudio) {
+          ws.send(JSON.stringify({ error: 'Admin authentication required' }));
+        }
+      } else if (isRefreshAudioDevices(data)) {
+        if (matchAudio && adminConnections.has(ws)) {
+          ws.send(JSON.stringify(matchAudio.getState()));
         }
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
