@@ -143,7 +143,6 @@ export default defineConfig({
       input: {
         main: 'index.html',
         control: 'control.html',
-        station: 'station.html',
         admin: 'admin.html',
         logs: 'logs.html',
         network: 'network.html',

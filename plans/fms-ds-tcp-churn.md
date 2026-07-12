@@ -125,6 +125,14 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
       now read the authoritative broadcast (like StationStatus); removed the
       matchEngine blockedDsIps plumbing whose silent early-return hid the
       "multiple DSes" warning during the 2854 laptop-swap incident
+- [x] Delete orphaned /slotN station page (station.html, roots/station.tsx,
+      StationPage.tsx): superseded by per-team control pages (/<team#>) and
+      /overview; vite routing already 404'd /slotN and nothing linked to it.
+      README Pages table corrected. NOTE: earlier analysis in this plan wrongly
+      described "/slot2 station page" as a live surface — the StationStatus
+      duplicate-DS banner actually lives on /overview.
+- [ ] Check steamboat's Caddy config for stale /slot\* rewrite rules (server
+      config — needs per-change authorization)
 - [ ] Remove the now-unpopulated `blockedDsIps` field from DSConnectionInfo in
       types.ts once the feature-batch work lands (left in place because types.ts
       carries uncommitted feature-batch types that other worktree files import —

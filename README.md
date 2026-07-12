@@ -34,7 +34,8 @@ npm install
 | Path                | Description                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
 | `/`                 | Home — station configuration form (assign teams to stations)                        |
-| `/slot[1-6]`        | Station page — per-station view with self-service match controls                    |
+| `/<team#>[-suffix]` | Team control page — per-team view with self-service match controls                  |
+| `/overview`         | Admin station overview — status for all six stations                                |
 | `/match`            | Match control — dedicated controller page for match lifecycle                       |
 | `/admin`            | Admin page — global/per-station e-stop, match status, force stop                    |
 | `/network`          | Network page — discovered devices, VLAN status, network stats                       |
