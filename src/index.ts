@@ -357,7 +357,13 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         const currentAlive = new Set(scan.hosts.filter(h => h.alive).map(h => h.ip));
         const previousAlive = checksAliveSnapshot.get(station);
         const retries = checksRetryCount.get(station) ?? 0;
-        if (previousAlive && retries < MAX_AUTO_RETRIGGERS && [...currentAlive].some(ip => !previousAlive.has(ip))) {
+        const newDevice = previousAlive != null && [...currentAlive].some(ip => !previousAlive.has(ip));
+        // Errors are usually transient (e.g. the radio's HTTP API unreachable during
+        // a network blip) and the alive-device set may never change when they clear,
+        // so also retry on a backoff timer: 30s, 1m, 2m, 4m, then every 8m forever.
+        const retryDelay = Math.min(30_000 * 2 ** retries, 480_000);
+        const timedRetry = Date.now() - (checksRanAt.get(station) ?? 0) >= retryDelay;
+        if ((newDevice && retries < MAX_AUTO_RETRIGGERS) || timedRetry) {
           checksRetryCount.set(station, retries + 1);
           triggerTeamChecks(station, team);
         }
@@ -380,9 +386,11 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const checksAliveSnapshot = new Map<StationName, Set<string>>();
   // Guard against concurrent check runs per station
   const checksInFlight = new Set<StationName>();
-  // Cap automatic re-triggers to avoid infinite retries against unreachable devices
+  // Cap new-device re-triggers to avoid loops when devices flap
   const checksRetryCount = new Map<StationName, number>();
   const MAX_AUTO_RETRIGGERS = 5;
+  // When the last check run completed, for timed retries of error results
+  const checksRanAt = new Map<StationName, number>();
 
   /** Run team checks for a station, broadcast results, and cache them. */
   function triggerTeamChecks(station: StationName, team: number) {
@@ -406,6 +414,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         console.error(`Team checks failed for ${station}:`, err);
       })
       .finally(() => {
+        checksRanAt.set(station, Date.now());
         checksInFlight.delete(station);
       });
   }
@@ -520,6 +529,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         checksAliveSnapshot.delete(station);
         checksInFlight.delete(station);
         checksRetryCount.delete(station);
+        checksRanAt.delete(station);
         subnetScanner.clearStation(station);
         // Unbind any physical ports from this station's bridge
         portBridgeManager?.unbridgeAllFromStation(station).catch(err => {
