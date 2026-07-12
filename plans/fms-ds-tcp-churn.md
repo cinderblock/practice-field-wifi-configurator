@@ -76,6 +76,26 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
   connect/close logs for reconnects within 30s of a close, summarizing at most
   every 5 min per address.
 
+- **E-stop is unaffected by the TCP gating** (user flagged; verified): globalEStop
+  sends UDP disable packets to ALL stations with known DS addresses, joined or
+  not (matchEngine.ts:497-513). A freeplay DS hit by those packets enters FMS
+  control and disables — that's the intended safety behavior and no TCP change
+  touches it.
+- **Opt-in experiment knob:** `FMS_TCP_REPLY_STATIONS` env var (`slot1,slot2` or
+  `all`) makes the resolver grant the 0x19 reply outside matches for those
+  stations only — test the lockout hypothesis on one robot before any default-on.
+  Chosen over an admin-UI toggle because the websocketServer/useBackend/
+  MatchControlPage regions are all dirty with the uncommitted feature-batch work;
+  a UI toggle design was mapped (send fn in useBackend.ts ~l.933 pattern,
+  ActiveParticipantRow in MatchControlPage.tsx ~l.580, type guards in types.ts
+  ~l.619 pattern) and can be added after feature-batch lands if wanted.
+- **Team checks stuck on error (2854 Radio Firmware/SystemCore):** auto-re-run
+  only fired when a NEW alive IP appeared in the subnet scan (index.ts, scan
+  callback) — but radio HTTP failures happen while the radio stays pingable, so
+  the alive set never changes and errored results sat until a manual re-run.
+  Fixed: errored results now also retry on a backoff timer (30s, 1m, 2m, 4m,
+  then every 8m indefinitely); manual re-run still resets the backoff.
+
 ## Progress
 
 - [x] Diagnose scoreboard "slot2" (postMatch snapshot, needs clearMatch at field)
@@ -85,6 +105,10 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
 - [x] Typecheck, commit (only these hunks — tree shared with feature-batch work)
 - [x] Gate the 0x19 reply on station joined (user caught the FMS-lockout risk);
       amended into the same commit
+- [x] FMS_TCP_REPLY_STATIONS opt-in env var + README row
+- [x] Timed backoff retry for errored team checks
+- [ ] Bench test: set FMS_TCP_REPLY_STATIONS=slot1 (846), restart service, watch
+      whether the DS shows FMS Connected and whether local enable still works
 - [ ] Deploy + verify on-site (846's DS should hold TCP; churn logs stop) — NOT
       deployed yet; live session in progress, user decides when
 - [ ] (Optional follow-up) auto-clear abandoned postMatch → idle, and/or

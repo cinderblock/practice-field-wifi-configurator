@@ -47,7 +47,14 @@ import { SlackBridge } from './slackBridge.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
-import { StationName, StationNameList, TeamCheckResults, DriveSessionState, defaultSlotToRadio } from './types.js';
+import {
+  StationName,
+  StationNameList,
+  StationNameRegex,
+  TeamCheckResults,
+  DriveSessionState,
+  defaultSlotToRadio,
+} from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -69,6 +76,10 @@ const KeepNetwork = keepNetworkFlagExists || process.env.KEEP_NETWORK === 'true'
 const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2'; // Probably don't need to override this
 const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or undefined
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
+// Experimental: stations whose DS gets the TCP station-assignment reply even
+// outside a match ("slot1,slot2" or "all") — for testing whether a TCP-only
+// reply locks the DS out of local enable before defaulting it on for everyone.
+const FmsTcpReplyStations = process.env.FMS_TCP_REPLY_STATIONS ?? '';
 const StartSyslog = process.env.SYSLOG_ENDPOINT === 'true';
 const StartMdnsReflector = process.env.MDNS_REFLECTOR === 'true';
 const TestInterface = process.env.TEST_INTERFACE;
@@ -962,15 +973,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
     };
 
+    const tcpReplyAll = FmsTcpReplyStations.trim() === 'all';
+    const tcpReplyOptIn = new Set(
+      FmsTcpReplyStations.split(/[,\s]+/).filter((s): s is StationName => StationNameRegex.test(s)),
+    );
+
     runFMS({
       // Station-assignment reply (0x19): only for stations that joined a match,
       // where FMS control is already asserted via UDP. Freeplay DSes must get no
-      // reply — answering would lock out their local enable.
+      // reply — answering would lock out their local enable — unless explicitly
+      // opted in via FMS_TCP_REPLY_STATIONS to test that lockout hypothesis.
       resolveTeamSlot: teamNumber => {
         const station = radioManager.getStationForTeam(teamNumber);
         if (!station) return undefined;
         const state = matchEngine.getState();
-        if (!state.stationStates[station]?.joined) return undefined;
+        const joined = state.stationStates[station]?.joined ?? false;
+        if (!joined && !tcpReplyAll && !tcpReplyOptIn.has(station)) return undefined;
         return state.portToSlot?.[station] ?? defaultSlotToRadio[station];
       },
     }).then(fms => {

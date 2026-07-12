@@ -348,7 +348,8 @@ export async function startFMSServer({
   /** Map a team number to its alliance slot for the TCP station-assignment reply.
    *  Return undefined to send NO reply: answering the handshake flips the DS into
    *  FMS-controlled mode (local enable locked out), so only resolve teams whose
-   *  station has joined a match — never freeplay DSes. */
+   *  station has joined a match — or is opted in via FMS_TCP_REPLY_STATIONS to
+   *  test that lockout hypothesis on a single robot. */
   resolveTeamSlot?: (teamNumber: number) => MatchSlot | undefined;
 } = {}) {
   return new Promise<EventEmitter<Events>>((resolve, reject) => {
