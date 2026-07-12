@@ -7,7 +7,10 @@ import { MatchSlot, StationName, Mode } from './types.js';
 
 const DefaultTcpPort = 1750;
 const DefaultUdpPort = 1160;
-export const UdpSendPort = 1121; // 1120 to assert control over DS
+// DS control port. 1121 = official FMS: DS enters FMS control immediately.
+// 1120 = offseason FMS: DS prompts the operator to approve FMS control first.
+// https://frcture.readthedocs.io/en/latest/driverstation/fms_to_ds.html
+export const UdpSendPort = 1121;
 
 const DefaultAddress = '10.0.100.5';
 
@@ -337,7 +340,17 @@ export async function startFMSServer({
   address = DefaultAddress,
   tcp = DefaultTcpPort,
   udp = DefaultUdpPort,
-}: { address?: string; tcp?: number; udp?: number } = {}) {
+  resolveTeamSlot,
+}: {
+  address?: string;
+  tcp?: number;
+  udp?: number;
+  /** Map a team number to its alliance slot for the TCP station-assignment reply.
+   *  Return undefined to send NO reply: answering the handshake flips the DS into
+   *  FMS-controlled mode (local enable locked out), so only resolve teams whose
+   *  station has joined a match — never freeplay DSes. */
+  resolveTeamSlot?: (teamNumber: number) => MatchSlot | undefined;
+} = {}) {
   return new Promise<EventEmitter<Events>>((resolve, reject) => {
     let udpServer: Socket;
 
@@ -346,28 +359,77 @@ export async function startFMSServer({
     // when a DS reconnects before the old TCP connection times out).
     const tcpConnections = new Map<string, number>();
 
+    // Log dampening: a DS that never completes the station-assignment handshake
+    // (or can't reach its station) cycles TCP every ~6s. Log the first connect,
+    // then suppress reconnects within CHURN_WINDOW_MS of a close, summarizing at
+    // most once per CHURN_SUMMARY_MS per address.
+    const CHURN_WINDOW_MS = 30_000;
+    const CHURN_SUMMARY_MS = 5 * 60_000;
+    const churnByAddr = new Map<string, { lastClose: number; suppressed: number; lastReport: number }>();
+    // Last team number logged per address, so steady 0x18 packets aren't re-logged
+    const lastLoggedTeam = new Map<string, number>();
+
     const tcpServer = net.createServer(socket => {
       const rawAddr = socket.remoteAddress || '';
       const addr = rawAddr.replace(/^::ffff:/, '');
       tcpConnections.set(addr, (tcpConnections.get(addr) ?? 0) + 1);
-      console.log(`DS connected: ${addr}`);
+
+      // Reap dead NAT'd connections — a DS that vanishes without FIN otherwise
+      // stays ESTAB forever and inflates the per-address connection count.
+      socket.setKeepAlive(true, 30_000);
+
+      const now = Date.now();
+      const churn = churnByAddr.get(addr);
+      // Whether this connection's lifecycle gets its own log lines (suppressed for rapid reconnects)
+      let logConnection = true;
+      if (churn && now - churn.lastClose < CHURN_WINDOW_MS) {
+        logConnection = false;
+        churn.suppressed++;
+        if (now - churn.lastReport >= CHURN_SUMMARY_MS) {
+          const minutes = Math.max(1, Math.round((now - churn.lastReport) / 60_000));
+          console.log(`DS ${addr}: ${churn.suppressed} rapid reconnects in the last ${minutes}m`);
+          churn.suppressed = 0;
+          churn.lastReport = now;
+        }
+      } else {
+        console.log(`DS connected: ${addr}`);
+        churnByAddr.set(addr, { lastClose: 0, suppressed: 0, lastReport: now });
+      }
       emitter.emit('dsConnected', { address: addr });
 
       const transformer = new ByteToObjectTransform();
-      socket.pipe(transformer).on('data', obj => {
-        console.log('Received object from TCP stream:', obj);
+      socket.pipe(transformer).on('data', (obj: DSMessage) => {
+        if (obj.type === 0x18) {
+          // Team number handshake. Only reply with the station assignment (0x19)
+          // when the resolver grants one (station joined a match): the reply puts
+          // the DS in FMS-controlled mode, locking out local enable. Freeplay DSes
+          // get no reply and keep local control — they retry TCP every ~6s, which
+          // the churn dampener below keeps out of the logs.
+          const slot = resolveTeamSlot?.(obj.teamNumber);
+          if (slot) {
+            socket.write(Buffer.from([0x00, 0x03, 0x19, allianceStationFromName(slot), 0]));
+          }
+          if (lastLoggedTeam.get(addr) !== obj.teamNumber) {
+            lastLoggedTeam.set(addr, obj.teamNumber);
+            console.log(`DS at ${addr}: team ${obj.teamNumber}${slot ? ` → ${slot}` : ''}`);
+          }
+        } else {
+          console.log('Received object from TCP stream:', obj);
+        }
         emitter.emit('message', { address: rawAddr, port: tcp, data: obj });
       });
 
       socket.on('close', () => {
+        const c = churnByAddr.get(addr);
+        if (c) c.lastClose = Date.now();
         const remaining = (tcpConnections.get(addr) ?? 1) - 1;
         if (remaining <= 0) {
           tcpConnections.delete(addr);
-          console.log(`DS disconnected: ${addr}`);
+          if (logConnection) console.log(`DS disconnected: ${addr}`);
           emitter.emit('dsDisconnected', { address: addr });
         } else {
           tcpConnections.set(addr, remaining);
-          console.log(`DS connection closed: ${addr} (${remaining} remaining)`);
+          if (logConnection) console.log(`DS connection closed: ${addr} (${remaining} remaining)`);
         }
       });
 
@@ -414,8 +476,8 @@ export async function startFMSServer({
   });
 }
 
-export async function runFMS() {
-  return startFMSServer().catch(err => {
+export async function runFMS(options: Parameters<typeof startFMSServer>[0] = {}) {
+  return startFMSServer(options).catch(err => {
     if ('code' in err && 'address' in err && err.code === 'EADDRNOTAVAIL') {
       console.log(`Bind to ${err.address} to enable FMS server`);
       return;

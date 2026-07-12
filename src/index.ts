@@ -47,7 +47,7 @@ import { SlackBridge } from './slackBridge.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
-import { StationName, StationNameList, TeamCheckResults, DriveSessionState } from './types.js';
+import { StationName, StationNameList, TeamCheckResults, DriveSessionState, defaultSlotToRadio } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -962,7 +962,18 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
     };
 
-    runFMS().then(fms => {
+    runFMS({
+      // Station-assignment reply (0x19): only for stations that joined a match,
+      // where FMS control is already asserted via UDP. Freeplay DSes must get no
+      // reply — answering would lock out their local enable.
+      resolveTeamSlot: teamNumber => {
+        const station = radioManager.getStationForTeam(teamNumber);
+        if (!station) return undefined;
+        const state = matchEngine.getState();
+        if (!state.stationStates[station]?.joined) return undefined;
+        return state.portToSlot?.[station] ?? defaultSlotToRadio[station];
+      },
+    }).then(fms => {
       if (!fms) return;
 
       fms.on('dsConnected', ({ address }) => {
