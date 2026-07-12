@@ -96,6 +96,19 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
   Fixed: errored results now also retry on a backoff timer (30s, 1m, 2m, 4m,
   then every 8m indefinitely); manual re-run still resets the backoff.
 
+- **Laptop-swap lockout (2854, 2026-07-12 ~16:02):** team shut down the DS on one
+  laptop and opened it on another; the new DS (10.55.99.231) was blocked as a
+  "duplicate DS" every 6s for 10+ minutes until they wiped and re-applied the
+  station config. Root cause: three checks treated an open TCP socket as
+  proof-of-life via `connectedDsIps` — trySetDSAddress (blocked takeover), the
+  periodic stale-session cleanup (refused to clear the dead session), and
+  addDnatRule (refused to swap). A laptop that sleeps/drops WiFi never sends FIN,
+  so its ghost ESTAB socket pinned the old session forever; the activity tracker
+  correctly said stale ("DS stale: slot2" in journal) but was short-circuited.
+  Fixed: liveness is activity-recency only (isDsStale, 20s); `connectedDsIps`
+  removed. TCP keepalive (earlier commit) also reaps ghosts but takes ~10 min on
+  Linux defaults — far too slow for swaps; it's a backstop, not the fix.
+
 ## Progress
 
 - [x] Diagnose scoreboard "slot2" (postMatch snapshot, needs clearMatch at field)
@@ -107,8 +120,11 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
       amended into the same commit
 - [x] FMS_TCP_REPLY_STATIONS opt-in env var + README row
 - [x] Timed backoff retry for errored team checks
+- [x] Fix laptop-swap lockout: activity-based DS liveness, connectedDsIps removed
 - [ ] Bench test: set FMS_TCP_REPLY_STATIONS=slot1 (846), restart service, watch
       whether the DS shows FMS Connected and whether local enable still works
+- [ ] Deploy: all four commits are live-field relevant; the swap fix especially
+      (bites every laptop swap until deployed)
 - [ ] Deploy + verify on-site (846's DS should hold TCP; churn logs stop) — NOT
       deployed yet; live session in progress, user decides when
 - [ ] (Optional follow-up) auto-clear abandoned postMatch → idle, and/or

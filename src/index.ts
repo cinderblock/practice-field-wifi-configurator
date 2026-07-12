@@ -679,10 +679,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
     }
 
-    // Track which DS IPs have active TCP connections (refcounted by fmsServer).
-    // Used to prevent DNAT thrashing when two DSes compete for the same station.
-    const connectedDsIps = new Set<string>();
-
     // Track last activity (TCP or UDP) timestamp per accepted DS IP.
     // Used to detect stale drive sessions: if a DS hasn't been seen for
     // DS_STALE_TIMEOUT_MS, its drive session is cleared so a replacement
@@ -710,9 +706,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       for (const [station, dsIp] of acceptedDsForStation) {
         const lastActivity = dsLastActivity.get(dsIp) ?? now;
         const elapsed = now - lastActivity;
-        const timeoutRemaining = connectedDsIps.has(dsIp)
-          ? DS_STALE_TIMEOUT_MS / 1000 // Active TCP — full timeout if it disconnects
-          : Math.max(0, (DS_STALE_TIMEOUT_MS - elapsed) / 1000);
+        const timeoutRemaining = Math.max(0, (DS_STALE_TIMEOUT_MS - elapsed) / 1000);
         sessions[station] = { dsIp, lastActivity, timeoutRemaining: Math.round(timeoutRemaining) };
       }
       const blockedDs: DriveSessionState['blockedDs'] = {};
@@ -813,11 +807,14 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         matchEngine.setDSAddress(station, dsIp);
         return true;
       }
-      // Different IP — check if the current DS is still active.
-      // "Active" means it has a TCP connection AND has been seen recently.
-      // This prevents instant takeover during TCP flaps (6s cycle) while
-      // still allowing takeover when the old DS is truly gone (~20s).
-      if (connectedDsIps.has(accepted) || !isDsStale(accepted)) {
+      // Different IP — check if the current DS is still active. Liveness is
+      // activity-based only: an open TCP socket proves nothing, because a laptop
+      // that sleeps or drops off WiFi never sends FIN, and the ghost socket would
+      // block takeover forever (2854's laptop swap, 2026-07-12). A live DS always
+      // produces activity within seconds (UDP status at 2 Hz, or the ~6s TCP
+      // reconnect cycle), so recent activity still prevents takeover during flaps
+      // while allowing it when the old DS is truly gone (~20s).
+      if (!isDsStale(accepted)) {
         blockDuplicateDS(station, dsIp).catch(err => {
           console.error(`Failed to block duplicate DS for ${station}:`, err);
         });
@@ -844,10 +841,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       const gatewayIp = teamGatewayIp(team);
       const existing = activeDnatRules.get(station);
       if (existing?.dsIp === dsIp) return; // Already set, idempotent
-      // Don't swap DNAT to a different DS if the current one still has an active
-      // TCP connection — prevents thrashing when two DSes compete for one station.
-      if (existing && connectedDsIps.has(existing.dsIp)) return;
-      if (existing) await removeDnatRule(station); // Current DS disconnected, swap to new one
+      // Don't swap DNAT to a different DS while the current one shows recent
+      // activity — prevents thrashing when two DSes compete for one station.
+      // Activity-based, not TCP-based: ghost sockets from vanished laptops
+      // must not pin the DNAT to a dead DS.
+      if (existing && !isDsStale(existing.dsIp)) return;
+      if (existing) await removeDnatRule(station); // Current DS gone stale, swap to new one
       await net.iptables({
         action: '-A',
         table: 'nat',
@@ -1005,11 +1004,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       if (!fms) return;
 
       fms.on('dsConnected', ({ address }) => {
-        connectedDsIps.add(address);
         touchDsActivity(address);
       });
       fms.on('dsDisconnected', ({ address }) => {
-        connectedDsIps.delete(address);
         // Drive sessions (DNAT, route preference, accepted DS) are NOT cleaned up
         // on disconnect — DS TCP flaps every ~6s. Instead, the periodic stale
         // session cleanup below handles old DSes that are truly gone.
@@ -1031,7 +1028,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       // The 5s interval also keeps the timeout countdown in the UI fresh.
       setInterval(() => {
         for (const [station, dsIp] of [...acceptedDsForStation]) {
-          if (!connectedDsIps.has(dsIp) && isDsStale(dsIp)) {
+          if (isDsStale(dsIp)) {
             appInfo(
               `Clearing stale drive session: ${dsIp} on ${station} (no activity for ${DS_STALE_TIMEOUT_MS / 1000}s)`,
             );
