@@ -761,7 +761,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       });
       stationBlocks.set(dsIp, brName);
       appWarn(`Blocked duplicate DS ${dsIp} from forwarding to ${station} (${brName})`);
-      matchEngine.setBlockedDS(station, [...stationBlocks!.keys()]);
+      broadcastDriveSessionState();
       startBlockedDsControlLoop();
     }
 
@@ -782,8 +782,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       stationBlocks!.delete(dsIp);
       if (stationBlocks!.size === 0) blockedDsRules.delete(station);
       appInfo(`Unblocked duplicate DS ${dsIp} for ${station}`);
-      const remaining = blockedDsRules.get(station);
-      matchEngine.setBlockedDS(station, remaining ? [...remaining.keys()] : undefined);
+      broadcastDriveSessionState();
     }
 
     /** Remove all FORWARD DROP rules for a station. */

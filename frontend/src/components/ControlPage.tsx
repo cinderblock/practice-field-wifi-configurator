@@ -13,6 +13,7 @@ import { TeamAvatar } from './TeamAvatar';
 import {
   useLatest,
   useMatchState,
+  useDriveSessionState,
   useSavedTeams,
   sendNewConfig,
   sendSaveTeam,
@@ -942,10 +943,12 @@ function AddRobotForm({
 type DebouncedDsInfo = { acceptedIp: string; blockedIps: string[] } | null;
 
 function useDebouncedMultipleDsWarning(station: StationName, holdMs = 10_000): DebouncedDsInfo {
-  const matchState = useMatchState();
-  const dsInfo = matchState?.connectedStations[station];
-  const liveBlockedIps = dsInfo?.blockedDsIps;
-  const liveAcceptedIp = dsInfo?.ip;
+  // Read from driveSessionState — the authoritative broadcast built from the
+  // backend's accepted-DS/blocked-DS maps — NOT from matchState, whose per-station
+  // DS entry expires after 20s idle and silently dropped block info (2026-07-12).
+  const driveSession = useDriveSessionState();
+  const liveBlockedIps = driveSession?.blockedDs?.[station];
+  const liveAcceptedIp = driveSession?.sessions?.[station]?.dsIp;
   const hasBlocked = liveBlockedIps && liveBlockedIps.length > 0;
 
   const [displayed, setDisplayed] = useState<DebouncedDsInfo>(null);

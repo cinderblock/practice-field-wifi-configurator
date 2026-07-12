@@ -26,6 +26,7 @@ import {
 } from '../../../src/types';
 import { describeIp, formatAge, formatBytes, formatDuration, prettyStationName } from '../../../src/utils';
 import {
+  useDriveSessionState,
   useMatchState,
   useMdnsActivity,
   useNetworkStats,
@@ -60,6 +61,13 @@ export function StationNetworkCard({
   hideStationLabel?: boolean;
 }) {
   const team = scan?.team ?? mdns?.team;
+
+  // Blocked-DS info comes from driveSessionState — the authoritative broadcast
+  // built from the backend's accepted/blocked maps. matchState's per-station DS
+  // entry expires after 20s idle and can't be trusted to carry block info.
+  const driveSession = useDriveSessionState();
+  const blockedIps = driveSession?.blockedDs?.[station];
+  const acceptedDsIp = driveSession?.sessions?.[station]?.dsIp ?? dsInfo?.ip;
 
   return (
     <Card sx={{ mb: 1.5 }}>
@@ -100,11 +108,11 @@ export function StationNetworkCard({
           )}
         </Box>
 
-        {dsInfo?.blockedDsIps && dsInfo.blockedDsIps.length > 0 && (
+        {blockedIps && blockedIps.length > 0 && acceptedDsIp && (
           <Alert severity="warning" sx={{ mb: 1, py: 0, fontSize: '0.8rem' }}>
-            {dsInfo.blockedDsIps.length === 1 ? 'Second' : `${dsInfo.blockedDsIps.length} extra`} DS blocked:{' '}
+            {blockedIps.length === 1 ? 'Second' : `${blockedIps.length} extra`} DS blocked:{' '}
             <strong>
-              {dsInfo.blockedDsIps.map((ip, i) => (
+              {blockedIps.map((ip, i) => (
                 <span key={ip}>
                   {i > 0 && ', '}
                   {ip}
@@ -112,9 +120,9 @@ export function StationNetworkCard({
                 </span>
               ))}
             </strong>{' '}
-            — only {dsInfo.ip}
-            {dsInfo.ip === yourIp && ' (YOU)'} can control this station. Close the other Driver Station
-            {dsInfo.blockedDsIps.length > 1 ? 's' : ''}.
+            — only {acceptedDsIp}
+            {acceptedDsIp === yourIp && ' (YOU)'} can control this station. Close the other Driver Station
+            {blockedIps.length > 1 ? 's' : ''}.
           </Alert>
         )}
 

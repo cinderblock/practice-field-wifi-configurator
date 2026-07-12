@@ -121,6 +121,14 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
 - [x] FMS_TCP_REPLY_STATIONS opt-in env var + README row
 - [x] Timed backoff retry for errored team checks
 - [x] Fix laptop-swap lockout: activity-based DS liveness, connectedDsIps removed
+- [x] Unify duplicate-DS display on driveSessionState: ControlPage + NetworkPage
+      now read the authoritative broadcast (like StationStatus); removed the
+      matchEngine blockedDsIps plumbing whose silent early-return hid the
+      "multiple DSes" warning during the 2854 laptop-swap incident
+- [ ] Remove the now-unpopulated `blockedDsIps` field from DSConnectionInfo in
+      types.ts once the feature-batch work lands (left in place because types.ts
+      carries uncommitted feature-batch types that other worktree files import —
+      staging a types.ts hunk breaks the pre-commit typecheck)
 - [ ] Bench test: set FMS_TCP_REPLY_STATIONS=slot1 (846), restart service, watch
       whether the DS shows FMS Connected and whether local enable still works
 - [ ] Deploy: all four commits are live-field relevant; the swap fix especially
