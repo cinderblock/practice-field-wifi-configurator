@@ -18,6 +18,12 @@ const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
 /** Post-match scoring delay for balls in flight (up to 3s per rules) */
 const POST_MATCH_COUNT_SECONDS = 3;
+/** How long a finished match lingers in postMatch before auto-clearing to idle.
+ *  Self-service practice matches are often started and abandoned; without this,
+ *  the field (and scoring, which follows the postMatch→idle transition) stays
+ *  stuck in match mode until someone clicks "clear". E-stop endings are exempt —
+ *  those require a human to clear. */
+const POST_MATCH_AUTO_CLEAR_MS = 2 * 60_000;
 
 // Official 2026 REBUILT match timing (fixed — not user-adjustable)
 // Teleop = transition (10s) + 4 shifts (25s each) + endgame (30s) = 140s
@@ -39,6 +45,7 @@ export class MatchEngine {
   private remainingTime = 0;
   private totalMatchTime = 0;
   private tickTimer: NodeJS.Timeout | null = null;
+  private autoClearTimer: NodeJS.Timeout | null = null;
   private lastTickTime = 0;
   private prePausePhase: MatchPhase | null = null;
   private sequenceNumbers = new Map<StationName, number>();
@@ -121,6 +128,7 @@ export class MatchEngine {
       appWarn(`Cannot create match in phase ${this.phase}`);
       return;
     }
+    this.cancelPostMatchAutoClear();
     // Reset all station states
     for (const state of this.stationStates.values()) {
       state.joined = false;
@@ -432,6 +440,7 @@ export class MatchEngine {
     this.phase = 'postMatch';
     this.remainingTime = 0;
     this.stopTick();
+    this.schedulePostMatchAutoClear();
     this.sendPacketsToAll();
     console.log(`Match ${this.matchNumber} stopped early`);
     this.broadcast();
@@ -497,6 +506,8 @@ export class MatchEngine {
     this.phase = 'postMatch';
     this.remainingTime = 0;
     this.stopTick();
+    // E-stop endings must be cleared by a human — cancel any pending auto-clear
+    this.cancelPostMatchAutoClear();
     // Send e-stop packets to ALL stations with known DS addresses, not just joined
     for (const station of StationNameList) {
       this.sendDSPacket(station);
@@ -615,6 +626,7 @@ export class MatchEngine {
     this.phase = 'postMatch';
     this.remainingTime = 0;
     this.stopTick();
+    this.schedulePostMatchAutoClear();
     this.sendPacketsToAll();
     console.log(`Match ${this.matchNumber} ended — all stations left`);
     this.broadcast();
@@ -721,6 +733,7 @@ export class MatchEngine {
         this.phase = 'postMatch';
         this.remainingTime = POST_MATCH_COUNT_SECONDS;
         this.disableAll();
+        this.schedulePostMatchAutoClear();
         // Keep tick running for the counting period
         console.log(`Match complete — ${POST_MATCH_COUNT_SECONDS}s counting period`);
         break;
@@ -769,12 +782,33 @@ export class MatchEngine {
     }
   }
 
-  /** Manually clear the match — transitions from postMatch → idle. */
+  /** Schedule the automatic postMatch → idle transition. No-op for e-stop endings. */
+  private schedulePostMatchAutoClear() {
+    this.cancelPostMatchAutoClear();
+    if (this.endReason === 'estop') return;
+    this.autoClearTimer = setTimeout(() => {
+      this.autoClearTimer = null;
+      if (this.phase === 'postMatch') {
+        console.log(`Post-match auto-clear after ${POST_MATCH_AUTO_CLEAR_MS / 1000}s — returning to idle`);
+        this.clearMatch();
+      }
+    }, POST_MATCH_AUTO_CLEAR_MS);
+  }
+
+  private cancelPostMatchAutoClear() {
+    if (this.autoClearTimer) {
+      clearTimeout(this.autoClearTimer);
+      this.autoClearTimer = null;
+    }
+  }
+
+  /** Clear the match — transitions from postMatch → idle. Called manually or by the auto-clear timer. */
   clearMatch() {
     if (this.phase !== 'postMatch') {
       appWarn(`Cannot clear match in phase ${this.phase}`);
       return;
     }
+    this.cancelPostMatchAutoClear();
     this.stopTick(); // In case counting period is still running
     this.config = null;
     this.phase = 'idle';

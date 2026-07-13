@@ -139,12 +139,19 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
       staging a types.ts hunk breaks the pre-commit typecheck)
 - [ ] Bench test: set FMS_TCP_REPLY_STATIONS=slot1 (846), restart service, watch
       whether the DS shows FMS Connected and whether local enable still works
-- [ ] Deploy: all four commits are live-field relevant; the swap fix especially
-      (bites every laptop swap until deployed)
-- [ ] Deploy + verify on-site (846's DS should hold TCP; churn logs stop) — NOT
-      deployed yet; live session in progress, user decides when
-- [ ] (Optional follow-up) auto-clear abandoned postMatch → idle, and/or
-      live-resolve never-joined stations in postMatch so late robots appear
+- [x] Auto-clear postMatch → idle after 2 min (POST_MATCH_AUTO_CLEAR_MS): fixes
+      abandoned practice matches leaving the scoreboard/scoring stuck in match
+      mode forever (2854 incident: match started, never cleared, scores kept
+      accumulating). Scoring follows the postMatch→idle transition back to
+      freeplay automatically. E-stop endings exempt — human must clear. Also
+      fixes the earlier "slot2 on scoreboard" staleness by bounding postMatch.
+- [ ] Deploy: all seven commits are live-field relevant; the swap fix and
+      postMatch auto-clear especially. User decides when (live session).
+      Verify on-site after deploy: 846's DS holds TCP during a match, churn
+      logs quiet, laptop swap reconnects in ~20s, abandoned match returns to
+      freeplay after 2 min.
+- [ ] (Optional follow-up) live-resolve never-joined stations in postMatch so
+      late robots appear during the (now max 2 min) postMatch window
 
 ## Things not to do
 
