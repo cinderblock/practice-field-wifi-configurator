@@ -150,6 +150,12 @@ Two issues found during the 2026-07-12 field session (teams 846 + 2854 on site):
       Verify on-site after deploy: 846's DS holds TCP during a match, churn
       logs quiet, laptop swap reconnects in ~20s, abandoned match returns to
       freeplay after 2 min.
+- [x] Deploy announcements: on startup with a new git version, post commit
+      subjects since the last announced version to the support Slack channel
+      (src/deployAnnouncer.ts + SlackBridge.postToChannel). Version persisted
+      only after a successful post (retries ~3 min, then next restart). Commit
+      subjects are the changelog — CLAUDE.md now instructs writing them for the
+      support-channel audience.
 - [ ] (Optional follow-up) live-resolve never-joined stations in postMatch so
       late robots appear during the (now max 2 min) postMatch window
 

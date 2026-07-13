@@ -227,6 +227,21 @@ export class SlackBridge {
   // ── Posting ─────────────────────────────────────────────────────────
 
   /**
+   * Post a plain mrkdwn message to the configured support channel.
+   * Returns false when Slack isn't configured/connected yet or the post fails.
+   */
+  async postToChannel(text: string): Promise<boolean> {
+    if (!this.web || !this.config) return false;
+    try {
+      await this.web.chat.postMessage({ channel: this.config.channelId, text, unfurl_links: false });
+      return true;
+    } catch (err) {
+      console.warn('Slack postToChannel failed:', (err as Error).message);
+      return false;
+    }
+  }
+
+  /**
    * Post an issue report to the Slack channel.
    * Returns the thread timestamp for future replies.
    */

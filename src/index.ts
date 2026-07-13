@@ -44,6 +44,7 @@ import { PortBridgeManager, parseFieldPorts } from './portBridgeManager.js';
 import { StationTestManager } from './stationTestManager.js';
 import { SupportStore } from './supportStore.js';
 import { SlackBridge } from './slackBridge.js';
+import { announceDeploy } from './deployAnnouncer.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
@@ -248,6 +249,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Initialize support system
   const supportStore = new SupportStore();
   const slackBridge = new SlackBridge();
+  // Announce version changes to the support channel (commit subjects since last deploy)
+  announceDeploy(text => slackBridge.postToChannel(text)).catch(err => {
+    console.warn('Deploy announcement failed:', (err as Error).message);
+  });
   const adminAuth = new AdminAuth();
   const externalAccessStore = new ExternalAccessStore();
 
