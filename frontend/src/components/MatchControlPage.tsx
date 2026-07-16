@@ -7,9 +7,17 @@ import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import { TeamAvatar } from './TeamAvatar';
-import { Alliance, MatchPhase, MatchState, StationName, StationControlState } from '../../../src/types';
+import {
+  Alliance,
+  MatchPhase,
+  MatchState,
+  MatchHistoryEntry,
+  StationName,
+  StationControlState,
+} from '../../../src/types';
 import {
   useMatchState,
+  useMatchHistory,
   sendMatchCreate,
   sendMatchCancel,
   sendMatchAbortCountdown,
@@ -25,6 +33,7 @@ import {
   sendAdminStationEStop,
   sendAdminGlobalEStop,
   sendAdminClearEStop,
+  sendClearMatchHistory,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
 import { MatchTimer, PHASE_HEX, getActiveColor } from './MatchTimer';
@@ -113,6 +122,7 @@ function computeBarProgress(
  */
 export function MatchControlPage() {
   const matchState = useMatchState();
+  const matchHistory = useMatchHistory();
 
   if (!matchState) {
     return (
@@ -128,6 +138,7 @@ export function MatchControlPage() {
   const { phase } = matchState;
   const activeColor = getActiveColor(matchState);
   const pageBg = getPageBg(matchState);
+  const showHistory = (phase === 'idle' || phase === 'postMatch') && matchHistory && matchHistory.matches.length > 0;
 
   return (
     <Box sx={{ minHeight: '100dvh', backgroundColor: pageBg, transition: 'background-color 1s ease' }}>
@@ -154,6 +165,8 @@ export function MatchControlPage() {
         {phase !== 'idle' && phase !== 'created' && phase !== 'postMatch' && (
           <ActiveMatchView matchState={matchState} activeColor={activeColor} />
         )}
+
+        {showHistory && <MatchHistorySection matches={matchHistory.matches} />}
       </Container>
     </Box>
   );
@@ -787,5 +800,149 @@ function PostMatchView({ matchState }: { matchState: NonNullable<ReturnType<type
         </Card>
       )}
     </>
+  );
+}
+
+// ── Match History ──────────────────────────────────────────────────
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s}s`;
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const diff = Math.floor((Date.now() - timestamp) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+const endReasonChip: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'default' }> = {
+  normal: { label: 'Completed', color: 'success' },
+  stopped: { label: 'Stopped', color: 'warning' },
+  estop: { label: 'E-Stopped', color: 'error' },
+  abandoned: { label: 'Abandoned', color: 'default' },
+};
+
+function MatchHistorySection({ matches }: { matches: MatchHistoryEntry[] }) {
+  // Show most recent first
+  const reversed = [...matches].reverse();
+
+  return (
+    <Card sx={{ mt: 3 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="h6">Match History</Typography>
+          <Button size="small" color="inherit" onClick={sendClearMatchHistory} sx={{ opacity: 0.6 }}>
+            Clear
+          </Button>
+        </Box>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {reversed.map((match, i) => (
+            <MatchHistoryRow key={match.startedAt} match={match} index={matches.length - i} />
+          ))}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MatchHistoryRow({ match, index }: { match: MatchHistoryEntry; index: number }) {
+  const redTeams = match.teams.filter(t => t.alliance === 'red');
+  const blueTeams = match.teams.filter(t => t.alliance === 'blue');
+  const chipInfo = endReasonChip[match.endReason] ?? endReasonChip.normal;
+  const redWon = match.redScore > match.blueScore;
+  const blueWon = match.blueScore > match.redScore;
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        px: 2,
+        py: 1,
+        borderRadius: 1,
+        border: 1,
+        borderColor: 'divider',
+      }}
+    >
+      {/* Match number */}
+      <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.secondary', minWidth: 24 }}>
+        #{index}
+      </Typography>
+
+      {/* Red alliance teams + score */}
+      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          {redTeams.map(t => (
+            <Box key={t.station} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <TeamAvatar teamNumber={t.teamNumber} size={16} />
+              <Typography variant="body2" sx={{ fontWeight: 500, color: 'error.main' }}>
+                {t.teamNumber}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 700,
+            color: 'error.main',
+            minWidth: 40,
+            textAlign: 'right',
+            opacity: redWon ? 1 : 0.6,
+          }}
+        >
+          {match.redScore}
+        </Typography>
+      </Box>
+
+      {/* Separator */}
+      <Typography variant="body2" sx={{ color: 'text.disabled', fontWeight: 300 }}>
+        —
+      </Typography>
+
+      {/* Blue alliance teams + score */}
+      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 700,
+            color: 'info.main',
+            minWidth: 40,
+            textAlign: 'left',
+            opacity: blueWon ? 1 : 0.6,
+          }}
+        >
+          {match.blueScore}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          {blueTeams.map(t => (
+            <Box key={t.station} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <TeamAvatar teamNumber={t.teamNumber} size={16} />
+              <Typography variant="body2" sx={{ fontWeight: 500, color: 'info.main' }}>
+                {t.teamNumber}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Duration + end reason + time ago */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 160, justifyContent: 'flex-end' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDuration(match.durationSeconds)}
+        </Typography>
+        <Chip label={chipInfo.label} color={chipInfo.color} size="small" variant="outlined" />
+        <Typography variant="caption" sx={{ color: 'text.disabled', minWidth: 50, textAlign: 'right' }}>
+          {formatTimeAgo(match.endedAt)}
+        </Typography>
+      </Box>
+    </Box>
   );
 }

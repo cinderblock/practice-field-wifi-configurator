@@ -41,6 +41,8 @@ import {
   isSlackConfigState,
   isAudioDeviceState,
   AudioDeviceState,
+  isMatchHistoryState,
+  MatchHistoryState,
   isDriveSessionState,
   DriveSessionState,
   isExternalAccessState,
@@ -390,6 +392,7 @@ function handlePortBridgeState(state: PortBridgeState) {
 let currentSupportState: SupportState | null = null;
 let currentSlackConfigState: SlackConfigState | null = null;
 let currentAudioDeviceState: AudioDeviceState | null = null;
+let currentMatchHistoryState: MatchHistoryState | null = null;
 let currentAdminAuth: AdminAuthResult | null = null;
 
 function handleSupportState(state: SupportState) {
@@ -424,6 +427,11 @@ function handleSlackConfigState(state: SlackConfigState) {
 function handleAudioDeviceState(state: AudioDeviceState) {
   currentAudioDeviceState = state;
   events.dispatchEvent(new CustomEvent('audioDeviceState', { detail: state }));
+}
+
+function handleMatchHistoryState(state: MatchHistoryState) {
+  currentMatchHistoryState = state;
+  events.dispatchEvent(new CustomEvent('matchHistoryState', { detail: state }));
 }
 
 function handleSupportIssueCreated(msg: { type: string; issueId: string }) {
@@ -612,6 +620,11 @@ function receiveMessage(detail: Message) {
 
   if (isAudioDeviceState(detail)) {
     handleAudioDeviceState(detail);
+    return;
+  }
+
+  if (isMatchHistoryState(detail)) {
+    handleMatchHistoryState(detail);
     return;
   }
 
@@ -1615,6 +1628,25 @@ export function sendTestAudioDevice() {
 
 export function sendRefreshAudioDevices() {
   ws?.send(JSON.stringify({ type: 'refreshAudioDevices' }));
+}
+
+// ── Match History ──────────────────────────────────────────────────
+
+export function useMatchHistory(): MatchHistoryState | null {
+  const [state, setState] = useState<MatchHistoryState | null>(currentMatchHistoryState);
+
+  useEffect(() => {
+    setState(currentMatchHistoryState);
+    const handler = (e: Event) => setState((e as CustomEvent<MatchHistoryState>).detail);
+    events.addEventListener('matchHistoryState', handler);
+    return () => events.removeEventListener('matchHistoryState', handler);
+  }, []);
+
+  return state;
+}
+
+export function sendClearMatchHistory() {
+  ws?.send(JSON.stringify({ type: 'clearMatchHistory' }));
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

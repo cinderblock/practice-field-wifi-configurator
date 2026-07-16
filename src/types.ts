@@ -2096,3 +2096,44 @@ export function isRefreshAudioDevices(msg: unknown): msg is RefreshAudioDevices 
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as RefreshAudioDevices).type === 'refreshAudioDevices';
 }
+
+// ── Match History ──────────────────────────────────────────────────
+
+export interface MatchHistoryTeam {
+  station: StationName;
+  teamNumber: number;
+  alliance: Alliance;
+  matchSlot: MatchSlot | null;
+}
+
+export interface MatchHistoryEntry {
+  matchNumber: number;
+  startedAt: number;
+  endedAt: number;
+  durationSeconds: number;
+  endReason: MatchEndReason;
+  autoWinner: Alliance | null;
+  teams: MatchHistoryTeam[];
+  redScore: number;
+  blueScore: number;
+}
+
+export interface MatchHistoryState {
+  type: 'matchHistoryState';
+  matches: MatchHistoryEntry[];
+}
+
+export function isMatchHistoryState(msg: unknown): msg is MatchHistoryState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as MatchHistoryState).type === 'matchHistoryState';
+}
+
+/** Client → Server: clear match history. */
+export interface ClearMatchHistory {
+  type: 'clearMatchHistory';
+}
+
+export function isClearMatchHistory(msg: unknown): msg is ClearMatchHistory {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as ClearMatchHistory).type === 'clearMatchHistory';
+}

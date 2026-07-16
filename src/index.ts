@@ -48,6 +48,7 @@ import { announceDeploy } from './deployAnnouncer.js';
 import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
+import { MatchHistoryStore } from './matchHistoryStore.js';
 import {
   StationName,
   StationNameList,
@@ -246,6 +247,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   // Auto-switch scoring mode based on match state
   matchEngine.addStateListener(state => scoringEngine.onMatchStateChange(state));
 
+  // Initialize match history (persist results across restarts)
+  const matchHistoryStore = new MatchHistoryStore();
+  matchHistoryStore.attach(matchEngine, scoringEngine);
+
   // Initialize support system
   const supportStore = new SupportStore();
   const slackBridge = new SlackBridge();
@@ -322,6 +327,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       });
     },
     matchAudio,
+    matchHistoryStore,
   );
   setBroadcast(broadcast);
 

@@ -67,6 +67,7 @@ import {
   isSaveAudioDeviceConfig,
   isTestAudioDevice,
   isRefreshAudioDevices,
+  isClearMatchHistory,
   CastReceiverList,
   RoutePreferenceState,
   PendingCommitState,
@@ -88,6 +89,7 @@ import type { SlackBridge } from './slackBridge.js';
 import type { AdminAuth } from './adminAuth.js';
 import type { ExternalAccessStore } from './externalAccessStore.js';
 import type { MatchAudio } from './matchAudio.js';
+import type { MatchHistoryStore } from './matchHistoryStore.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -167,6 +169,7 @@ export function setupWebSocket(
   onStationRadioConfigure?: StationRadioConfigureCallback,
   onStationFirmwareUpdate?: StationFirmwareUpdateCallback,
   matchAudio?: MatchAudio,
+  matchHistoryStore?: MatchHistoryStore,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -320,6 +323,9 @@ export function setupWebSocket(
 
   matchAudio?.addStateListener(broadcast);
 
+  // Broadcast match history changes to all clients
+  matchHistoryStore?.addListener(broadcast);
+
   // Handle incoming Slack messages and forward to appropriate chat WebSocket clients
   if (slackBridge && supportStore) {
     slackBridge.onSlackMessage = (threadTs, senderName, text) => {
@@ -432,6 +438,11 @@ export function setupWebSocket(
     // Send audio device state
     if (matchAudio) {
       ws.send(JSON.stringify(matchAudio.getState()));
+    }
+
+    // Send match history state
+    if (matchHistoryStore) {
+      ws.send(JSON.stringify(matchHistoryStore.getState()));
     }
 
     ws.on('close', () => {
@@ -998,6 +1009,10 @@ export function setupWebSocket(
       } else if (isRefreshAudioDevices(data)) {
         if (matchAudio && adminConnections.has(ws)) {
           ws.send(JSON.stringify(matchAudio.getState()));
+        }
+      } else if (isClearMatchHistory(data)) {
+        if (matchHistoryStore && adminConnections.has(ws)) {
+          matchHistoryStore.clear();
         }
       } else {
         appWarn('Unknown message type from client: ' + JSON.stringify(sanitizedConfig));
