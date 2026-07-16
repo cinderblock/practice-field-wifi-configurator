@@ -43,6 +43,8 @@ import {
   AudioDeviceState,
   isMatchHistoryState,
   MatchHistoryState,
+  isUsageState,
+  UsageState,
   isDriveSessionState,
   DriveSessionState,
   isExternalAccessState,
@@ -393,6 +395,7 @@ let currentSupportState: SupportState | null = null;
 let currentSlackConfigState: SlackConfigState | null = null;
 let currentAudioDeviceState: AudioDeviceState | null = null;
 let currentMatchHistoryState: MatchHistoryState | null = null;
+let currentUsageState: UsageState | null = null;
 let currentAdminAuth: AdminAuthResult | null = null;
 
 function handleSupportState(state: SupportState) {
@@ -432,6 +435,11 @@ function handleAudioDeviceState(state: AudioDeviceState) {
 function handleMatchHistoryState(state: MatchHistoryState) {
   currentMatchHistoryState = state;
   events.dispatchEvent(new CustomEvent('matchHistoryState', { detail: state }));
+}
+
+function handleUsageState(state: UsageState) {
+  currentUsageState = state;
+  events.dispatchEvent(new CustomEvent('usageState', { detail: state }));
 }
 
 function handleSupportIssueCreated(msg: { type: string; issueId: string }) {
@@ -625,6 +633,11 @@ function receiveMessage(detail: Message) {
 
   if (isMatchHistoryState(detail)) {
     handleMatchHistoryState(detail);
+    return;
+  }
+
+  if (isUsageState(detail)) {
+    handleUsageState(detail);
     return;
   }
 
@@ -1647,6 +1660,21 @@ export function useMatchHistory(): MatchHistoryState | null {
 
 export function sendClearMatchHistory() {
   ws?.send(JSON.stringify({ type: 'clearMatchHistory' }));
+}
+
+// ── Field Usage ─────────────────────────────────────────────────────
+
+export function useUsageState(): UsageState | null {
+  const [state, setState] = useState<UsageState | null>(currentUsageState);
+
+  useEffect(() => {
+    setState(currentUsageState);
+    const handler = (e: Event) => setState((e as CustomEvent<UsageState>).detail);
+    events.addEventListener('usageState', handler);
+    return () => events.removeEventListener('usageState', handler);
+  }, []);
+
+  return state;
 }
 
 // ── Server Info ──────────────────────────────────────────────────────

@@ -90,6 +90,7 @@ import type { AdminAuth } from './adminAuth.js';
 import type { ExternalAccessStore } from './externalAccessStore.js';
 import type { MatchAudio } from './matchAudio.js';
 import type { MatchHistoryStore } from './matchHistoryStore.js';
+import type { UsageTracker } from './usageTracker.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -170,6 +171,7 @@ export function setupWebSocket(
   onStationFirmwareUpdate?: StationFirmwareUpdateCallback,
   matchAudio?: MatchAudio,
   matchHistoryStore?: MatchHistoryStore,
+  usageTracker?: UsageTracker,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -326,6 +328,9 @@ export function setupWebSocket(
   // Broadcast match history changes to all clients
   matchHistoryStore?.addListener(broadcast);
 
+  // Broadcast usage tracking state changes to all clients
+  usageTracker?.addListener(broadcast);
+
   // Handle incoming Slack messages and forward to appropriate chat WebSocket clients
   if (slackBridge && supportStore) {
     slackBridge.onSlackMessage = (threadTs, senderName, text) => {
@@ -443,6 +448,11 @@ export function setupWebSocket(
     // Send match history state
     if (matchHistoryStore) {
       ws.send(JSON.stringify(matchHistoryStore.getState()));
+    }
+
+    // Send usage tracking state
+    if (usageTracker) {
+      ws.send(JSON.stringify(usageTracker.getState()));
     }
 
     ws.on('close', () => {

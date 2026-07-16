@@ -49,6 +49,7 @@ import { AdminAuth } from './adminAuth.js';
 import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
 import { MatchHistoryStore } from './matchHistoryStore.js';
+import { UsageTracker } from './usageTracker.js';
 import {
   StationName,
   StationNameList,
@@ -251,6 +252,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   const matchHistoryStore = new MatchHistoryStore();
   matchHistoryStore.attach(matchEngine, scoringEngine);
 
+  // Initialize field usage tracker (tracks robot connection hours per team)
+  const usageTracker = new UsageTracker();
+  usageTracker.attach(radioManager);
+
   // Initialize support system
   const supportStore = new SupportStore();
   const slackBridge = new SlackBridge();
@@ -328,6 +333,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     },
     matchAudio,
     matchHistoryStore,
+    usageTracker,
   );
   setBroadcast(broadcast);
 

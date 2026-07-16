@@ -2137,3 +2137,23 @@ export function isClearMatchHistory(msg: unknown): msg is ClearMatchHistory {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as ClearMatchHistory).type === 'clearMatchHistory';
 }
+
+// ── Field Usage Tracking ───────────────────────────────────────────
+
+export interface UsageSession {
+  team: number;
+  station: StationName;
+  startedAt: number;
+  lastSeenAt: number;
+  endedAt: number | null;
+}
+
+export interface UsageState {
+  type: 'usageState';
+  sessions: UsageSession[];
+}
+
+export function isUsageState(msg: unknown): msg is UsageState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as UsageState).type === 'usageState';
+}
