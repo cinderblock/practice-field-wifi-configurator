@@ -585,7 +585,8 @@ export class MatchEngine {
       changed = true;
     }
     if (changed) {
-      this.sendDSPacket(station);
+      // No packet sent here: the DS already stopped itself before reporting,
+      // and the periodic tick/heartbeat transmits the latched state anyway.
       this.broadcast();
     }
   }
