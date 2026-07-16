@@ -273,6 +273,7 @@ type ChartConfig = {
   minValue?: number;
   maxValue?: number;
   hideLabels?: boolean;
+  horizontalLines?: Array<{ color: string; lineWidth: number; value: number }>;
   series: Array<{
     data: keyof (typeof stationTimeSeries)[StationName];
     label: string;
@@ -331,6 +332,7 @@ const metricConfigs: Record<MetricType, ChartConfig> = {
     title: 'Bandwidth Usage',
     unit: 'Mbps',
     minValue: 0,
+    horizontalLines: [{ color: 'rgba(244, 67, 54, 0.6)', lineWidth: 1, value: 4 }],
     series: [{ data: 'bandwidthUsedMbps', label: 'Bandwidth', color: { r: 100, g: 200, b: 255 }, lineWidth: 2 }],
   },
   quality: {
@@ -562,10 +564,11 @@ export function StationChart({ station, metric, height = '60px', marginBottom = 
           {...(config.minValue === undefined && { minValueScale: 1.05 })}
           {...(config.minValue !== undefined && { minValue: config.minValue })}
           {...(config.maxValue !== undefined && { maxValue: config.maxValue })}
+          {...(config.horizontalLines && { horizontalLines: config.horizontalLines })}
           {...(metric === 'bandwidth' && {
             yRangeFunction: (range: { min: number; max: number }) => ({
               min: range.min,
-              max: Math.max(range.max, 1),
+              max: Math.max(range.max, 4.5),
             }),
           })}
           {...(config.hideLabels
@@ -622,6 +625,14 @@ export function StationChart({ station, metric, height = '60px', marginBottom = 
             />
             <Typography variant="caption" sx={{ fontSize: '0.6rem', lineHeight: 1.2 }}>
               {item.label}
+            </Typography>
+          </Box>
+        ))}
+        {config.horizontalLines?.map((line, i) => (
+          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ width: 14, height: 1, backgroundColor: line.color, borderTop: '1px dashed' }} />
+            <Typography variant="caption" sx={{ fontSize: '0.6rem', lineHeight: 1.2, color: line.color }}>
+              {line.value} {config.unit ?? ''} limit
             </Typography>
           </Box>
         ))}
