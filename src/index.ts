@@ -274,9 +274,13 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     ],
     (wpaKey, wpaKey24, skipReconfigure) => {
       if (!robotTestMonitor) return;
-      // Auto-detect WPA key from active station config if not provided
+      // Auto-detect WPA key: active station config → saved team store
       const team = robotTestMonitor.getState().teamNumber;
-      const resolvedKey = wpaKey || (team ? (radioManager.getWpaKeyForTeam(team) ?? undefined) : undefined);
+      const resolvedKey =
+        wpaKey ||
+        (team
+          ? (radioManager.getWpaKeyForTeam(team) ?? savedTeamStore.getWpaKeyForTeam(team) ?? undefined)
+          : undefined);
       robotTestMonitor.startFirmwareUpdate(resolvedKey, wpaKey24, skipReconfigure).catch(err => {
         console.error('Firmware update failed:', err.message);
       });

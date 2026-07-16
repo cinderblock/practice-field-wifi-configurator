@@ -257,6 +257,10 @@ export class RobotTestMonitor {
     // --waitip 4: wait until an IPv4 address is assigned
     // --noipv4ll: don't fall back to link-local (169.254.x.x) if no DHCP server responds
     // --reboot 0: skip rebinding the last lease, always do a fresh discover
+    // --nohook resolv.conf: never register the lease's DNS servers with the host
+    //   resolver — a robot radio's DNS must not affect name resolution for the
+    //   rest of the host (we only need the IP to detect the team number)
+    // --nohook hostname: never let a lease rename the host
     const proc = spawn(
       'dhcpcd',
       [
@@ -269,6 +273,10 @@ export class RobotTestMonitor {
         '--noipv4ll',
         '--reboot',
         '0',
+        '--nohook',
+        'resolv.conf',
+        '--nohook',
+        'hostname',
         this.interfaceName,
       ],
       {
@@ -370,6 +378,11 @@ export class RobotTestMonitor {
     }
     // Also release the lease and kill any orphaned dhcpcd for this interface
     execFile('dhcpcd', ['--release', this.interfaceName]).catch(() => {});
+    // Drop any per-link DNS state a lease may have registered with
+    // systemd-resolved. Leases acquired before the --nohook resolv.conf flag
+    // was added persist across restarts and degrade host-wide name resolution
+    // (a dead robot-radio DNS server stalls every lookup on the host).
+    execFile('resolvectl', ['revert', this.interfaceName]).catch(() => {});
   }
 
   /** Continuously probe the factory default IP. Updates only the factory-related check result. */

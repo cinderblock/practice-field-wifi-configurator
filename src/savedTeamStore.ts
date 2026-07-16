@@ -75,6 +75,21 @@ export class SavedTeamStore {
     return this.teams.get(ssid);
   }
 
+  /** Look up the most recently used WPA key for a team number across all saved SSIDs. */
+  getWpaKeyForTeam(team: number): string | undefined {
+    const prefix = String(team);
+    let best: SavedTeamConfig | undefined;
+    for (const config of this.teams.values()) {
+      // FRC SSIDs: "{team}" or "{team}-{suffix}"
+      if (config.ssid === prefix || config.ssid.startsWith(prefix + '-')) {
+        if (!best || config.lastUsedAt > best.lastUsedAt) {
+          best = config;
+        }
+      }
+    }
+    return best?.wpaKey;
+  }
+
   /** Register a listener for state changes. */
   addListener(fn: (state: SavedTeamsState) => void): () => void {
     this.listeners.push(fn);

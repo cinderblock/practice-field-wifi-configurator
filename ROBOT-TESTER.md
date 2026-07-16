@@ -43,6 +43,8 @@ disabled ─► link_down ─► link_up ─► dhcp_requesting ─► ready ─
 | `checking`        | Running diagnostic checks against the radio and roboRIO                                            |
 | `complete`        | Checks finished. Re-checks every 1.5 seconds while clients are connected                           |
 
+`dhcpcd` runs with the `resolv.conf` and `hostname` hooks disabled: the tester only needs the leased IP (to derive the team number), so DNS servers and hostnames offered by the lease are never applied to the host. Whenever the tester releases the lease it also runs `resolvectl revert` on the interface, clearing any per-link DNS state left behind by leases acquired before this isolation existed.
+
 ### VLAN Reset
 
 On a VLAN interface, if both the radio and roboRIO are unreachable and no factory-default radio is detected, the tester assumes the robot disconnected. It releases the DHCP lease, clears team state, and returns to `link_up` to await the next robot.

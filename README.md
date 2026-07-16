@@ -302,6 +302,8 @@ The test interface needs to be a dedicated network path to the robot — either:
 
 The interface should **not** be managed by NetworkManager or have any existing IP configuration — the robot tester manages it entirely via `dhcpcd`.
 
+The tester's DHCP client is isolated from the rest of the host: it runs `dhcpcd` with the `resolv.conf` and `hostname` hooks disabled, so DNS servers or hostnames offered by a robot radio's lease are never registered with the host's resolver (systemd-resolved) and cannot affect name resolution for anything else on the machine.
+
 See [ROBOT-TESTER.md](ROBOT-TESTER.md) for full documentation of the tester's state machine, diagnostic checks, radio configuration, and firmware update flows.
 
 See [TECHNICAL.md](TECHNICAL.md) for details on the startup sequence, configuration flow, match state machine, and dry-run mode.
