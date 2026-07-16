@@ -922,6 +922,10 @@ export function sendStationSelfEStop(station: StationName) {
   ws?.send(JSON.stringify({ type: 'stationSelfEStop', station }));
 }
 
+export function sendStationSelfAStop(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationSelfAStop', station }));
+}
+
 export function sendAdminStopMatch() {
   ws?.send(JSON.stringify({ type: 'adminStopMatch' }));
 }

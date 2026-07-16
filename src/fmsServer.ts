@@ -245,6 +245,7 @@ type Tags = Metrics[];
 
 export type DsStatus = {
   EStop: boolean;
+  AStop: boolean;
   robotComms: boolean;
   radioPing: boolean;
   rioPing: boolean;
@@ -257,6 +258,7 @@ function byteToDsStatus(byte: number): DsStatus {
 
   return {
     EStop: Boolean(byte & 0x80),
+    AStop: Boolean(byte & 0x40),
     robotComms: Boolean(byte & 0x20),
     radioPing: Boolean(byte & 0x10),
     rioPing: Boolean(byte & 0x08),

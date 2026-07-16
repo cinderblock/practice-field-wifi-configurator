@@ -15,6 +15,7 @@ import {
   sendStationReady,
   sendStationSelfDisable,
   sendStationSelfEStop,
+  sendStationSelfAStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
 
@@ -253,6 +254,20 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   >
                     Disable
                   </Button>
+                  {/* A-Stop: only meaningful before/during auto; self-releases at teleop */}
+                  {(phase === 'countdown' || phase === 'auto') &&
+                    (myState?.aStop ? (
+                      <Chip label="A-Stopped until teleop" size="small" color="warning" />
+                    ) : (
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        size="small"
+                        onClick={() => sendStationSelfAStop(station)}
+                      >
+                        A-Stop
+                      </Button>
+                    ))}
                   <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
                     E-Stop
                   </Button>

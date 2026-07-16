@@ -72,6 +72,7 @@ export class MatchEngine {
         teamNumber: null,
         enabled: false,
         eStop: false,
+        aStop: false,
         mode: 'teleOp',
         joined: false,
         ready: false,
@@ -137,6 +138,7 @@ export class MatchEngine {
       state.matchSlot = null;
       state.enabled = false;
       state.eStop = false;
+      state.aStop = false;
     }
     this.pendingConfig = { ...OFFICIAL_CONFIG };
     this.config = null;
@@ -399,6 +401,7 @@ export class MatchEngine {
       state.teamNumber = teamNumber;
       state.enabled = false;
       state.eStop = false;
+      state.aStop = false;
       state.mode = joinedStations.includes(station) ? (effectiveAutoDuration > 0 ? 'auto' : 'teleOp') : 'teleOp';
     }
 
@@ -525,6 +528,31 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** True when an A-Stop request is currently meaningful: before or during the
+   *  autonomous period (including a pause taken during auto). */
+  private canAStop(): boolean {
+    return (
+      this.phase === 'countdown' || this.phase === 'auto' || (this.phase === 'paused' && this.prePausePhase === 'auto')
+    );
+  }
+
+  /** A-Stop: stop the robot for the remainder of the autonomous period.
+   *  Automatically released when teleop starts. Like e-stop, this is a
+   *  backend-only state — the DS just sees disable packets. */
+  stationAStop(station: StationName) {
+    if (!this.canAStop()) {
+      appWarn(`A-Stop ignored for ${station} in phase ${this.phase} — only available before/during auto`);
+      return;
+    }
+    const state = this.stationStates.get(station)!;
+    if (state.aStop) return;
+    state.aStop = true;
+    state.enabled = false;
+    console.log(`A-Stop: ${station}`);
+    this.sendDSPacket(station);
+    this.broadcast();
+  }
+
   stationDisable(station: StationName) {
     const state = this.stationStates.get(station)!;
     state.enabled = false;
@@ -533,9 +561,11 @@ export class MatchEngine {
     this.broadcast();
   }
 
-  /** Called when a DS reports disable or e-stop in its UDP heartbeat.
-   *  The team always has the right to disable/e-stop their robot. */
-  dsReportedStatus(station: StationName, dsEnabled: boolean, dsEStop: boolean) {
+  /** Called when a DS reports disable, e-stop, or a-stop in its UDP heartbeat.
+   *  The team always has the right to disable/e-stop their robot. A-stop
+   *  reports are only honored before/during auto — a DS that keeps asserting
+   *  the bit into teleop cannot keep the station down. */
+  dsReportedStatus(station: StationName, dsEnabled: boolean, dsEStop: boolean, dsAStop: boolean) {
     const state = this.stationStates.get(station);
     if (!state) return;
     let changed = false;
@@ -543,6 +573,11 @@ export class MatchEngine {
       state.eStop = true;
       state.enabled = false;
       console.log(`DS e-stop reported: ${station}`);
+      changed = true;
+    } else if (dsAStop && !state.aStop && this.canAStop()) {
+      state.aStop = true;
+      state.enabled = false;
+      console.log(`DS a-stop reported: ${station}`);
       changed = true;
     } else if (!dsEnabled && state.enabled) {
       state.enabled = false;
@@ -839,7 +874,12 @@ export class MatchEngine {
   private enableParticipating(mode: 'auto' | 'teleOp') {
     for (const station of StationNameList) {
       const state = this.stationStates.get(station)!;
-      if (state.joined && !state.eStop) {
+      // A-Stop only lasts through the autonomous period — release it at teleop
+      if (mode === 'teleOp' && state.aStop) {
+        state.aStop = false;
+        console.log(`A-Stop released for teleop: ${station}`);
+      }
+      if (state.joined && !state.eStop && !state.aStop) {
         state.enabled = true;
         state.mode = mode;
       }
@@ -902,9 +942,9 @@ export class MatchEngine {
     const seq = (this.sequenceNumbers.get(station) ?? 0) + 1;
     this.sequenceNumbers.set(station, seq);
 
-    // Never send the e-stop bit to the DS — always use disable.
-    // E-stop is a backend-only state that prevents re-enabling.
-    const control = new Control(false, state.enabled && !state.eStop, state.mode);
+    // Never send the e-stop or a-stop bits to the DS — always use disable.
+    // Both are backend-only states that prevent re-enabling.
+    const control = new Control(false, state.enabled && !state.eStop && !state.aStop, state.mode);
 
     // Use the portToSlot mapping for the alliance station byte if available.
     // This is the critical decoupling: the DS sees the alliance position, not the physical port.

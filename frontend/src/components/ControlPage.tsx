@@ -1455,6 +1455,19 @@ function StationExperience({
                               }}
                             />
                           )}
+                          {telemetry.dsStatus.aStop && (
+                            <Chip
+                              label="A-STOP"
+                              size="small"
+                              sx={{
+                                backgroundColor: 'warning.main',
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                height: 20,
+                                fontWeight: 'bold',
+                              }}
+                            />
+                          )}
                           {telemetry.brownout && (
                             <Chip
                               label="BROWNOUT"

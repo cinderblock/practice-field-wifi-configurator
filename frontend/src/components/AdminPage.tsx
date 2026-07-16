@@ -150,8 +150,9 @@ function StationControlCard({ station }: { station: StationName }) {
               )}
               {stationState?.joined && <Chip label="Joined" size="small" color="primary" variant="outlined" />}
               {stationState?.eStop && <Chip label="E-STOP" size="small" color="error" />}
+              {stationState?.aStop && <Chip label="A-STOP" size="small" color="warning" />}
               {stationState?.enabled && <Chip label="Enabled" size="small" color="success" />}
-              {!stationState?.enabled && !stationState?.eStop && (
+              {!stationState?.enabled && !stationState?.eStop && !stationState?.aStop && (
                 <Chip label="Disabled" size="small" variant="outlined" />
               )}
             </Box>

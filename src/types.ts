@@ -444,6 +444,8 @@ export type StationControlState = {
   teamNumber: number | null;
   enabled: boolean;
   eStop: boolean;
+  /** A-Stop: robot stopped for the remainder of the autonomous period, auto-released at teleop */
+  aStop: boolean;
   mode: Mode;
   joined: boolean;
   ready: boolean;
@@ -695,6 +697,13 @@ export function isStationSelfEStop(msg: unknown): msg is StationSelfEStop {
   return m.type === 'stationSelfEStop' && StationNameRegex.test(m.station);
 }
 
+export type StationSelfAStop = { type: 'stationSelfAStop'; station: StationName };
+export function isStationSelfAStop(msg: unknown): msg is StationSelfAStop {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationSelfAStop;
+  return m.type === 'stationSelfAStop' && StationNameRegex.test(m.station);
+}
+
 export type MatchClear = { type: 'matchClear' };
 export function isMatchClear(msg: unknown): msg is MatchClear {
   if (typeof msg !== 'object' || !msg) return false;
@@ -715,6 +724,7 @@ export interface TelemetryUpdate {
   brownout?: boolean;
   dsStatus?: {
     eStop: boolean;
+    aStop: boolean;
     robotComms: boolean;
     radioPing: boolean;
     rioPing: boolean;

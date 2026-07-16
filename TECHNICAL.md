@@ -80,6 +80,13 @@ The match system is self-service: stations join/leave/ready themselves, and the 
 4. **Pause** — any joined station can pause during auto/teleop/endgame. Resume or abandon from paused.
 5. **Leave** — after match ends (or while idle), station sends `stationLeave`. FMS stops sending packets; DS returns to free-drive mode.
 
+### E-Stop vs. A-Stop
+
+Both are latched **backend-only** states — the FMS never sends the e-stop or a-stop bit to the DS, only a disable packet — so a station's DS can never get stuck in a hardware-latched stop from an FMS action.
+
+- **E-Stop** (`stationSelfEStop` / admin) — emergency stop for the rest of the match. Requires a human to clear (`adminClearEStop`); matches ended by e-stop never auto-clear.
+- **A-Stop** (`stationSelfAStop`) — autonomous stop. Only accepted during `countdown`, `auto`, or a pause taken during auto; stops the robot for the remainder of auto and **auto-releases when teleop begins**. No clear action needed. The DS→FMS status byte's A-Stop bit (`0x40`) is also honored, but only while an A-Stop is still meaningful, so a DS asserting the bit into teleop cannot keep the station down.
+
 ### Match Audio
 
 Sound effects play on phase transitions via a system audio player:

@@ -180,6 +180,7 @@ export class RobotPacketCapture {
       brownout,
       dsStatus: {
         eStop,
+        aStop: false, // A-Stop is a DS-side state; not present in the robot→FMS status byte
         robotComms: hasRobotCode,
         radioPing: true, // If we see the packet, radio is up
         rioPing: true, // Packet came from the RIO

@@ -48,6 +48,7 @@ import {
   isMatchSetAutoWinner,
   isStationSelfDisable,
   isStationSelfEStop,
+  isStationSelfAStop,
   isSubmitSupportIssue,
   isStartSupportChat,
   isSendSupportChatMessage,
@@ -628,6 +629,8 @@ export function setupWebSocket(
         matchEngine.stationDisable(data.station);
       } else if (isStationSelfEStop(data)) {
         matchEngine.stationEStop(data.station);
+      } else if (isStationSelfAStop(data)) {
+        matchEngine.stationAStop(data.station);
       } else if (isApplyConfig(data)) {
         radioManager.applyPendingChanges().catch(err => {
           appError('Error applying config: ' + err.message);

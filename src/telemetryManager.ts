@@ -90,6 +90,7 @@ export class TelemetryManager {
       dsCpuPercent,
       dsStatus: {
         eStop: msg.status.EStop,
+        aStop: msg.status.AStop,
         robotComms: msg.status.robotComms,
         radioPing: msg.status.radioPing,
         rioPing: msg.status.rioPing,

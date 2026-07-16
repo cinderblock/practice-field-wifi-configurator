@@ -55,7 +55,7 @@ Matches follow the 2026 REBUILT official timing (20 s auto, 5 s pause, 110 s tel
 1. **Create** — the match controller creates a match, allowing teams to join from their station pages.
 2. **Join & Ready** — teams choose an alliance (Red/Blue) from their station page and mark themselves ready.
 3. **Start** — the match controller starts the match once all joined teams are ready. Phases run automatically: countdown → auto → pause → teleop → endgame → post-match.
-4. **Controls** — only the match controller can pause/resume/abandon. Teams can self-service disable, e-stop, or leave mid-match.
+4. **Controls** — only the match controller can pause/resume/abandon. Teams can self-service disable, e-stop, or leave mid-match. During countdown and autonomous, teams also get an **A-Stop** that stops their robot for the rest of auto and automatically re-enables it for teleop.
 5. **Post-match** — a short counting period runs after the buzzer (balls in flight). The match stays in post-match until the controller clears it, creates a new match, or 2 minutes pass — then it auto-clears back to free play (scoring included). Matches ended by e-stop never auto-clear; a human must clear them.
 
 Stations that have **not** joined receive no FMS packets and operate in free-drive mode.
