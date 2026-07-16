@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import Button from '@mui/material/Button';
 import { TeamAvatar } from './TeamAvatar';
 import SmoothieComponent from 'react-smoothie';
 
@@ -99,6 +101,22 @@ function getInitialSwap(): boolean {
   return localStorage.getItem('scoreboard-swap') === '1';
 }
 
+// ── Video mode (browser-local) ──────────────────────────────────────
+// The video view is configured per browser: mode and stream source live in
+// localStorage, with URL params (?video=1&videoSrc=...) as overrides.
+
+function getInitialVideoMode(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  const param = params.get('video');
+  if (param !== null) return param === '1' || param === 'true';
+  return localStorage.getItem('scoreboard-video-mode') === '1';
+}
+
+function getInitialVideoSource(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('videoSrc') ?? localStorage.getItem('scoreboard-video-source') ?? '';
+}
+
 /** Phases where the countdown timer is actively counting down. */
 const COUNTING_PHASES = new Set(['countdown', 'auto', 'autoPause', 'teleop', 'endgame']);
 
@@ -107,6 +125,9 @@ export function ScoreboardPage() {
   const matchState = useMatchState();
   const [, setTick] = useState(0);
   const [swapped, setSwapped] = useState(getInitialSwap);
+  const [videoMode, setVideoMode] = useState(getInitialVideoMode);
+  const [videoSource, setVideoSource] = useState(getInitialVideoSource);
+  const [editingVideoSource, setEditingVideoSource] = useState(false);
 
   // Track when we last received a match state for client-side time interpolation
   const matchReceivedAt = useRef(0);
@@ -125,8 +146,27 @@ export function ScoreboardPage() {
     });
   };
 
+  const toggleVideoMode = () => {
+    setVideoMode(v => {
+      const next = !v;
+      localStorage.setItem('scoreboard-video-mode', next ? '1' : '0');
+      return next;
+    });
+  };
+
+  const saveVideoSource = (src: string) => {
+    setVideoSource(src);
+    if (src) localStorage.setItem('scoreboard-video-source', src);
+    else localStorage.removeItem('scoreboard-video-source');
+    setEditingVideoSource(false);
+  };
+
   const left: Alliance = swapped ? 'blue' : 'red';
   const right: Alliance = swapped ? 'red' : 'blue';
+
+  // Battery telemetry — hoisted so one subscription feeds both layouts
+  // (bottom row in normal mode, flanking groups in video mode)
+  const { robots: batteryRobots, teamCounts } = useBatteryRobots(matchState, left);
 
   // Register as a cast receiver if running on Chromecast
   useEffect(() => {
@@ -298,6 +338,19 @@ export function ScoreboardPage() {
   const leftLabel = isMatchMode && !leftInMatch ? 'FREE PLAY' : null;
   const rightLabel = isMatchMode && !rightInMatch ? 'FREE PLAY' : null;
 
+  // Video mode: split battery cards to flank the scores. Robots are sorted
+  // left alliance / unassigned / right alliance, so unassigned ones balance
+  // onto whichever side currently has fewer.
+  const leftBatteryRobots: typeof batteryRobots = [];
+  const rightBatteryRobots: typeof batteryRobots = [];
+  if (videoMode) {
+    for (const r of batteryRobots) {
+      if (r.alliance === left) leftBatteryRobots.push(r);
+      else if (r.alliance === right) rightBatteryRobots.push(r);
+      else (leftBatteryRobots.length <= rightBatteryRobots.length ? leftBatteryRobots : rightBatteryRobots).push(r);
+    }
+  }
+
   return (
     <Box
       sx={{
@@ -328,6 +381,17 @@ export function ScoreboardPage() {
           sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center', zIndex: 1 }}
         >
           <Typography
+            onClick={toggleVideoMode}
+            sx={{
+              cursor: 'pointer',
+              opacity: videoMode ? 0.8 : 0.3,
+              fontSize: '0.7rem',
+              '&:hover': { opacity: 0.7 },
+            }}
+          >
+            🎥
+          </Typography>
+          <Typography
             onClick={toggleSwap}
             sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
           >
@@ -352,133 +416,243 @@ export function ScoreboardPage() {
         </Box>
       )}
 
-      {/* Title bar at top */}
-      <Box sx={{ pt: 2, pb: 1, textAlign: 'center' }}>
-        <Typography
-          sx={{
-            color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
-            textTransform: 'uppercase',
-            letterSpacing: 6,
-            fontWeight: 800,
-            fontSize: 'clamp(1.2rem, 3vw, 2rem)',
-            textAlign: 'center',
-            transition: 'color 1s ease',
-          }}
-        >
-          {titleText}
-        </Typography>
-        {isFreePlay && (
-          <Typography
-            sx={{
-              color: 'rgba(255,255,255,0.35)',
-              fontSize: 'clamp(0.7rem, 1.5vw, 1rem)',
-              mt: 0.25,
-            }}
-          >
-            Scores reset after {score.batchTimeoutSeconds}s of inactivity
-          </Typography>
-        )}
-      </Box>
-
-      {/* Main score display — forced 50/50 split with period breakdowns on outside */}
-      <Box
-        sx={{
-          flex: 1,
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
-          alignItems: 'center',
-          px: 'max(16px, 3vw)',
-          minHeight: 0,
-        }}
-      >
-        {/* Left alliance — flanking info + score box */}
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            pr: 2,
-            gap: 2,
-            minWidth: 0,
-            overflow: 'hidden',
-          }}
-        >
-          {isFreePlay && leftBatches.length > 0 && (
-            <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} align="right" />
-          )}
-          {isMatchMode && leftInMatch && score.periodBreakdown && (
-            <PeriodBreakdown
-              alliance={left}
-              breakdown={score.periodBreakdown}
-              autoWinner={autoWinner}
-              currentSubPeriod={currentSubPeriod}
+      {videoMode ? (
+        <>
+          {/* Compact header — batteries flank the scores, timer in the middle */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1 }}>
+            <BatteryGroup
+              robots={leftBatteryRobots}
+              teamCounts={teamCounts}
+              matchAlliances={matchAlliances}
               align="right"
             />
-          )}
-          <AllianceScoreBox
-            alliance={left}
-            total={score[left].total}
-            active={leftActive}
-            inactiveTotal={leftInMatch ? leftInactive : undefined}
-            freePlayLabel={leftLabel}
-            isAutoWinner={isMatchMode && autoWinner === left}
-            isFreePlay={isFreePlay}
-            side="left"
-          />
-        </Box>
-
-        {/* Center panel */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 120 }}>
-          {/* Match countdown timer */}
-          {isMatchMode && matchState && matchProgress !== null && (
-            <MatchTimer
-              remainingTime={displayRemaining}
-              color={activeColor}
-              pulse={shouldPulse}
-              fontSize="clamp(2.5rem, 6vw, 5rem)"
+            <AllianceScoreBox
+              compact
+              alliance={left}
+              total={score[left].total}
+              active={leftActive}
+              inactiveTotal={leftInMatch ? leftInactive : undefined}
+              freePlayLabel={leftLabel}
+              isAutoWinner={isMatchMode && autoWinner === left}
+              isFreePlay={isFreePlay}
+              side="left"
             />
-          )}
-        </Box>
-
-        {/* Right alliance — score box + period breakdown */}
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'flex-start',
-            alignItems: 'center',
-            pl: 2,
-            gap: 2,
-            minWidth: 0,
-            overflow: 'hidden',
-          }}
-        >
-          <AllianceScoreBox
-            alliance={right}
-            total={score[right].total}
-            active={rightActive}
-            inactiveTotal={rightInMatch ? rightInactive : undefined}
-            freePlayLabel={rightLabel}
-            isAutoWinner={isMatchMode && autoWinner === right}
-            isFreePlay={isFreePlay}
-            side="right"
-          />
-          {isMatchMode && rightInMatch && score.periodBreakdown && (
-            <PeriodBreakdown
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 90 }}>
+              <Typography
+                sx={{
+                  color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 3,
+                  fontWeight: 800,
+                  fontSize: 'clamp(0.7rem, 1.3vw, 1rem)',
+                  whiteSpace: 'nowrap',
+                  transition: 'color 1s ease',
+                }}
+              >
+                {titleText}
+              </Typography>
+              {isMatchMode && matchState && matchProgress !== null && (
+                <MatchTimer
+                  remainingTime={displayRemaining}
+                  color={activeColor}
+                  pulse={shouldPulse}
+                  fontSize="clamp(1.8rem, 4vw, 3.2rem)"
+                />
+              )}
+            </Box>
+            <AllianceScoreBox
+              compact
               alliance={right}
-              breakdown={score.periodBreakdown}
-              autoWinner={autoWinner}
-              currentSubPeriod={currentSubPeriod}
+              total={score[right].total}
+              active={rightActive}
+              inactiveTotal={rightInMatch ? rightInactive : undefined}
+              freePlayLabel={rightLabel}
+              isAutoWinner={isMatchMode && autoWinner === right}
+              isFreePlay={isFreePlay}
+              side="right"
+            />
+            <BatteryGroup
+              robots={rightBatteryRobots}
+              teamCounts={teamCounts}
+              matchAlliances={matchAlliances}
               align="left"
             />
-          )}
-          {isFreePlay && rightBatches.length > 0 && (
-            <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} align="left" />
-          )}
-        </Box>
-      </Box>
+          </Box>
 
-      {/* Battery voltage for connected robots */}
-      <BatteryPanel matchState={matchState} leftAlliance={left} matchAlliances={matchAlliances} />
+          {/* Video area — fills everything below the score header */}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              position: 'relative',
+              mx: 1,
+              mb: 1,
+              bgcolor: '#000',
+              borderRadius: 1,
+              overflow: 'hidden',
+            }}
+          >
+            {videoSource && !editingVideoSource ? (
+              <>
+                <VideoStream source={videoSource} />
+                {!window.__isCastReceiver && (
+                  <Typography
+                    onClick={() => setEditingVideoSource(true)}
+                    sx={{
+                      position: 'absolute',
+                      bottom: 6,
+                      right: 10,
+                      cursor: 'pointer',
+                      opacity: 0.25,
+                      fontSize: '0.8rem',
+                      zIndex: 1,
+                      '&:hover': { opacity: 0.7 },
+                    }}
+                  >
+                    ⚙ source
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <VideoSourceConfig
+                initial={videoSource}
+                onSave={saveVideoSource}
+                onCancel={videoSource ? () => setEditingVideoSource(false) : undefined}
+              />
+            )}
+          </Box>
+        </>
+      ) : (
+        <>
+          {/* Title bar at top */}
+          <Box sx={{ pt: 2, pb: 1, textAlign: 'center' }}>
+            <Typography
+              sx={{
+                color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
+                textTransform: 'uppercase',
+                letterSpacing: 6,
+                fontWeight: 800,
+                fontSize: 'clamp(1.2rem, 3vw, 2rem)',
+                textAlign: 'center',
+                transition: 'color 1s ease',
+              }}
+            >
+              {titleText}
+            </Typography>
+            {isFreePlay && (
+              <Typography
+                sx={{
+                  color: 'rgba(255,255,255,0.35)',
+                  fontSize: 'clamp(0.7rem, 1.5vw, 1rem)',
+                  mt: 0.25,
+                }}
+              >
+                Scores reset after {score.batchTimeoutSeconds}s of inactivity
+              </Typography>
+            )}
+          </Box>
+
+          {/* Main score display — forced 50/50 split with period breakdowns on outside */}
+          <Box
+            sx={{
+              flex: 1,
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+              alignItems: 'center',
+              px: 'max(16px, 3vw)',
+              minHeight: 0,
+            }}
+          >
+            {/* Left alliance — flanking info + score box */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                pr: 2,
+                gap: 2,
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
+            >
+              {isFreePlay && leftBatches.length > 0 && (
+                <BatchList batches={leftBatches} color={left === 'red' ? '#ef5350' : '#42a5f5'} align="right" />
+              )}
+              {isMatchMode && leftInMatch && score.periodBreakdown && (
+                <PeriodBreakdown
+                  alliance={left}
+                  breakdown={score.periodBreakdown}
+                  autoWinner={autoWinner}
+                  currentSubPeriod={currentSubPeriod}
+                  align="right"
+                />
+              )}
+              <AllianceScoreBox
+                alliance={left}
+                total={score[left].total}
+                active={leftActive}
+                inactiveTotal={leftInMatch ? leftInactive : undefined}
+                freePlayLabel={leftLabel}
+                isAutoWinner={isMatchMode && autoWinner === left}
+                isFreePlay={isFreePlay}
+                side="left"
+              />
+            </Box>
+
+            {/* Center panel */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 120 }}>
+              {/* Match countdown timer */}
+              {isMatchMode && matchState && matchProgress !== null && (
+                <MatchTimer
+                  remainingTime={displayRemaining}
+                  color={activeColor}
+                  pulse={shouldPulse}
+                  fontSize="clamp(2.5rem, 6vw, 5rem)"
+                />
+              )}
+            </Box>
+
+            {/* Right alliance — score box + period breakdown */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                alignItems: 'center',
+                pl: 2,
+                gap: 2,
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <AllianceScoreBox
+                alliance={right}
+                total={score[right].total}
+                active={rightActive}
+                inactiveTotal={rightInMatch ? rightInactive : undefined}
+                freePlayLabel={rightLabel}
+                isAutoWinner={isMatchMode && autoWinner === right}
+                isFreePlay={isFreePlay}
+                side="right"
+              />
+              {isMatchMode && rightInMatch && score.periodBreakdown && (
+                <PeriodBreakdown
+                  alliance={right}
+                  breakdown={score.periodBreakdown}
+                  autoWinner={autoWinner}
+                  currentSubPeriod={currentSubPeriod}
+                  align="left"
+                />
+              )}
+              {isFreePlay && rightBatches.length > 0 && (
+                <BatchList batches={rightBatches} color={right === 'red' ? '#ef5350' : '#42a5f5'} align="left" />
+              )}
+            </Box>
+          </Box>
+
+          {/* Battery voltage for connected robots */}
+          <BatteryPanel robots={batteryRobots} teamCounts={teamCounts} matchAlliances={matchAlliances} />
+        </>
+      )}
     </Box>
   );
 }
@@ -580,15 +754,8 @@ interface BatteryInfo {
   lastSeen: number;
 }
 
-function BatteryPanel({
-  matchState,
-  leftAlliance,
-  matchAlliances,
-}: {
-  matchState: ReturnType<typeof useMatchState>;
-  leftAlliance: Alliance;
-  matchAlliances: Alliance[];
-}) {
+/** Track per-station battery telemetry and build the sorted robot display list. */
+function useBatteryRobots(matchState: ReturnType<typeof useMatchState>, leftAlliance: Alliance) {
   const [batteries, setBatteries] = useState<Partial<Record<StationName, BatteryInfo>>>({});
 
   // Populate TimeSeries (for charts) and track numeric values
@@ -649,6 +816,193 @@ function BatteryPanel({
     return counts;
   }, [robots]);
 
+  return { robots, teamCounts };
+}
+
+type BatteryRobot = ReturnType<typeof useBatteryRobots>['robots'][number];
+
+/** Single robot battery card — voltage chart with team/voltage overlay. */
+function BatteryCard({
+  robot,
+  inMatch,
+  isDuplicate,
+  compact,
+}: {
+  robot: BatteryRobot;
+  /** Robots participating in a match get alliance colors; non-participants get white */
+  inMatch: boolean;
+  isDuplicate: boolean;
+  /** Smaller card for the video-mode header row */
+  compact?: boolean;
+}) {
+  const color = inMatch ? (robot.alliance === 'red' ? '#ef5350' : '#42a5f5') : 'rgba(255,255,255,0.5)';
+  const bgColor = inMatch
+    ? robot.alliance === 'red'
+      ? 'rgba(239,83,80,0.10)'
+      : 'rgba(66,165,245,0.10)'
+    : 'rgba(255,255,255,0.05)';
+  const ts = stationTimeSeries[robot.station];
+  const minFloor = batteryMinState[robot.station]?.floor;
+  const chartHeight = compact ? 40 : 52;
+
+  return (
+    <Box
+      sx={{
+        border: `1px solid ${color}`,
+        borderRadius: 1,
+        backgroundColor: bgColor,
+        width: compact ? 170 : 180,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Chart with all info overlaid */}
+      <Box sx={{ position: 'relative', '& canvas': { display: 'block', height: `${chartHeight}px !important` } }}>
+        <SmoothieComponent
+          responsive
+          height={chartHeight}
+          streamDelay={-1000}
+          millisPerPixel={200}
+          minValue={5}
+          maxValue={14}
+          grid={{
+            borderVisible: false,
+            fillStyle: 'transparent',
+            strokeStyle: 'rgba(255,255,255,0.05)',
+            verticalSections: 1,
+            millisPerLine: 0,
+          }}
+          labels={{ disabled: true }}
+          title={{ text: '' }}
+          yMinFormatter={() => ''}
+          yMaxFormatter={() => ''}
+          yIntermediateFormatter={() => ''}
+          series={[
+            {
+              data: ts.batteryVoltage,
+              strokeStyle: color,
+              lineWidth: 1.5,
+            },
+            {
+              data: ts.batteryMinVoltage,
+              strokeStyle: 'rgba(244, 67, 54, 0.6)',
+              fillStyle: 'rgba(244, 67, 54, 0.08)',
+              lineWidth: 1,
+            },
+          ]}
+        />
+        {/* Overlay: team, current V, min V — all on baseline */}
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 1,
+            px: 0.75,
+            pb: 0.25,
+            pointerEvents: 'none',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
+            <TeamAvatar teamNumber={robot.teamNumber} size={16} />
+            <Typography
+              sx={{
+                fontSize: compact ? '0.8rem' : '0.9rem',
+                fontWeight: 700,
+                color: 'rgba(255,255,255,0.7)',
+                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {robot.teamNumber ?? robot.station}
+              {isDuplicate && (
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
+                  {' '}
+                  ({robot.station.replace('slot', '#')})
+                </span>
+              )}
+            </Typography>
+          </Box>
+          <Typography
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: compact ? '1rem' : '1.1rem',
+              fontWeight: 700,
+              color,
+              textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {robot.battery.current.toFixed(1)}V
+          </Typography>
+          {!isNaN(minFloor) && (
+            <Typography
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: compact ? '0.7rem' : '0.8rem',
+                color: 'rgba(244, 67, 54, 0.8)',
+                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ↓{minFloor.toFixed(1)}V
+            </Typography>
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+/** Flanking battery column for video mode. Renders as a flex spacer even when
+ *  empty so the score boxes stay centered. */
+function BatteryGroup({
+  robots,
+  teamCounts,
+  matchAlliances,
+  align,
+}: {
+  robots: BatteryRobot[];
+  teamCounts: Map<number, number>;
+  matchAlliances: Alliance[];
+  align: 'left' | 'right';
+}) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 1,
+        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        alignItems: 'center',
+      }}
+    >
+      {robots.map(robot => (
+        <BatteryCard
+          key={robot.station}
+          robot={robot}
+          compact
+          inMatch={robot.alliance != null && matchAlliances.includes(robot.alliance)}
+          isDuplicate={robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false}
+        />
+      ))}
+    </Box>
+  );
+}
+
+function BatteryPanel({
+  robots,
+  teamCounts,
+  matchAlliances,
+}: {
+  robots: BatteryRobot[];
+  teamCounts: Map<number, number>;
+  matchAlliances: Alliance[];
+}) {
   if (robots.length === 0) return null;
 
   return (
@@ -662,130 +1016,144 @@ function BatteryPanel({
         pb: 2,
       }}
     >
-      {robots.map(robot => {
-        // Robots participating in a match get alliance colors; non-participants get white
-        const inMatch = robot.alliance != null && matchAlliances.includes(robot.alliance);
-        const color = inMatch ? (robot.alliance === 'red' ? '#ef5350' : '#42a5f5') : 'rgba(255,255,255,0.5)';
-        const bgColor = inMatch
-          ? robot.alliance === 'red'
-            ? 'rgba(239,83,80,0.10)'
-            : 'rgba(66,165,245,0.10)'
-          : 'rgba(255,255,255,0.05)';
-        const ts = stationTimeSeries[robot.station];
-        const minFloor = batteryMinState[robot.station]?.floor;
-        const isDuplicate = robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false;
+      {robots.map(robot => (
+        <BatteryCard
+          key={robot.station}
+          robot={robot}
+          inMatch={robot.alliance != null && matchAlliances.includes(robot.alliance)}
+          isDuplicate={robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false}
+        />
+      ))}
+    </Box>
+  );
+}
 
-        return (
-          <Box
-            key={robot.station}
-            sx={{
-              border: `1px solid ${color}`,
-              borderRadius: 1,
-              backgroundColor: bgColor,
-              width: 180,
-              overflow: 'hidden',
-            }}
-          >
-            {/* Chart with all info overlaid */}
-            <Box sx={{ position: 'relative', '& canvas': { display: 'block', height: '52px !important' } }}>
-              <SmoothieComponent
-                responsive
-                height={52}
-                streamDelay={-1000}
-                millisPerPixel={200}
-                minValue={5}
-                maxValue={14}
-                grid={{
-                  borderVisible: false,
-                  fillStyle: 'transparent',
-                  strokeStyle: 'rgba(255,255,255,0.05)',
-                  verticalSections: 1,
-                  millisPerLine: 0,
-                }}
-                labels={{ disabled: true }}
-                title={{ text: '' }}
-                yMinFormatter={() => ''}
-                yMaxFormatter={() => ''}
-                yIntermediateFormatter={() => ''}
-                series={[
-                  {
-                    data: ts.batteryVoltage,
-                    strokeStyle: color,
-                    lineWidth: 1.5,
-                  },
-                  {
-                    data: ts.batteryMinVoltage,
-                    strokeStyle: 'rgba(244, 67, 54, 0.6)',
-                    fillStyle: 'rgba(244, 67, 54, 0.08)',
-                    lineWidth: 1,
-                  },
-                ]}
-              />
-              {/* Overlay: team, current V, min V — all on baseline */}
-              <Box
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: 1,
-                  px: 0.75,
-                  pb: 0.25,
-                  pointerEvents: 'none',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
-                  <TeamAvatar teamNumber={robot.teamNumber} size={16} />
-                  <Typography
-                    sx={{
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      color: 'rgba(255,255,255,0.7)',
-                      textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {robot.teamNumber ?? robot.station}
-                    {isDuplicate && (
-                      <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
-                        {' '}
-                        ({robot.station.replace('slot', '#')})
-                      </span>
-                    )}
-                  </Typography>
-                </Box>
-                <Typography
-                  sx={{
-                    fontFamily: 'monospace',
-                    fontSize: '1.1rem',
-                    fontWeight: 700,
-                    color,
-                    textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {robot.battery.current.toFixed(1)}V
-                </Typography>
-                {!isNaN(minFloor) && (
-                  <Typography
-                    sx={{
-                      fontFamily: 'monospace',
-                      fontSize: '0.8rem',
-                      color: 'rgba(244, 67, 54, 0.8)',
-                      textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    ↓{minFloor.toFixed(1)}V
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-          </Box>
-        );
-      })}
+// ── Video Mode ────────────────────────────────────────────────────────
+
+/**
+ * Guess the right element for a stream source.
+ * - `camera` sentinel → local webcam via getUserMedia
+ * - image/MJPEG URLs → <img> (browsers render multipart MJPEG natively)
+ * - direct media files → <video>
+ * - everything else → <iframe> (go2rtc/WebRTC players, YouTube embeds, …)
+ */
+function classifyVideoSource(source: string): 'camera' | 'image' | 'video' | 'iframe' {
+  if (source === 'camera') return 'camera';
+  const path = source.split(/[?#]/)[0].toLowerCase();
+  if (/\.(jpe?g|png|gif|webp|mjpe?g)$/.test(path) || /mjpe?g/i.test(source)) return 'image';
+  if (/\.(mp4|webm|ogv|ogg|mov|m3u8)$/.test(path)) return 'video';
+  return 'iframe';
+}
+
+const VIDEO_FILL_STYLE = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain',
+  display: 'block',
+  border: 0,
+} as const;
+
+function VideoStream({ source }: { source: string }) {
+  const kind = classifyVideoSource(source);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Local webcam: acquire on mount, release tracks on unmount
+  useEffect(() => {
+    if (kind !== 'camera') return;
+    setCameraError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access requires HTTPS (or localhost)');
+      return;
+    }
+    let stream: MediaStream | null = null;
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+      .then(s => {
+        if (cancelled) {
+          s.getTracks().forEach(t => t.stop());
+          return;
+        }
+        stream = s;
+        if (videoRef.current) videoRef.current.srcObject = s;
+      })
+      .catch((e: Error) => setCameraError(e.message));
+    return () => {
+      cancelled = true;
+      stream?.getTracks().forEach(t => t.stop());
+    };
+  }, [kind]);
+
+  if (kind === 'camera') {
+    if (cameraError) {
+      return (
+        <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.4)' }}>Camera unavailable: {cameraError}</Typography>
+        </Box>
+      );
+    }
+    return <video ref={videoRef} autoPlay muted playsInline style={VIDEO_FILL_STYLE} />;
+  }
+  if (kind === 'image') return <img src={source} alt="Video stream" style={VIDEO_FILL_STYLE} />;
+  if (kind === 'video') return <video src={source} autoPlay muted playsInline loop style={VIDEO_FILL_STYLE} />;
+  return <iframe src={source} allow="autoplay; fullscreen" style={VIDEO_FILL_STYLE} />;
+}
+
+function VideoSourceConfig({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (source: string) => void;
+  /** Present only when a source already exists (editing rather than first setup) */
+  onCancel?: () => void;
+}) {
+  const [url, setUrl] = useState(initial === 'camera' ? '' : initial);
+
+  return (
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+        px: 2,
+        border: '1px dashed rgba(255,255,255,0.15)',
+        borderRadius: 1,
+      }}
+    >
+      <Typography
+        sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 3, textTransform: 'uppercase', fontWeight: 700 }}
+      >
+        Video Stream
+      </Typography>
+      <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', textAlign: 'center', maxWidth: 480 }}>
+        Enter a stream URL — an MJPEG snapshot/stream, a video file, or any embeddable page (go2rtc, YouTube, …) — or
+        use a camera attached to this device. The choice is saved locally in this browser only.
+      </Typography>
+      <Box
+        component="form"
+        onSubmit={e => {
+          e.preventDefault();
+          if (url.trim()) onSave(url.trim());
+        }}
+        sx={{ display: 'flex', gap: 1, width: 'min(520px, 90%)' }}
+      >
+        <TextField fullWidth size="small" placeholder="https://…" value={url} onChange={e => setUrl(e.target.value)} />
+        <Button type="submit" variant="contained" disabled={!url.trim()}>
+          Save
+        </Button>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button variant="outlined" onClick={() => onSave('camera')}>
+          Use local camera
+        </Button>
+        {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+      </Box>
     </Box>
   );
 }
@@ -886,6 +1254,7 @@ function AllianceScoreBox({
   isAutoWinner,
   isFreePlay,
   side,
+  compact,
 }: {
   alliance: Alliance;
   total: number;
@@ -900,8 +1269,11 @@ function AllianceScoreBox({
   isFreePlay?: boolean;
   /** Which side of the scoreboard this box is on (determines departure animation direction) */
   side?: 'left' | 'right';
+  /** Smaller box for the video-mode header row */
+  compact?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
+  const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'clamp(4rem, 15vw, 12rem)';
   const rgb = alliance === 'red' ? '239, 83, 80' : '66, 165, 245';
   const bgColor = isFreePlay
     ? alliance === 'red'
@@ -1025,8 +1397,8 @@ function AllianceScoreBox({
       sx={{
         position: 'relative',
         textAlign: 'center',
-        px: 6,
-        py: 3,
+        px: compact ? 3 : 6,
+        py: compact ? 1 : 3,
         borderRadius: 2,
         border: `3px solid ${showChase ? 'transparent' : color}`,
         backgroundColor: bgColor,
@@ -1072,7 +1444,7 @@ function AllianceScoreBox({
       {/* Main score — fades in as "0" when batch times out, desaturates when goal is off */}
       <Typography
         sx={{
-          fontSize: 'clamp(4rem, 15vw, 12rem)',
+          fontSize: mainFontSize,
           fontWeight: 800,
           fontFamily: 'monospace',
           color,
@@ -1117,7 +1489,7 @@ function AllianceScoreBox({
         >
           <Typography
             sx={{
-              fontSize: 'clamp(4rem, 15vw, 12rem)',
+              fontSize: mainFontSize,
               fontWeight: 800,
               fontFamily: 'monospace',
               color,
@@ -1133,7 +1505,7 @@ function AllianceScoreBox({
         <Typography
           sx={{
             color,
-            fontSize: 'clamp(1.5rem, 4vw, 3rem)',
+            fontSize: compact ? 'clamp(0.9rem, 1.8vw, 1.4rem)' : 'clamp(1.5rem, 4vw, 3rem)',
             fontFamily: 'monospace',
             fontWeight: 700,
             mt: 0.5,
@@ -1149,10 +1521,10 @@ function AllianceScoreBox({
           sx={{
             color: 'rgba(255,255,255,0.35)',
             textTransform: 'uppercase',
-            letterSpacing: 6,
+            letterSpacing: compact ? 2 : 6,
             fontWeight: 700,
-            fontSize: '1.2rem',
-            mt: 1,
+            fontSize: compact ? '0.7rem' : '1.2rem',
+            mt: compact ? 0.5 : 1,
           }}
         >
           {freePlayLabel}
@@ -1163,7 +1535,7 @@ function AllianceScoreBox({
         <Typography
           sx={{
             color,
-            fontSize: '0.8rem',
+            fontSize: compact ? '0.65rem' : '0.8rem',
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: 2,
