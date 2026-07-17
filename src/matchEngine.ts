@@ -1,4 +1,5 @@
 import dgram from 'dgram';
+import { randomUUID } from 'node:crypto';
 import { makeDSPacket, Control, UdpSendPort, type OutboundTag } from './fmsServer.js';
 import {
   Alliance,
@@ -54,6 +55,8 @@ export class MatchEngine {
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
+  /** Unique id for the current match — assigned at startMatch, cleared when the field returns to idle/created. */
+  private matchId: string | null = null;
   private endReason: MatchEndReason | undefined;
   private teamResolver: TeamResolver;
   /** Maps physical station → alliance match slot during an active match */
@@ -365,6 +368,7 @@ export class MatchEngine {
 
     this.config = { ...this.pendingConfig };
     this.matchNumber++;
+    this.matchId = randomUUID();
     this.totalMatchTime = 0;
     this.endReason = undefined;
 
@@ -423,6 +427,8 @@ export class MatchEngine {
     }
     this.phase = 'created';
     this.remainingTime = 0;
+    // This match never happened — a re-start gets a fresh id
+    this.matchId = null;
     this.stopTick();
     // Keep stations joined and ready so the operator can re-start immediately
     for (const state of this.stationStates.values()) {
@@ -631,6 +637,9 @@ export class MatchEngine {
 
     return {
       type: 'matchState',
+      // Kept after the match ends (postMatch/idle) so late consumers can still link to it
+      matchId: this.matchId ?? undefined,
+      matchNumber: this.matchNumber || undefined,
       phase: this.phase,
       remainingTime: Math.max(0, this.remainingTime),
       totalMatchTime: this.totalMatchTime,

@@ -1,7 +1,14 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import type { MatchEngine } from './matchEngine.js';
 import type { ScoringEngine } from './scoringEngine.js';
-import type { Alliance, MatchHistoryEntry, MatchHistoryState, MatchHistoryTeam, StationName } from './types.js';
+import type {
+  Alliance,
+  MatchHistoryEntry,
+  MatchHistoryState,
+  MatchHistoryTeam,
+  MatchReviewResult,
+  StationName,
+} from './types.js';
 import { StationNameList } from './types.js';
 
 const DEFAULT_FILE = 'match-history.json';
@@ -59,6 +66,7 @@ export class MatchHistoryStore {
 
         const entry: MatchHistoryEntry = {
           matchNumber: this.matches.length + 1,
+          matchId: state.matchId,
           startedAt: this.matchStartTime || now,
           endedAt: now,
           durationSeconds: Math.round((now - (this.matchStartTime || now)) / 1000),
@@ -85,6 +93,29 @@ export class MatchHistoryStore {
       type: 'matchHistoryState',
       matches: this.matches,
     };
+  }
+
+  /** Attach a human-reviewed final score to a match. Live scores are kept untouched.
+   *  Returns false when no match with this id exists. A later review for the same
+   *  alliance replaces the earlier one. */
+  applyReview(matchId: string, alliance: Alliance, review: MatchReviewResult): boolean {
+    const entry = this.matches.find(m => m.matchId === matchId);
+    if (!entry) return false;
+    entry.review = { ...entry.review, [alliance]: review };
+    this.persist();
+    this.notifyListeners();
+    return true;
+  }
+
+  /** Record the external video-review page URL for a match (recording available).
+   *  Returns false when no match with this id exists. */
+  setReviewUrl(matchId: string, url: string): boolean {
+    const entry = this.matches.find(m => m.matchId === matchId);
+    if (!entry) return false;
+    entry.reviewUrl = url;
+    this.persist();
+    this.notifyListeners();
+    return true;
   }
 
   clear(): void {

@@ -851,12 +851,53 @@ function MatchHistorySection({ matches }: { matches: MatchHistoryEntry[] }) {
   );
 }
 
+/** One alliance's score: human-reviewed value when available (with the sensor
+ *  count struck through if it disagreed), otherwise the live sensor count. */
+function HistoryScore({
+  score,
+  review,
+  color,
+  align,
+  won,
+}: {
+  score: number;
+  review?: { score: number };
+  color: string;
+  align: 'left' | 'right';
+  won: boolean;
+}) {
+  const disagrees = review !== undefined && review.score !== score;
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 0.5,
+        flexDirection: align === 'right' ? 'row' : 'row-reverse',
+      }}
+    >
+      {disagrees && (
+        <Typography variant="caption" sx={{ color: 'text.disabled', textDecoration: 'line-through' }}>
+          {score}
+        </Typography>
+      )}
+      <Typography variant="h6" sx={{ fontWeight: 700, color, minWidth: 40, textAlign: align, opacity: won ? 1 : 0.6 }}>
+        {review?.score ?? score}
+      </Typography>
+    </Box>
+  );
+}
+
 function MatchHistoryRow({ match, index }: { match: MatchHistoryEntry; index: number }) {
   const redTeams = match.teams.filter(t => t.alliance === 'red');
   const blueTeams = match.teams.filter(t => t.alliance === 'blue');
   const chipInfo = endReasonChip[match.endReason] ?? endReasonChip.normal;
-  const redWon = match.redScore > match.blueScore;
-  const blueWon = match.blueScore > match.redScore;
+  // Winner from the best-known score: human review beats the sensor count
+  const redFinal = match.review?.red?.score ?? match.redScore;
+  const blueFinal = match.review?.blue?.score ?? match.blueScore;
+  const redWon = redFinal > blueFinal;
+  const blueWon = blueFinal > redFinal;
+  const fullyReviewed = match.review?.red !== undefined && match.review?.blue !== undefined;
 
   return (
     <Box
@@ -888,18 +929,7 @@ function MatchHistoryRow({ match, index }: { match: MatchHistoryEntry; index: nu
             </Box>
           ))}
         </Box>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 700,
-            color: 'error.main',
-            minWidth: 40,
-            textAlign: 'right',
-            opacity: redWon ? 1 : 0.6,
-          }}
-        >
-          {match.redScore}
-        </Typography>
+        <HistoryScore score={match.redScore} review={match.review?.red} color="error.main" align="right" won={redWon} />
       </Box>
 
       {/* Separator */}
@@ -909,18 +939,13 @@ function MatchHistoryRow({ match, index }: { match: MatchHistoryEntry; index: nu
 
       {/* Blue alliance teams + score */}
       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 700,
-            color: 'info.main',
-            minWidth: 40,
-            textAlign: 'left',
-            opacity: blueWon ? 1 : 0.6,
-          }}
-        >
-          {match.blueScore}
-        </Typography>
+        <HistoryScore
+          score={match.blueScore}
+          review={match.review?.blue}
+          color="info.main"
+          align="left"
+          won={blueWon}
+        />
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           {blueTeams.map(t => (
             <Box key={t.station} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -933,11 +958,23 @@ function MatchHistoryRow({ match, index }: { match: MatchHistoryEntry; index: nu
         </Box>
       </Box>
 
-      {/* Duration + end reason + time ago */}
+      {/* Duration + review link + end reason + time ago */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 160, justifyContent: 'flex-end' }}>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {formatDuration(match.durationSeconds)}
         </Typography>
+        {match.reviewUrl && (
+          <Button
+            size="small"
+            variant="outlined"
+            color={fullyReviewed ? 'success' : 'primary'}
+            href={match.reviewUrl}
+            target="_blank"
+            rel="noopener"
+          >
+            {fullyReviewed ? 'Reviewed ✓' : 'Review'}
+          </Button>
+        )}
         <Chip label={chipInfo.label} color={chipInfo.color} size="small" variant="outlined" />
         <Typography variant="caption" sx={{ color: 'text.disabled', minWidth: 50, textAlign: 'right' }}>
           {formatTimeAgo(match.endedAt)}

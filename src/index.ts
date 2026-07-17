@@ -38,6 +38,7 @@ import { handleFirmwareRequest } from './firmwareApi.js';
 import { handleTeamAvatarRequest } from './teamAvatarApi.js';
 import { ScoringEngine } from './scoringEngine.js';
 import { handleScoringRequest } from './scoringApi.js';
+import { handleMatchReviewRequest } from './matchReviewApi.js';
 import { SavedTeamStore } from './savedTeamStore.js';
 import { ApiKeyStore } from './apiKeyStore.js';
 import { PortBridgeManager, parseFieldPorts } from './portBridgeManager.js';
@@ -279,6 +280,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     [
       (req: IncomingMessage, res: ServerResponse) => handleExternalAccessAuth(req, res, externalAccessStore),
       (req, res) => handleScoringRequest(req, res, scoringEngine, apiKeyStore, trustedProxyMatcher),
+      (req, res) => handleMatchReviewRequest(req, res, matchHistoryStore, apiKeyStore, trustedProxyMatcher),
       (req, res) => handleFirmwareRequest(req, res, firmwareStore),
       handleTeamAvatarRequest,
     ],

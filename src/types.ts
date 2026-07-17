@@ -493,6 +493,11 @@ export function isDriveSessionState(msg: unknown): msg is DriveSessionState {
 export type MatchState = {
   type: 'matchState';
   phase: MatchPhase;
+  /** Unique id for this match, assigned when the match starts (countdown).
+   *  Links external systems (video recording, score review) to the match. */
+  matchId?: string;
+  /** Sequential match counter (since server start) for display purposes. */
+  matchNumber?: number;
   remainingTime: number;
   totalMatchTime: number;
   config: MatchConfig;
@@ -2116,8 +2121,22 @@ export interface MatchHistoryTeam {
   matchSlot: MatchSlot | null;
 }
 
+/** Final score for one alliance as determined by a human reviewing the match video. */
+export interface MatchReviewResult {
+  /** Total balls scored, as counted by the reviewer. */
+  score: number;
+  /** Portion of the score from the autonomous period (if the reviewer split it out). */
+  autoScore?: number;
+  /** Display name of the human reviewer. */
+  reviewer: string;
+  /** When the review was submitted (ms since epoch). */
+  reviewedAt: number;
+}
+
 export interface MatchHistoryEntry {
   matchNumber: number;
+  /** Unique id linking this match to external recordings/reviews. Absent on pre-upgrade entries. */
+  matchId?: string;
   startedAt: number;
   endedAt: number;
   durationSeconds: number;
@@ -2126,6 +2145,10 @@ export interface MatchHistoryEntry {
   teams: MatchHistoryTeam[];
   redScore: number;
   blueScore: number;
+  /** Human-reviewed final scores per alliance (from video review). Live scores above are never overwritten. */
+  review?: Partial<Record<Alliance, MatchReviewResult>>;
+  /** URL of the external video-review page for this match, registered when a recording is available. */
+  reviewUrl?: string;
 }
 
 export interface MatchHistoryState {
@@ -2136,6 +2159,45 @@ export interface MatchHistoryState {
 export function isMatchHistoryState(msg: unknown): msg is MatchHistoryState {
   if (typeof msg !== 'object' || !msg) return false;
   return (msg as MatchHistoryState).type === 'matchHistoryState';
+}
+
+/** HTTP body for POST /api/match-review — a human reviewer's final score for one alliance. */
+export interface MatchReviewSubmission {
+  matchId: string;
+  alliance: Alliance;
+  score: number;
+  autoScore?: number;
+  reviewer: string;
+}
+
+export function isMatchReviewSubmission(msg: unknown): msg is MatchReviewSubmission {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchReviewSubmission;
+  if (typeof m.matchId !== 'string' || !m.matchId) return false;
+  if (m.alliance !== 'red' && m.alliance !== 'blue') return false;
+  if (typeof m.score !== 'number' || !Number.isFinite(m.score) || m.score < 0) return false;
+  if (
+    m.autoScore !== undefined &&
+    (typeof m.autoScore !== 'number' || !Number.isFinite(m.autoScore) || m.autoScore < 0)
+  )
+    return false;
+  if (typeof m.reviewer !== 'string' || !m.reviewer) return false;
+  return true;
+}
+
+/** HTTP body for POST /api/match-review/recording — an external system registering
+ *  the video-review page URL for a recorded match. */
+export interface MatchRecordingRegistration {
+  matchId: string;
+  url: string;
+}
+
+export function isMatchRecordingRegistration(msg: unknown): msg is MatchRecordingRegistration {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchRecordingRegistration;
+  if (typeof m.matchId !== 'string' || !m.matchId) return false;
+  if (typeof m.url !== 'string' || !/^https?:\/\//.test(m.url)) return false;
+  return true;
 }
 
 /** Client → Server: clear match history. */
