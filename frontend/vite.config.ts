@@ -99,8 +99,11 @@ function stationRoutes(): Plugin {
         }
 
         // Fallback: serve 404 page for unrecognized paths (skip assets/files with extensions
-        // and Vite internal routes like /@vite/client, /@react-refresh, etc.)
-        if (url && !url.includes('.') && url !== '/' && !url.startsWith('/@')) {
+        // and Vite internal routes like /@vite/client, /@react-refresh, etc.).
+        // Re-derive from req.url so paths the rewrites above already mapped to
+        // an .html file are left alone.
+        const finalUrl = req.url?.split('?')[0];
+        if (finalUrl && !finalUrl.includes('.') && finalUrl !== '/' && !finalUrl.startsWith('/@')) {
           req.url = '/404.html';
         }
 

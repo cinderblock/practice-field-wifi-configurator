@@ -53,11 +53,11 @@ the mode and stream source persist in `localStorage` per browser.
   list is already sorted left / unassigned / right).
 - Cast receivers hide the controls; video mode is per-browser so receivers
   are unaffected unless their own localStorage sets it.
-- **Pre-existing dev-only bug in `frontend/vite.config.ts`** (not fixed here):
-  the 404 fallback in `stationRoutes()` tests the stale `url` variable after
-  the named-route rewrites set `req.url`, so `/scores`, `/admin`, etc. all
-  serve `404.html` under `vite dev`. Use `/scores.html` directly in dev.
-  Production (Caddy → dist) is unaffected.
+- **Pre-existing dev-only bug in `frontend/vite.config.ts`** (fixed in a
+  follow-up commit): the 404 fallback in `stationRoutes()` tested the stale
+  `url` variable after the named-route rewrites set `req.url`, so `/scores`,
+  `/admin`, etc. all served `404.html` under `vite dev`. Now re-derives the
+  path from `req.url`. Production (Caddy → dist) was never affected.
 - Compact battery cards needed 170px width — at 150px the team number and
   voltage overlapped (caught in screenshot review).
 - The t3-code preview MCP tools were broken this session (snapshot failed on
