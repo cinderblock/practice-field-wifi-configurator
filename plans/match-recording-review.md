@@ -210,14 +210,26 @@ the TBA write API. Noted only.
   - Match page history rows: reviewed score shown (sensor count struck
     through when it disagrees), winner from best-known score, Review /
     Reviewed ✓ link button when a recording is registered.
-- [ ] **pFMS commit BLOCKED**: pre-commit hook runs full typecheck; a
-      concurrent thread's WIP (`ScoreboardPage.tsx`, `plans/scoreboard-video-mode.md`)
-      has TS errors (`VideoStream`/`VideoSourceConfig` undefined). My files pass.
-      Do NOT touch their files; retry commit after their thread lands. Only stage
-      MY files (list above + this plan).
-- [ ] balls-counter: pFMS WS subscriber + MatchRecorder + match store.
-- [ ] balls-counter: /match/{id} review page + score tally + submit to pFMS.
-- [ ] End-to-end verification.
+- [x] pFMS committed: `889d155` on master (typecheck blocker cleared once the
+      concurrent scoreboard-video thread landed `21c1eae`).
+- [x] balls-counter implemented + committed (`9aafa10` on
+      `fix/package-for-latest-uv`): `src/ball_counter/match.py` (MatchRecorder +
+      PfmsMatchLink + store/spans/tally helpers), web endpoints (`/matches`,
+      `/match/{id}`, `/api/match...`), main-loop frame feed, `public_url`
+      config key, `websockets` added to the web extra. Smoke test
+      `scripts/smoke_match.py` passes (recorder lifecycle, spans, tally, abort).
+- [ ] **[current] End-to-end verification** via twin harnesses:
+      pFMS `scripts/e2e-match-harness.ts` (real MatchEngine/HistoryStore/review
+      API + WS broadcast, port 39871) ↔ balls-counter
+      `scripts/e2e_match_review.py` (real link/recorder/web app, synthetic
+      30fps camera, port 39872). Exercises pause/resume, tally exclusion,
+      report-back.
+- [x] Coordination: user requested `./.agent.status` append-only work log
+      (repo root, timestamps) — read before repo actions, append when acting.
+- [ ] Deploy notes: balls-counter needs `public_url` added to the live config
+      on sentinel + `uv sync --extra web` (new websockets dep). pFMS deploys
+      via the usual flow.
+- [ ] Stretch (not started): The Blue Alliance reporting.
 
 ## Open questions for the user
 
