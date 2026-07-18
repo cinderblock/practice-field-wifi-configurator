@@ -140,6 +140,12 @@ function byteToStatus(byte: number): Status {
   };
 }
 
+// Unknown DS TCP message types are skipped — frames are length-prefixed, so
+// parsing stays in sync. Log each new type once with its payload so it can be
+// identified later (a DS started sending type 0x1d on 2026-07-17, which used
+// to raise a parse error every ~3s).
+const loggedUnknownTypes = new Set<number>();
+
 function parseIncomingTcpMessage(data: Buffer): DSMessage | null {
   const r = new BufferReader(data);
 
@@ -183,7 +189,11 @@ function parseIncomingTcpMessage(data: Buffer): DSMessage | null {
     case 0x1c:
       return { type };
     default:
-      throw new Error(`Unknown message type ${type}`);
+      if (!loggedUnknownTypes.has(type)) {
+        loggedUnknownTypes.add(type);
+        console.log(`Ignoring unknown DS TCP message type ${type} (0x${type.toString(16)}): ${data.toString('hex')}`);
+      }
+      return null;
   }
 }
 
@@ -204,7 +214,9 @@ class ByteToObjectTransform extends Transform {
       while (buff.remaining >= 2) {
         const data = buff.readSizedBuffer(2);
 
-        this.push(parseIncomingTcpMessage(data));
+        const parsed = parseIncomingTcpMessage(data);
+        // Never push(null) — that would end the object stream
+        if (parsed) this.push(parsed);
       }
     } catch (err) {
       if (err instanceof BufferOverflowError) return;
@@ -416,7 +428,9 @@ export async function startFMSServer({
             lastLoggedTeam.set(addr, obj.teamNumber);
             console.log(`DS at ${addr}: team ${obj.teamNumber}${slot ? ` → ${slot}` : ''}`);
           }
-        } else {
+        } else if (process.env.FMS_LOG_DS_MESSAGES) {
+          // Full per-message dumps flood journald into rate-limiting (~11k
+          // suppressed msgs/30s on 2026-07-17), destroying the useful logs.
           console.log('Received object from TCP stream:', obj);
         }
         emitter.emit('message', { address: rawAddr, port: tcp, data: obj });
@@ -456,7 +470,9 @@ export async function startFMSServer({
       udpServer = dgram.createSocket('udp4');
 
       udpServer.on('message', (msg, rinfo) => {
-        console.log(`UDP message from ${rinfo.address}:${rinfo.port}:`, msg.toString());
+        if (process.env.FMS_LOG_DS_MESSAGES) {
+          console.log(`UDP message from ${rinfo.address}:${rinfo.port}:`, msg.toString('hex'));
+        }
 
         const message = parseIncomingUdpMessage(msg);
 
