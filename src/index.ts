@@ -1118,6 +1118,22 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           }
         }
 
+        // Telemetry-only TCP messages (e.g. 0x16 log data) carry no team
+        // number but still prove the DS is alive. Without this, a DS that
+        // holds one long TCP connection (0x18 is only sent at connect) gets
+        // stale-swept after 20s and the field silently stops sending it
+        // match control packets (2026-07-17: 5940's auto never enabled).
+        if (!('teamNumber' in msg.data)) {
+          const address = msg.address.replace(/^::ffff:/, '');
+          for (const [station, rule] of activeDnatRules) {
+            if (rule.dsIp === address) {
+              touchDsActivity(address);
+              trySetDSAddress(station, address);
+              break;
+            }
+          }
+        }
+
         // Auto-discover DS addresses and set up drive sessions.
         // Match on any message carrying teamNumber — TCP 0x18 and UDP both do.
         if ('teamNumber' in msg.data) {
