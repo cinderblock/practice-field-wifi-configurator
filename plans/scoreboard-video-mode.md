@@ -71,6 +71,25 @@ the mode and stream source persist in `localStorage` per browser.
   voltage overlapped (caught in screenshot review).
 - The t3-code preview MCP tools were broken this session (snapshot failed on
   every page); playwright-core + installed Chrome worked fine as the driver.
+- **Clock-skew bug (FIXED)**: battery charts on `/scores`
+  plot raw server timestamps. `timeOffset` is only calibrated in
+  `handleStatusEntry` (useBackend.ts ~305), but the public `/ws/scores`
+  socket whitelist is `['scoreState','matchState','telemetry']`
+  (websocketServer.ts ~230) — StatusEntry never arrives, so
+  `serverToBrowserTime()` is the identity on the scoreboard. Smoothie
+  renders against the browser clock, so any server↔display skew shifts the
+  trace off the ~35 s window while the numeric voltage (timestamp-free)
+  stays fine. The `serverInfo` sent on connect has no current-time field.
+  Fix (committed with the battery-text move): `noteServerTimestamp()` in
+  useBackend.ts seeds the offset from the first sample then EMA-smooths;
+  called from handleStatusEntry, handleTelemetry (the steady beacon on
+  /ws/scores — updated before dispatch so charts convert with fresh data),
+  and handleServerInfo via the new optional `ServerInfo.now` field that the
+  backend now sends on connect for both sockets. Verified with the fake
+  backend's `CLOCK_SKEW_MS` env (+1 h, −2 min, 0): traces draw and anchor at
+  the right edge in all three cases (`%TEMP%\pfms-verify\drive3.mjs`).
+  Note: the fake backend normally runs on the same machine as the browser,
+  so skew never shows up in dev unless simulated via `CLOCK_SKEW_MS`.
 
 ## Things not to do
 

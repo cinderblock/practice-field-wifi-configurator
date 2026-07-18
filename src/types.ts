@@ -1055,6 +1055,9 @@ export interface ServerInfo {
   type: 'serverInfo';
   startTime: number;
   version: string;
+  /** Server's Date.now() when the message was sent — lets clients seed their
+   *  server↔client clock-offset estimate immediately on connect. */
+  now?: number;
 }
 
 export function isServerInfo(msg: unknown): msg is ServerInfo {

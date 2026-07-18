@@ -985,8 +985,60 @@ function BatteryCard({
         overflow: 'hidden',
       }}
     >
-      {/* Chart with all info overlaid */}
-      <Box sx={{ position: 'relative', '& canvas': { display: 'block', height: `${chartHeight}px !important` } }}>
+      {/* Team, current V, min V — above the chart so the trace stays readable */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 1,
+          px: 0.75,
+          pt: 0.25,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
+          <TeamAvatar teamNumber={robot.teamNumber} size={16} />
+          <Typography
+            sx={{
+              fontSize: compact ? '0.8rem' : '0.9rem',
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.7)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {robot.teamNumber ?? robot.station}
+            {isDuplicate && (
+              <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
+                {' '}
+                ({robot.station.replace('slot', '#')})
+              </span>
+            )}
+          </Typography>
+        </Box>
+        <Typography
+          sx={{
+            fontFamily: 'monospace',
+            fontSize: compact ? '1rem' : '1.1rem',
+            fontWeight: 700,
+            color,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {robot.battery.current.toFixed(1)}V
+        </Typography>
+        {!isNaN(minFloor) && (
+          <Typography
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: compact ? '0.7rem' : '0.8rem',
+              color: 'rgba(244, 67, 54, 0.8)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ↓{minFloor.toFixed(1)}V
+          </Typography>
+        )}
+      </Box>
+      <Box sx={{ '& canvas': { display: 'block', height: `${chartHeight}px !important` } }}>
         <SmoothieComponent
           responsive
           height={chartHeight}
@@ -1020,67 +1072,6 @@ function BatteryCard({
             },
           ]}
         />
-        {/* Overlay: team, current V, min V — all on baseline */}
-        <Box
-          sx={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 1,
-            px: 0.75,
-            pb: 0.25,
-            pointerEvents: 'none',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
-            <TeamAvatar teamNumber={robot.teamNumber} size={16} />
-            <Typography
-              sx={{
-                fontSize: compact ? '0.8rem' : '0.9rem',
-                fontWeight: 700,
-                color: 'rgba(255,255,255,0.7)',
-                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {robot.teamNumber ?? robot.station}
-              {isDuplicate && (
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
-                  {' '}
-                  ({robot.station.replace('slot', '#')})
-                </span>
-              )}
-            </Typography>
-          </Box>
-          <Typography
-            sx={{
-              fontFamily: 'monospace',
-              fontSize: compact ? '1rem' : '1.1rem',
-              fontWeight: 700,
-              color,
-              textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {robot.battery.current.toFixed(1)}V
-          </Typography>
-          {!isNaN(minFloor) && (
-            <Typography
-              sx={{
-                fontFamily: 'monospace',
-                fontSize: compact ? '0.7rem' : '0.8rem',
-                color: 'rgba(244, 67, 54, 0.8)',
-                textShadow: '0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              ↓{minFloor.toFixed(1)}V
-            </Typography>
-          )}
-        </Box>
       </Box>
     </Box>
   );

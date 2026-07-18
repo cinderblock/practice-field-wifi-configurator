@@ -138,6 +138,24 @@ const radioMessages: RadioMessage[] = [];
 
 // Track time offset between server and client (serverTime - clientTime)
 let timeOffset = 0;
+let timeOffsetInitialized = false;
+
+/** Fold a server-stamped wall-clock timestamp into the clock-offset estimate.
+ *  The first sample seeds the estimate directly — easing from 0 would take
+ *  dozens of messages to converge on a large skew — and later samples are
+ *  smoothed with an EMA to absorb network-latency jitter. Called for every
+ *  message type that carries a fresh server timestamp, so pages on the public
+ *  /ws/scores socket (which never sees StatusEntry) still get calibrated. */
+function noteServerTimestamp(serverTimestamp: number) {
+  const measured = serverTimestamp - Date.now();
+  if (!timeOffsetInitialized) {
+    timeOffset = measured;
+    timeOffsetInitialized = true;
+    return;
+  }
+  const alpha = 0.1;
+  timeOffset = timeOffset * (1 - alpha) + measured * alpha;
+}
 
 function processHistory(entries: StatusEntry[]) {
   // TODO: Validate
@@ -303,15 +321,8 @@ function handleErrorEntry(detail: { error: string; details: string }) {
 }
 
 function handleStatusEntry(detail: StatusEntry) {
-  // Calculate time offset between server and client
-  // Server sent detail.timestamp (its current time when the message was created)
-  // We're receiving it now at Date.now() (client time)
-  const newOffset = detail.timestamp - Date.now();
-
-  const alpha = 0.1;
-  // Use exponential moving average to smooth out network latency variations
-  // This gives (1-alpha) weight to the old offset and alpha weight to the new measurement
-  timeOffset = timeOffset * (1 - alpha) + newOffset * alpha;
+  // detail.timestamp is the server's current time when the message was created
+  noteServerTimestamp(detail.timestamp);
 
   history.push(detail);
 
@@ -351,6 +362,10 @@ function handleMdnsActivity(activity: MdnsActivity) {
 }
 
 function handleTelemetry(update: TelemetryUpdate) {
+  // Telemetry is broadcast within milliseconds of the server stamping it, so
+  // it doubles as a clock beacon — the only steady one on /ws/scores. Update
+  // the offset before dispatching so chart handlers convert with fresh data.
+  noteServerTimestamp(update.timestamp);
   events.dispatchEvent(new CustomEvent('telemetry', { detail: update }));
 }
 
@@ -457,6 +472,9 @@ function handleSlackTestResult(msg: { ok: boolean; error?: string; channelName?:
 }
 
 function handleServerInfo(info: ServerInfo) {
+  // Sent once on connect — seeds the clock offset before any other traffic
+  if (info.now !== undefined) noteServerTimestamp(info.now);
+
   // Auto-refresh if the backend has been updated since this frontend was built.
   // Both sides use the git short hash; 'unknown' means we can't compare (dev mode, no git).
   const buildVersion = typeof __BUILD_VERSION__ !== 'undefined' ? __BUILD_VERSION__ : 'unknown';

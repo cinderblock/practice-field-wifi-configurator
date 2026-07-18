@@ -364,7 +364,12 @@ export function setupWebSocket(
       console.log('Public scores client connected');
       ws.send(JSON.stringify(matchEngine.getState()));
       ws.send(
-        JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo),
+        JSON.stringify({
+          type: 'serverInfo',
+          startTime: serverStartTime,
+          version: serverVersion,
+          now: Date.now(),
+        } satisfies ServerInfo),
       );
       ws.on('close', () => publicConnections.delete(ws));
       ws.on('error', err => {
@@ -408,7 +413,12 @@ export function setupWebSocket(
 
     // Send server info (start time for uptime display)
     ws.send(
-      JSON.stringify({ type: 'serverInfo', startTime: serverStartTime, version: serverVersion } satisfies ServerInfo),
+      JSON.stringify({
+        type: 'serverInfo',
+        startTime: serverStartTime,
+        version: serverVersion,
+        now: Date.now(),
+      } satisfies ServerInfo),
     );
 
     // Send saved team configs
