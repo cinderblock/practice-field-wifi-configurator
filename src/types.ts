@@ -453,6 +453,10 @@ export type StationControlState = {
   alliance: Alliance | null;
   /** Assigned match slot during an active match (null when idle) */
   matchSlot: MatchSlot | null;
+  /** True when the DS is attached to the FMS (UDP status heartbeats flowing).
+   *  Ready is gated on this — a DS that isn't heartbeating won't obey match
+   *  control, so letting it ready up would start a match against a dead link. */
+  dsAttached?: boolean;
 };
 
 export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';

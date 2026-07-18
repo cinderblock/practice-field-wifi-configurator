@@ -6,6 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { TeamAvatar } from './TeamAvatar';
+import { AStopPopout } from './AStopPopout';
 import { MatchPhase, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
@@ -234,12 +235,19 @@ export function MatchPanel({ station }: { station?: StationName }) {
                     variant={ready ? 'outlined' : 'contained'}
                     color={ready ? 'warning' : 'success'}
                     onClick={() => sendStationReady(station, !ready)}
+                    disabled={!ready && !myState?.dsAttached}
                   >
                     {ready ? 'Not Ready' : 'Ready'}
                   </Button>
                   <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                     Leave
                   </Button>
+                  {!ready && !myState?.dsAttached && (
+                    <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
+                      Waiting for the Driver Station to connect to the field — Ready unlocks once it is talking to the
+                      FMS.
+                    </Typography>
+                  )}
                   <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
                     Robot is under field control and disabled until the match starts — leave the match to drive freely.
                   </Typography>
@@ -271,6 +279,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
                         A-Stop
                       </Button>
                     ))}
+                  <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} />
                   <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
                     E-Stop
                   </Button>
@@ -504,6 +513,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
                 variant={ready ? 'outlined' : 'contained'}
                 color={ready ? 'warning' : 'success'}
                 onClick={() => sendStationReady(station, !ready)}
+                disabled={!ready && !myState?.dsAttached}
               >
                 {ready ? 'Not Ready' : 'Ready'}
               </Button>
@@ -526,6 +536,11 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                 Leave
               </Button>
+              {!ready && !myState?.dsAttached && (
+                <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
+                  Waiting for the Driver Station to connect to the field — Ready unlocks once it is talking to the FMS.
+                </Typography>
+              )}
               <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
                 Robot is under field control and disabled until the match starts — leave the match to drive freely.
               </Typography>
@@ -543,6 +558,21 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               >
                 Disable
               </Button>
+              {/* A-Stop: only meaningful before/during auto; self-releases at teleop */}
+              {(phase === 'countdown' || phase === 'auto') &&
+                (myState?.aStop ? (
+                  <Chip label="A-Stopped until teleop" size="small" color="warning" />
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    size="small"
+                    onClick={() => sendStationSelfAStop(station)}
+                  >
+                    A-Stop
+                  </Button>
+                ))}
+              <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} />
               <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
                 E-Stop
               </Button>

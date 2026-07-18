@@ -126,6 +126,11 @@ Match 1 today at 16:54 worked).
       env var (`src/fmsServer.ts`).
 - [ ] Fix #1 (loud warning on silent packet drop in `sendDSPacket`) — NOT
       done; matchEngine.ts has a peer thread's uncommitted changes.
+- [x] Related (deployed a35019d): joining a match now force-closes the DS's
+      TCP connection so the re-handshake hands the DS to FMS (disabled)
+      immediately; leave/kick/post-match release force a re-handshake that
+      returns local control. Fixes takeover/release lag on long-lived DS
+      connections.
 - [ ] Fix #3 (gate ready/start on FMS-attached), #6 (enable race), #7 (match
       history for abandoned ends) — follow-ups.
 

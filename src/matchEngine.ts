@@ -17,6 +17,9 @@ import { appWarn, appError } from './appLogger.js';
 
 const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
+/** A DS counts as FMS-attached if a UDP status heartbeat (2 Hz) arrived this
+ *  recently. Only an attached DS obeys match control, so Ready is gated on it. */
+const DS_ATTACHED_TIMEOUT_MS = 5_000;
 /** Post-match scoring delay for balls in flight (up to 3s per rules) */
 const POST_MATCH_COUNT_SECONDS = 3;
 /** How long a finished match lingers in postMatch before auto-clearing to idle.
@@ -52,6 +55,8 @@ export class MatchEngine {
   private sequenceNumbers = new Map<StationName, number>();
   private stationStates = new Map<StationName, StationControlState>();
   private dsConnections = new Map<StationName, { ip: string; lastSeen: number }>();
+  /** Last FMS UDP status heartbeat per station — only an FMS-attached DS sends these */
+  private lastDsHeartbeat = new Map<StationName, number>();
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
@@ -117,6 +122,13 @@ export class MatchEngine {
     if (!this.dsConnections.has(station)) return;
     this.dsConnections.delete(station);
     this.broadcast();
+  }
+
+  /** True when the station's DS is attached to the FMS: its UDP status
+   *  heartbeats (sent only in FMS mode) have been arriving recently. */
+  isDsAttached(station: StationName): boolean {
+    const last = this.lastDsHeartbeat.get(station);
+    return last !== undefined && Date.now() - last < DS_ATTACHED_TIMEOUT_MS;
   }
 
   /** Set callback used to determine auto winner from scoring data. */
@@ -307,6 +319,12 @@ export class MatchEngine {
     const state = this.stationStates.get(station)!;
     if (!state.joined) {
       appWarn(`Station ${station} is not joined, cannot set ready`);
+      return;
+    }
+    // A DS that isn't heartbeating won't obey match control — readying it up
+    // would start a match against a dead link (2026-07-17: auto never enabled).
+    if (ready && !this.isDsAttached(station)) {
+      appWarn(`Cannot ready ${station}: Driver Station is not attached to the FMS (no status heartbeats)`);
       return;
     }
     state.ready = ready;
@@ -574,6 +592,11 @@ export class MatchEngine {
   dsReportedStatus(station: StationName, dsEnabled: boolean, dsEStop: boolean, dsAStop: boolean) {
     const state = this.stationStates.get(station);
     if (!state) return;
+    // Stamp FMS attachment (UDP heartbeats only flow in FMS mode); broadcast
+    // the flip so ready gates update promptly when a DS attaches.
+    const wasAttached = this.isDsAttached(station);
+    this.lastDsHeartbeat.set(station, Date.now());
+    if (!wasAttached) this.broadcast();
     let changed = false;
     if (dsEStop && !state.eStop) {
       state.eStop = true;
@@ -626,7 +649,7 @@ export class MatchEngine {
   getState(): MatchState {
     const stationStates: Partial<Record<StationName, StationControlState>> = {};
     for (const station of StationNameList) {
-      const state = { ...this.stationStates.get(station)! };
+      const state = { ...this.stationStates.get(station)!, dsAttached: this.isDsAttached(station) };
       // When not in active match or postMatch, resolve live team numbers; during a match, use the snapshot
       if (!this.isMatchActive() && this.phase !== 'postMatch') state.teamNumber = this.teamResolver(station);
       stationStates[station] = state;
