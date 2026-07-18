@@ -343,8 +343,13 @@ export class ScoringEngine {
       return;
     }
 
-    // When match ends and resets to idle, switch back to free play
-    if (state.phase === 'idle' && prevPhase === 'postMatch') {
+    // When the engine returns to idle, switch back to free play. Any
+    // transition into idle counts — matches can end without passing through
+    // postMatch (cancelled, abandoned mid-pause), and requiring
+    // prevPhase === 'postMatch' left the scoreboard stuck in match mode
+    // after such an end (2026-07-17). Transition-only, so an operator can
+    // still manually set match mode while the engine is idle.
+    if (state.phase === 'idle' && prevPhase !== 'idle' && this.mode === 'match') {
       // Clear events for match alliances
       this.events = this.events.filter(e => !this.matchAlliances.has(e.awardedTo));
       for (const alliance of this.matchAlliances) {
