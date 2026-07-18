@@ -16,6 +16,15 @@ the mode and stream source persist in `localStorage` per browser.
   `<video>`, anything else → `<iframe>` for go2rtc/WebRTC/YouTube pages) or
   the sentinel `camera` for a locally attached webcam via `getUserMedia`.
 - No HLS.js dependency for now — `.m3u8` only plays natively (Safari).
+- **Two layouts** (user request, 2026-07-17): `landscape` (scores/status bar
+  across the top — wide streams) and `square` (video fills the height,
+  scores + batteries in the black side bars, timer overlaid on the video
+  top). Stored in `scoreboard-video-layout` / `?videoLayout=`; switchable
+  from the ▭/▯ control chip and the source-config panel.
+- **Controls must be discoverable** (user couldn't find the original tiny
+  🎥 glyph): top-right controls are labeled chips ("🎥 video", "▭ wide"/
+  "▯ square", "⇄ swap") that brighten to full opacity on mouse/touch
+  activity and fade to 0.2 after 3 s idle.
 
 ## Plan
 

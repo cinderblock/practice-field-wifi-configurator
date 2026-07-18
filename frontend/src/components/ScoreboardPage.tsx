@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import type { ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
@@ -117,6 +118,17 @@ function getInitialVideoSource(): string {
   return params.get('videoSrc') ?? localStorage.getItem('scoreboard-video-source') ?? '';
 }
 
+/** 'landscape' puts scores/status in a bar across the top (wide streams);
+ *  'square' fills the height with video and puts scores/batteries in the
+ *  black side bars (squarer streams). */
+type VideoLayout = 'landscape' | 'square';
+
+function getInitialVideoLayout(): VideoLayout {
+  const params = new URLSearchParams(window.location.search);
+  const param = params.get('videoLayout') ?? localStorage.getItem('scoreboard-video-layout');
+  return param === 'square' ? 'square' : 'landscape';
+}
+
 /** Phases where the countdown timer is actively counting down. */
 const COUNTING_PHASES = new Set(['countdown', 'auto', 'autoPause', 'teleop', 'endgame']);
 
@@ -127,7 +139,27 @@ export function ScoreboardPage() {
   const [swapped, setSwapped] = useState(getInitialSwap);
   const [videoMode, setVideoMode] = useState(getInitialVideoMode);
   const [videoSource, setVideoSource] = useState(getInitialVideoSource);
+  const [videoLayout, setVideoLayout] = useState(getInitialVideoLayout);
   const [editingVideoSource, setEditingVideoSource] = useState(false);
+
+  // Top-right controls are revealed by pointer activity and fade when idle,
+  // so they're findable with a mouse but don't clutter a wall-mounted display
+  const [controlsActive, setControlsActive] = useState(false);
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onActivity = () => {
+      setControlsActive(true);
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+      controlsTimer.current = setTimeout(() => setControlsActive(false), 3000);
+    };
+    window.addEventListener('mousemove', onActivity);
+    window.addEventListener('touchstart', onActivity);
+    return () => {
+      window.removeEventListener('mousemove', onActivity);
+      window.removeEventListener('touchstart', onActivity);
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    };
+  }, []);
 
   // Track when we last received a match state for client-side time interpolation
   const matchReceivedAt = useRef(0);
@@ -160,6 +192,13 @@ export function ScoreboardPage() {
     else localStorage.removeItem('scoreboard-video-source');
     setEditingVideoSource(false);
   };
+
+  const saveVideoLayout = (layout: VideoLayout) => {
+    setVideoLayout(layout);
+    localStorage.setItem('scoreboard-video-layout', layout);
+  };
+
+  const toggleVideoLayout = () => saveVideoLayout(videoLayout === 'square' ? 'landscape' : 'square');
 
   const left: Alliance = swapped ? 'blue' : 'red';
   const right: Alliance = swapped ? 'red' : 'blue';
@@ -375,28 +414,35 @@ export function ScoreboardPage() {
         />
       )}
 
-      {/* Controls — top right (hidden on Chromecast receiver) */}
+      {/* Controls — top right, revealed by mouse/touch activity (hidden on Chromecast receiver) */}
       {!window.__isCastReceiver && (
         <Box
-          sx={{ position: 'absolute', top: 12, right: 16, display: 'flex', gap: 1, alignItems: 'center', zIndex: 1 }}
+          sx={{
+            position: 'absolute',
+            top: 12,
+            right: 16,
+            display: 'flex',
+            gap: 1,
+            alignItems: 'center',
+            zIndex: 2,
+            opacity: controlsActive ? 1 : 0.2,
+            transition: 'opacity 0.5s ease',
+          }}
         >
-          <Typography
+          <ControlChip
+            icon="🎥"
+            label={videoMode ? 'video on' : 'video'}
+            active={videoMode}
             onClick={toggleVideoMode}
-            sx={{
-              cursor: 'pointer',
-              opacity: videoMode ? 0.8 : 0.3,
-              fontSize: '0.7rem',
-              '&:hover': { opacity: 0.7 },
-            }}
-          >
-            🎥
-          </Typography>
-          <Typography
-            onClick={toggleSwap}
-            sx={{ cursor: 'pointer', opacity: 0.3, fontSize: '0.7rem', '&:hover': { opacity: 0.7 } }}
-          >
-            ⇄
-          </Typography>
+          />
+          {videoMode && (
+            <ControlChip
+              icon={videoLayout === 'square' ? '▯' : '▭'}
+              label={videoLayout === 'square' ? 'square' : 'wide'}
+              onClick={toggleVideoLayout}
+            />
+          )}
+          <ControlChip icon="⇄" label="swap" onClick={toggleSwap} />
           {window.__castReady && (
             <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
           )}
@@ -417,111 +463,195 @@ export function ScoreboardPage() {
       )}
 
       {videoMode ? (
-        <>
-          {/* Compact header — batteries flank the scores, timer in the middle */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1 }}>
-            <BatteryGroup
-              robots={leftBatteryRobots}
-              teamCounts={teamCounts}
-              matchAlliances={matchAlliances}
-              align="right"
-            />
-            <AllianceScoreBox
-              compact
-              alliance={left}
-              total={score[left].total}
-              active={leftActive}
-              inactiveTotal={leftInMatch ? leftInactive : undefined}
-              freePlayLabel={leftLabel}
-              isAutoWinner={isMatchMode && autoWinner === left}
-              isFreePlay={isFreePlay}
-              side="left"
-            />
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 90 }}>
-              <Typography
-                sx={{
-                  color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 3,
-                  fontWeight: 800,
-                  fontSize: 'clamp(0.7rem, 1.3vw, 1rem)',
-                  whiteSpace: 'nowrap',
-                  transition: 'color 1s ease',
-                }}
-              >
-                {titleText}
-              </Typography>
-              {isMatchMode && matchState && matchProgress !== null && (
-                <MatchTimer
-                  remainingTime={displayRemaining}
-                  color={activeColor}
-                  pulse={shouldPulse}
-                  fontSize="clamp(1.8rem, 4vw, 3.2rem)"
-                />
-              )}
+        videoLayout === 'square' ? (
+          /* Square layout — video fills the height; scores and batteries live
+             in the black side bars, timer overlays the top of the video */
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 1, px: 1, py: 1 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1.5,
+                pt: 1,
+                minWidth: 190,
+                overflowY: 'auto',
+              }}
+            >
+              <AllianceScoreBox
+                compact
+                alliance={left}
+                total={score[left].total}
+                active={leftActive}
+                inactiveTotal={leftInMatch ? leftInactive : undefined}
+                freePlayLabel={leftLabel}
+                isAutoWinner={isMatchMode && autoWinner === left}
+                isFreePlay={isFreePlay}
+                side="left"
+              />
+              <BatteryGroup
+                robots={leftBatteryRobots}
+                teamCounts={teamCounts}
+                matchAlliances={matchAlliances}
+                vertical
+              />
             </Box>
-            <AllianceScoreBox
-              compact
-              alliance={right}
-              total={score[right].total}
-              active={rightActive}
-              inactiveTotal={rightInMatch ? rightInactive : undefined}
-              freePlayLabel={rightLabel}
-              isAutoWinner={isMatchMode && autoWinner === right}
-              isFreePlay={isFreePlay}
-              side="right"
-            />
-            <BatteryGroup
-              robots={rightBatteryRobots}
-              teamCounts={teamCounts}
-              matchAlliances={matchAlliances}
-              align="left"
-            />
-          </Box>
-
-          {/* Video area — fills everything below the score header */}
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              position: 'relative',
-              mx: 1,
-              mb: 1,
-              bgcolor: '#000',
-              borderRadius: 1,
-              overflow: 'hidden',
-            }}
-          >
-            {videoSource && !editingVideoSource ? (
-              <>
-                <VideoStream source={videoSource} />
-                {!window.__isCastReceiver && (
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <VideoArea
+                source={videoSource}
+                editing={editingVideoSource}
+                onEditStart={() => setEditingVideoSource(true)}
+                onSave={saveVideoSource}
+                onCancelEdit={() => setEditingVideoSource(false)}
+                layout={videoLayout}
+                onLayoutChange={saveVideoLayout}
+              >
+                {/* Title + timer overlaid on the top edge of the video */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 0,
+                    right: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                    textShadow: '0 0 8px rgba(0,0,0,0.9), 0 0 16px rgba(0,0,0,0.8)',
+                  }}
+                >
                   <Typography
-                    onClick={() => setEditingVideoSource(true)}
                     sx={{
-                      position: 'absolute',
-                      bottom: 6,
-                      right: 10,
-                      cursor: 'pointer',
-                      opacity: 0.25,
-                      fontSize: '0.8rem',
-                      zIndex: 1,
-                      '&:hover': { opacity: 0.7 },
+                      color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.6)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 3,
+                      fontWeight: 800,
+                      fontSize: 'clamp(0.7rem, 1.2vw, 0.95rem)',
+                      whiteSpace: 'nowrap',
+                      transition: 'color 1s ease',
                     }}
                   >
-                    ⚙ source
+                    {titleText}
                   </Typography>
-                )}
-              </>
-            ) : (
-              <VideoSourceConfig
-                initial={videoSource}
-                onSave={saveVideoSource}
-                onCancel={videoSource ? () => setEditingVideoSource(false) : undefined}
+                  {isMatchMode && matchState && matchProgress !== null && (
+                    <MatchTimer
+                      remainingTime={displayRemaining}
+                      color={activeColor}
+                      pulse={shouldPulse}
+                      fontSize="clamp(1.6rem, 3.5vw, 2.8rem)"
+                    />
+                  )}
+                </Box>
+              </VideoArea>
+            </Box>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1.5,
+                pt: 1,
+                minWidth: 190,
+                overflowY: 'auto',
+              }}
+            >
+              <AllianceScoreBox
+                compact
+                alliance={right}
+                total={score[right].total}
+                active={rightActive}
+                inactiveTotal={rightInMatch ? rightInactive : undefined}
+                freePlayLabel={rightLabel}
+                isAutoWinner={isMatchMode && autoWinner === right}
+                isFreePlay={isFreePlay}
+                side="right"
               />
-            )}
+              <BatteryGroup
+                robots={rightBatteryRobots}
+                teamCounts={teamCounts}
+                matchAlliances={matchAlliances}
+                vertical
+              />
+            </Box>
           </Box>
-        </>
+        ) : (
+          <>
+            {/* Landscape layout — compact header on top: batteries flank the scores, timer in the middle */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1 }}>
+              <BatteryGroup
+                robots={leftBatteryRobots}
+                teamCounts={teamCounts}
+                matchAlliances={matchAlliances}
+                align="right"
+              />
+              <AllianceScoreBox
+                compact
+                alliance={left}
+                total={score[left].total}
+                active={leftActive}
+                inactiveTotal={leftInMatch ? leftInactive : undefined}
+                freePlayLabel={leftLabel}
+                isAutoWinner={isMatchMode && autoWinner === left}
+                isFreePlay={isFreePlay}
+                side="left"
+              />
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 90 }}>
+                <Typography
+                  sx={{
+                    color: isMatchMode && matchState ? activeColor : 'rgba(255,255,255,0.5)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 3,
+                    fontWeight: 800,
+                    fontSize: 'clamp(0.7rem, 1.3vw, 1rem)',
+                    whiteSpace: 'nowrap',
+                    transition: 'color 1s ease',
+                  }}
+                >
+                  {titleText}
+                </Typography>
+                {isMatchMode && matchState && matchProgress !== null && (
+                  <MatchTimer
+                    remainingTime={displayRemaining}
+                    color={activeColor}
+                    pulse={shouldPulse}
+                    fontSize="clamp(1.8rem, 4vw, 3.2rem)"
+                  />
+                )}
+              </Box>
+              <AllianceScoreBox
+                compact
+                alliance={right}
+                total={score[right].total}
+                active={rightActive}
+                inactiveTotal={rightInMatch ? rightInactive : undefined}
+                freePlayLabel={rightLabel}
+                isAutoWinner={isMatchMode && autoWinner === right}
+                isFreePlay={isFreePlay}
+                side="right"
+              />
+              <BatteryGroup
+                robots={rightBatteryRobots}
+                teamCounts={teamCounts}
+                matchAlliances={matchAlliances}
+                align="left"
+              />
+            </Box>
+
+            {/* Video area — fills everything below the score header */}
+            <Box sx={{ flex: 1, minHeight: 0, mx: 1, mb: 1 }}>
+              <VideoArea
+                source={videoSource}
+                editing={editingVideoSource}
+                onEditStart={() => setEditingVideoSource(true)}
+                onSave={saveVideoSource}
+                onCancelEdit={() => setEditingVideoSource(false)}
+                layout={videoLayout}
+                onLayoutChange={saveVideoLayout}
+              />
+            </Box>
+          </>
+        )
       ) : (
         <>
           {/* Title bar at top */}
@@ -956,30 +1086,37 @@ function BatteryCard({
   );
 }
 
-/** Flanking battery column for video mode. Renders as a flex spacer even when
- *  empty so the score boxes stay centered. */
+/** Flanking battery group for video mode. Horizontal rows render as flex
+ *  spacers even when empty so the score boxes stay centered; `vertical`
+ *  stacks the cards for the square layout's side bars. */
 function BatteryGroup({
   robots,
   teamCounts,
   matchAlliances,
   align,
+  vertical,
 }: {
   robots: BatteryRobot[];
   teamCounts: Map<number, number>;
   matchAlliances: Alliance[];
-  align: 'left' | 'right';
+  align?: 'left' | 'right';
+  vertical?: boolean;
 }) {
   return (
     <Box
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 1,
-        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-        alignItems: 'center',
-      }}
+      sx={
+        vertical
+          ? { display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'center' }
+          : {
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+              alignItems: 'center',
+            }
+      }
     >
       {robots.map(robot => (
         <BatteryCard
@@ -1029,6 +1166,108 @@ function BatteryPanel({
 }
 
 // ── Video Mode ────────────────────────────────────────────────────────
+
+/** Small labeled control button for the scoreboard's top-right corner. */
+function ControlChip({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Typography
+      onClick={onClick}
+      sx={{
+        cursor: 'pointer',
+        fontSize: '0.75rem',
+        lineHeight: 1,
+        px: 1,
+        py: 0.5,
+        borderRadius: 1,
+        border: `1px solid ${active ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)'}`,
+        color: active ? '#fff' : 'rgba(255,255,255,0.75)',
+        backgroundColor: active ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.4)',
+        whiteSpace: 'nowrap',
+        userSelect: 'none',
+        '&:hover': { backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff' },
+      }}
+    >
+      {icon} {label}
+    </Typography>
+  );
+}
+
+/** The video container: stream (or source config) filling its parent, with
+ *  the "⚙ source" edit affordance. Extra overlays render via children. */
+function VideoArea({
+  source,
+  editing,
+  onEditStart,
+  onSave,
+  onCancelEdit,
+  layout,
+  onLayoutChange,
+  children,
+}: {
+  source: string;
+  editing: boolean;
+  onEditStart: () => void;
+  onSave: (source: string) => void;
+  onCancelEdit: () => void;
+  layout: VideoLayout;
+  onLayoutChange: (layout: VideoLayout) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        bgcolor: '#000',
+        borderRadius: 1,
+        overflow: 'hidden',
+      }}
+    >
+      {source && !editing ? (
+        <>
+          <VideoStream source={source} />
+          {!window.__isCastReceiver && (
+            <Typography
+              onClick={onEditStart}
+              sx={{
+                position: 'absolute',
+                bottom: 6,
+                right: 10,
+                cursor: 'pointer',
+                opacity: 0.25,
+                fontSize: '0.8rem',
+                zIndex: 1,
+                '&:hover': { opacity: 0.7 },
+              }}
+            >
+              ⚙ source
+            </Typography>
+          )}
+        </>
+      ) : (
+        <VideoSourceConfig
+          initial={source}
+          onSave={onSave}
+          onCancel={source ? onCancelEdit : undefined}
+          layout={layout}
+          onLayoutChange={onLayoutChange}
+        />
+      )}
+      {children}
+    </Box>
+  );
+}
 
 /**
  * Guess the right element for a stream source.
@@ -1104,11 +1343,15 @@ function VideoSourceConfig({
   initial,
   onSave,
   onCancel,
+  layout,
+  onLayoutChange,
 }: {
   initial: string;
   onSave: (source: string) => void;
   /** Present only when a source already exists (editing rather than first setup) */
   onCancel?: () => void;
+  layout: VideoLayout;
+  onLayoutChange: (layout: VideoLayout) => void;
 }) {
   const [url, setUrl] = useState(initial === 'camera' ? '' : initial);
 
@@ -1153,6 +1396,29 @@ function VideoSourceConfig({
           Use local camera
         </Button>
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+      </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, mt: 2 }}>
+        <Typography
+          sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', letterSpacing: 2, textTransform: 'uppercase' }}
+        >
+          Layout
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant={layout === 'landscape' ? 'contained' : 'outlined'}
+            onClick={() => onLayoutChange('landscape')}
+          >
+            Wide — scores on top
+          </Button>
+          <Button
+            size="small"
+            variant={layout === 'square' ? 'contained' : 'outlined'}
+            onClick={() => onLayoutChange('square')}
+          >
+            Square — scores beside
+          </Button>
+        </Box>
       </Box>
     </Box>
   );

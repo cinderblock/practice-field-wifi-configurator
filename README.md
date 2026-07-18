@@ -31,20 +31,20 @@ npm install
 
 ## Pages
 
-| Path                | Description                                                                                                 |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/`                 | Home — station configuration form (assign teams to stations)                                                |
-| `/<team#>[-suffix]` | Team control page — per-team view with self-service match controls                                          |
-| `/overview`         | Admin station overview — status for all six stations                                                        |
-| `/match`            | Match control — dedicated controller page for match lifecycle                                               |
-| `/admin`            | Admin page — global/per-station e-stop, match status, force stop                                            |
-| `/network`          | Network page — discovered devices, VLAN status, network stats                                               |
-| `/route`            | Route page — choose which robot to talk to when a team has duplicate stations                               |
-| `/logs`             | Logs page — live backend log stream                                                                         |
-| `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`)                         |
-| `/scores`           | Scoreboard — full-screen TV-optimized score display for casting; 🎥 toggles a per-browser video stream view |
-| `/support`          | _(redirects to `/`)_ — support is now a floating widget available on every page                             |
-| `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients                                 |
+| Path                | Description                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                 | Home — station configuration form (assign teams to stations)                                                                        |
+| `/<team#>[-suffix]` | Team control page — per-team view with self-service match controls                                                                  |
+| `/overview`         | Admin station overview — status for all six stations                                                                                |
+| `/match`            | Match control — dedicated controller page for match lifecycle                                                                       |
+| `/admin`            | Admin page — global/per-station e-stop, match status, force stop                                                                    |
+| `/network`          | Network page — discovered devices, VLAN status, network stats                                                                       |
+| `/route`            | Route page — choose which robot to talk to when a team has duplicate stations                                                       |
+| `/logs`             | Logs page — live backend log stream                                                                                                 |
+| `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`)                                                 |
+| `/scores`           | Scoreboard — full-screen TV-optimized score display for casting; 🎥 toggles a per-browser video stream view (wide or square layout) |
+| `/support`          | _(redirects to `/`)_ — support is now a floating widget available on every page                                                     |
+| `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients                                                         |
 
 ## Features
 
