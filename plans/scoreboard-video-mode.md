@@ -16,6 +16,24 @@ the mode and stream source persist in `localStorage` per browser.
   `<video>`, anything else → `<iframe>` for go2rtc/WebRTC/YouTube pages) or
   the sentinel `camera` for a locally attached webcam via `getUserMedia`.
 - No HLS.js dependency for now — `.m3u8` only plays natively (Safari).
+- **WHEP/WebRTC support (2026-07-17)**: `whep:<stream>` sources play via a
+  built-in WHEP client (`WhepVideo` in ScoreboardPage.tsx) that signals
+  same-origin through `/api/video-proxy/*` (`src/videoProxy.ts`, hooked in
+  websocketServer's createServer; target fixed by `VIDEO_PROXY_TARGET` env —
+  not an open proxy). Full `.../whep` URLs are also accepted and used
+  directly. Sub-second latency; auto-reconnects; DELETE teardown with
+  keepalive. Externally, /api/\* is behind pfms.caddy's forward_auth cookie
+  check → internet playback is privileged-clients-only for free. Internet
+  MEDIA additionally needs (ops repo, user approval): UDP port-forward of
+  MediaMTX's webrtcLocalUDPAddress + `webrtcAdditionalHosts` advertising the
+  public address in restitch's mediamtx config. LAN needs none of that.
+  Verified end-to-end against a real MediaMTX v1.15.5 (WHIP-publish fake
+  camera → scoreboard WHEP playback through the real proxy code via
+  `%TEMP%\pfms-verify\harness.ts` + `drive4.mjs`; teardown DELETE observed
+  with rewritten session Location).
+- Vite dev gotcha (fixed): stationRoutes' 404 fallback also swallowed
+  `/api/*` paths before the dev proxy could forward them (team-avatar
+  included) — now exempted.
 - **Two layouts** (user request, 2026-07-17): `landscape` (scores/status bar
   across the top — wide streams) and `square` (video fills the height,
   scores + batteries in the black side bars, timer overlaid on the video

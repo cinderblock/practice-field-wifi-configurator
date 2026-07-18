@@ -78,6 +78,7 @@ import {
   StationNameList,
 } from './types.js';
 import { getRealClientIp, normalizeIp } from './utils.js';
+import { handleVideoProxy } from './videoProxy.js';
 import CIDRMatcher from 'cidr-matcher';
 import { appError, appWarn } from './appLogger.js';
 import { MatchEngine } from './matchEngine.js';
@@ -190,6 +191,9 @@ export function setupWebSocket(
         if (handler(req, res)) return;
       }
     }
+
+    // WHEP (WebRTC) signaling proxy for the scoreboard video view
+    if (handleVideoProxy(req, res)) return;
 
     // Health/status endpoint — used by update.sh to check for active matches
     if (req.url === '/health') {

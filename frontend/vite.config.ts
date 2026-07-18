@@ -98,12 +98,18 @@ function stationRoutes(): Plugin {
           return;
         }
 
-        // Fallback: serve 404 page for unrecognized paths (skip assets/files with extensions
-        // and Vite internal routes like /@vite/client, /@react-refresh, etc.).
-        // Re-derive from req.url so paths the rewrites above already mapped to
-        // an .html file are left alone.
+        // Fallback: serve 404 page for unrecognized paths (skip assets/files with extensions,
+        // Vite internal routes like /@vite/client, and /api/* paths that the dev
+        // proxy forwards to the backend). Re-derive from req.url so paths the
+        // rewrites above already mapped to an .html file are left alone.
         const finalUrl = req.url?.split('?')[0];
-        if (finalUrl && !finalUrl.includes('.') && finalUrl !== '/' && !finalUrl.startsWith('/@')) {
+        if (
+          finalUrl &&
+          !finalUrl.includes('.') &&
+          finalUrl !== '/' &&
+          !finalUrl.startsWith('/@') &&
+          !finalUrl.startsWith('/api/')
+        ) {
           req.url = '/404.html';
         }
 
@@ -139,6 +145,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/team-avatar': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api/video-proxy': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

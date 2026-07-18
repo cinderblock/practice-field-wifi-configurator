@@ -1263,16 +1263,129 @@ function VideoArea({
 /**
  * Guess the right element for a stream source.
  * - `camera` sentinel → local webcam via getUserMedia
+ * - `whep:<stream>` or a .../whep URL → WebRTC via WHEP (sub-second latency)
  * - image/MJPEG URLs → <img> (browsers render multipart MJPEG natively)
  * - direct media files → <video>
- * - everything else → <iframe> (go2rtc/WebRTC players, YouTube embeds, …)
+ * - everything else → <iframe> (MediaMTX/go2rtc player pages, YouTube embeds, …)
  */
-function classifyVideoSource(source: string): 'camera' | 'image' | 'video' | 'iframe' {
+function classifyVideoSource(source: string): 'camera' | 'whep' | 'image' | 'video' | 'iframe' {
   if (source === 'camera') return 'camera';
   const path = source.split(/[?#]/)[0].toLowerCase();
+  if (source.startsWith('whep:') || /\/whep\/?$/.test(path)) return 'whep';
   if (/\.(jpe?g|png|gif|webp|mjpe?g)$/.test(path) || /mjpe?g/i.test(source)) return 'image';
   if (/\.(mp4|webm|ogv|ogg|mov|m3u8)$/.test(path)) return 'video';
   return 'iframe';
+}
+
+/** Resolve a WHEP source to its signaling endpoint. The `whep:<stream>` form
+ *  signals same-origin through the backend's /api/video-proxy (which forwards
+ *  to VIDEO_PROXY_TARGET), avoiding mixed-content blocks on the HTTPS page. */
+function whepEndpoint(source: string): string {
+  if (source.startsWith('whep:')) {
+    return `/api/video-proxy/${source.slice('whep:'.length).replace(/^\/+/, '').replace(/\/+$/, '')}/whep`;
+  }
+  return source;
+}
+
+/** WebRTC player: POSTs an SDP offer to a WHEP endpoint and plays the
+ *  answered stream. Media flows directly (UDP); only signaling uses HTTP.
+ *  Reconnects automatically if the session drops. */
+function WhepVideo({ endpoint }: { endpoint: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setError(null);
+    const pc = new RTCPeerConnection();
+    let sessionUrl: string | null = null;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRetry = (msg: string) => {
+      if (cancelled) return;
+      setError(msg);
+      if (!retryTimer) retryTimer = setTimeout(() => setAttempt(a => a + 1), 3000);
+    };
+
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    const stream = new MediaStream();
+    pc.ontrack = e => {
+      stream.addTrack(e.track);
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    };
+    pc.onconnectionstatechange = () => {
+      if (cancelled) return;
+      if (pc.connectionState === 'connected') setError(null);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        scheduleRetry('Stream disconnected — reconnecting…');
+      }
+    };
+
+    (async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      // Wait (bounded) for ICE gathering so we can send one complete offer
+      // instead of trickling candidates in follow-up PATCHes
+      await new Promise<void>(resolve => {
+        if (pc.iceGatheringState === 'complete') return resolve();
+        const timer = setTimeout(resolve, 2000);
+        const check = () => {
+          if (pc.iceGatheringState === 'complete') {
+            clearTimeout(timer);
+            pc.removeEventListener('icegatheringstatechange', check);
+            resolve();
+          }
+        };
+        pc.addEventListener('icegatheringstatechange', check);
+      });
+      if (cancelled) return;
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: pc.localDescription!.sdp,
+      });
+      if (!resp.ok) throw new Error(`stream server returned ${resp.status}`);
+      sessionUrl = resp.headers.get('Location');
+      const answer = await resp.text();
+      if (cancelled) return;
+      await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+    })().catch((e: Error) => scheduleRetry(`Stream error: ${e.message} — retrying…`));
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      pc.close();
+      if (sessionUrl) {
+        // keepalive lets the teardown land even while the page is closing
+        fetch(new URL(sessionUrl, new URL(endpoint, window.location.href)).toString(), {
+          method: 'DELETE',
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+  }, [endpoint, attempt]);
+
+  return (
+    <>
+      <video ref={videoRef} autoPlay muted playsInline style={VIDEO_FILL_STYLE} />
+      {error && (
+        <Typography
+          sx={{
+            position: 'absolute',
+            bottom: 8,
+            left: 12,
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '0.8rem',
+            zIndex: 1,
+          }}
+        >
+          {error}
+        </Typography>
+      )}
+    </>
+  );
 }
 
 const VIDEO_FILL_STYLE = {
@@ -1325,6 +1438,7 @@ function VideoStream({ source }: { source: string }) {
     }
     return <video ref={videoRef} autoPlay muted playsInline style={VIDEO_FILL_STYLE} />;
   }
+  if (kind === 'whep') return <WhepVideo endpoint={whepEndpoint(source)} />;
   if (kind === 'image') return <img src={source} alt="Video stream" style={VIDEO_FILL_STYLE} />;
   if (kind === 'video') return <video src={source} autoPlay muted playsInline loop style={VIDEO_FILL_STYLE} />;
   return <iframe src={source} allow="autoplay; fullscreen" style={VIDEO_FILL_STYLE} />;
@@ -1366,8 +1480,9 @@ function VideoSourceConfig({
         Video Stream
       </Typography>
       <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', textAlign: 'center', maxWidth: 480 }}>
-        Enter a stream URL — an MJPEG snapshot/stream, a video file, or any embeddable page (go2rtc, YouTube, …) — or
-        use a camera attached to this device. The choice is saved locally in this browser only.
+        Enter a stream URL — an MJPEG snapshot/stream, a video file, or any embeddable page (MediaMTX, go2rtc, YouTube,
+        …) — or use a camera attached to this device. For sub-second WebRTC from the field server, enter{' '}
+        <code>whep:&lt;stream-name&gt;</code>. The choice is saved locally in this browser only.
       </Typography>
       <Box
         component="form"
