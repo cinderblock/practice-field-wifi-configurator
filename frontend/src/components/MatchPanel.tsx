@@ -6,7 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { TeamAvatar } from './TeamAvatar';
-import { AStopPopout } from './AStopPopout';
+import { AStopPopout, openMatchGuidePopup } from './AStopPopout';
 import { MatchPhase, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
@@ -221,9 +221,17 @@ export function MatchPanel({ station }: { station?: StationName }) {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {station && (
             <>
-              {/* Not joined, match created: join button */}
+              {/* Not joined, match created: join button. Opening the guide
+                  window inside the click keeps it pop-up-blocker-proof. */}
               {!joined && isCreated && (
-                <Button variant="contained" color="primary" onClick={() => sendStationJoin(station)}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={() => {
+                    openMatchGuidePopup();
+                    sendStationJoin(station);
+                  }}
+                >
                   Join Match
                 </Button>
               )}
@@ -279,7 +287,6 @@ export function MatchPanel({ station }: { station?: StationName }) {
                         A-Stop
                       </Button>
                     ))}
-                  <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} />
                   <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
                     E-Stop
                   </Button>
@@ -295,6 +302,11 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   Leave Match
                 </Button>
               )}
+
+              {/* Match guide / A-Stop pop-out window controller — always
+                  mounted so the window survives the created→countdown→auto
+                  transitions instead of being torn down between blocks */}
+              <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} joined={joined} />
             </>
           )}
         </Box>
@@ -477,9 +489,13 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
           {/* Not joined, match created: Join Red / Join Blue buttons */}
           {!joined && isCreated && (
             <>
+              {/* Opening the guide window inside the click keeps it pop-up-blocker-proof */}
               <Button
                 variant="contained"
-                onClick={() => sendStationJoinAlliance(station, 'red')}
+                onClick={() => {
+                  openMatchGuidePopup();
+                  sendStationJoinAlliance(station, 'red');
+                }}
                 sx={{
                   backgroundColor: '#d32f2f',
                   '&:hover': { backgroundColor: '#b71c1c' },
@@ -492,7 +508,10 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               </Button>
               <Button
                 variant="contained"
-                onClick={() => sendStationJoinAlliance(station, 'blue')}
+                onClick={() => {
+                  openMatchGuidePopup();
+                  sendStationJoinAlliance(station, 'blue');
+                }}
                 sx={{
                   backgroundColor: '#1565c0',
                   '&:hover': { backgroundColor: '#0d47a1' },
@@ -572,7 +591,6 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
                     A-Stop
                   </Button>
                 ))}
-              <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} />
               <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
                 E-Stop
               </Button>
@@ -588,6 +606,10 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               Leave Match
             </Button>
           )}
+
+          {/* Match guide / A-Stop pop-out window controller — always mounted so
+              the window survives the created→countdown→auto transitions */}
+          <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} joined={joined} />
         </Box>
 
         {/* Match timing config — visual timeline (created phase only, when joined) */}
