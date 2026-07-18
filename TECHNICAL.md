@@ -74,11 +74,17 @@ The match system is self-service: stations join/leave/ready themselves, and the 
 
 ### Station Flow
 
-1. **Join** — station sends `stationJoin`. Heartbeat begins sending disable packets (DS connects to FMS).
+1. **Join** — station sends `stationJoin`. The FMS takes over the DS immediately: the DS's TCP
+   connection is force-closed so it re-handshakes right away, the 0x18 handshake now gets the 0x19
+   station-assignment reply (locking out local enable), and the heartbeat sends disable packets.
+   The robot stays disabled until the match starts — a team that wants to drive must leave the match.
 2. **Ready** — station sends `stationReady`. Once all joined stations are ready, any can start.
 3. **Start** — station sends `stationStartMatch`. Match runs through phases automatically.
 4. **Pause** — any joined station can pause during auto/teleop/endgame. Resume or abandon from paused.
-5. **Leave** — after match ends (or while idle), station sends `stationLeave`. FMS stops sending packets; DS returns to free-drive mode.
+5. **Leave** — after match ends (or while idle), station sends `stationLeave`. FMS stops sending
+   packets and force-closes the DS's TCP connection; the fresh handshake gets no 0x19 reply, so the
+   DS returns to free-drive mode with local control. The same release happens on kick and when
+   stations are released post-match.
 
 ### E-Stop vs. A-Stop
 

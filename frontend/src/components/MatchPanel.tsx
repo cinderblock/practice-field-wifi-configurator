@@ -240,6 +240,9 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                     Leave
                   </Button>
+                  <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
+                    Robot is under field control and disabled until the match starts — leave the match to drive freely.
+                  </Typography>
                 </>
               )}
 
@@ -523,6 +526,9 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                 Leave
               </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
+                Robot is under field control and disabled until the match starts — leave the match to drive freely.
+              </Typography>
             </>
           )}
 

@@ -1025,6 +1025,32 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     }).then(fms => {
       if (!fms) return;
 
+      // Joining a match hands the DS to the FMS: the 0x19 station-assignment
+      // reply locks out local enable, and the join heartbeat keeps the robot
+      // disabled until the match starts. Leaving reverses it — the next
+      // handshake gets no reply and local control returns. But the DS only
+      // handshakes when its TCP connection (re)opens, which can be minutes
+      // away on a long-lived connection, so force a reconnect the moment a
+      // station joins or leaves (also covers kick and post-match release).
+      const prevJoined = new Map<StationName, boolean>();
+      matchEngine.addStateListener(state => {
+        for (const station of StationNameList) {
+          const joined = state.stationStates[station]?.joined ?? false;
+          const prev = prevJoined.get(station) ?? false;
+          if (joined === prev) continue;
+          prevJoined.set(station, joined);
+          const dsIp = acceptedDsForStation.get(station) ?? state.connectedStations[station]?.ip;
+          if (dsIp) {
+            appInfo(
+              joined
+                ? `${station} joined — handing DS ${dsIp} to FMS control (disabled until match start)`
+                : `${station} left — releasing DS ${dsIp} back to local control`,
+            );
+            fms.emit('disconnectDS', { address: dsIp });
+          }
+        }
+      });
+
       fms.on('dsConnected', ({ address }) => {
         touchDsActivity(address);
       });

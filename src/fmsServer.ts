@@ -348,6 +348,11 @@ type Events = {
   message: [{ address: string; port: number; data: DSMessage | UdpMessage }];
   dsConnected: [{ address: string }];
   dsDisconnected: [{ address: string }];
+  /** Inbound command: close all TCP connections from this DS address. The DS
+   *  reconnects and re-sends its 0x18 handshake within seconds, picking up the
+   *  current station-assignment answer — this is how join/leave hands the DS
+   *  to the FMS (0x19 reply locks out local enable) or releases it (no reply). */
+  disconnectDS: [{ address: string }];
 };
 
 export async function startFMSServer({
@@ -373,6 +378,8 @@ export async function startFMSServer({
     // last connection from an IP closes (avoids removing DNAT rules prematurely
     // when a DS reconnects before the old TCP connection times out).
     const tcpConnections = new Map<string, number>();
+    // Live sockets per IP, so the disconnectDS command can force a re-handshake
+    const socketsByAddr = new Map<string, Set<net.Socket>>();
 
     // Log dampening: a DS that never completes the station-assignment handshake
     // (or can't reach its station) cycles TCP every ~6s. Log the first connect,
@@ -388,6 +395,9 @@ export async function startFMSServer({
       const rawAddr = socket.remoteAddress || '';
       const addr = rawAddr.replace(/^::ffff:/, '');
       tcpConnections.set(addr, (tcpConnections.get(addr) ?? 0) + 1);
+      let sockets = socketsByAddr.get(addr);
+      if (!sockets) socketsByAddr.set(addr, (sockets = new Set()));
+      sockets.add(socket);
 
       // Reap dead NAT'd connections — a DS that vanishes without FIN otherwise
       // stays ESTAB forever and inflates the per-address connection count.
@@ -437,6 +447,11 @@ export async function startFMSServer({
       });
 
       socket.on('close', () => {
+        const s = socketsByAddr.get(addr);
+        if (s) {
+          s.delete(socket);
+          if (s.size === 0) socketsByAddr.delete(addr);
+        }
         const c = churnByAddr.get(addr);
         if (c) c.lastClose = Date.now();
         const remaining = (tcpConnections.get(addr) ?? 1) - 1;
@@ -462,6 +477,13 @@ export async function startFMSServer({
     }
 
     const emitter = new EventEmitter<Events>();
+
+    emitter.on('disconnectDS', ({ address }) => {
+      const sockets = socketsByAddr.get(address);
+      if (!sockets?.size) return;
+      console.log(`Closing ${sockets.size} TCP connection(s) to DS ${address} to force a fresh handshake`);
+      for (const socket of [...sockets]) socket.destroy();
+    });
 
     tcpServer.on('error', error);
 
