@@ -72,8 +72,16 @@ the offending laptop, not just print an IP nobody recognizes.
 - [x] Resolver smoke-tested against live LAN hosts
       (`bunx tsx scripts/test-hostname-resolver.ts <ip>...` — resolved this
       PC "Noook" on two IPs and the gateway "setup")
-- [x] Committed on master (subject: "Laptops on the guest network now show
-      up by name instead of IP address")
+- [x] Committed on master as 0fd6a16 (subject: "Laptops on the guest network
+      now show up by name instead of IP address")
+- [x] Pushed + deployed to steamboat 2026-07-19 15:07 PDT (update.sh; clean
+      start, DNAT/state preserved, deploy announcement posted)
+- [x] Verified live post-deploy via `scripts/peek-hostnames.ts` (89476ac):
+      12 guest hosts resolved, incl. every connected DS laptop
+      (FunkyMonkey846, dstation-comp-1, team6036-0, 6962Drive4,
+      CUSD-PF52PE2G); the duplicate DS blocked on slot4 at startup
+      (10.55.29.164) resolves to DESKTOP-C8V99IA — the motivating scenario
+      works end-to-end. TASK COMPLETE.
 
 ## Things not to do
 
