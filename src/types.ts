@@ -734,6 +734,12 @@ export interface TelemetryUpdate {
   station: StationName;
   timestamp: number;
   batteryVoltage: number;
+  /** Lowest batteryVoltage observed since this station's previous broadcast.
+   *  Telemetry is throttled per-station (latest wins), so brief voltage sags
+   *  between broadcasts would otherwise be invisible — this carries the
+   *  coalescing window's envelope so battery charts can still show them.
+   *  Omitted when it equals batteryVoltage. */
+  batteryVoltageMin?: number;
   rttMs?: number;
   lostPackets?: number;
   canUtil?: number;

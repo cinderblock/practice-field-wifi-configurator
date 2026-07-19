@@ -216,15 +216,15 @@ for (const s of StationNameList) {
   batteryMinState[s] = { floor: NaN, lastTs: 0 };
 }
 
-function updateBatteryMin(station: StationName, voltage: number, timestamp: number) {
+function updateBatteryMin(station: StationName, voltage: number, minVoltage: number, timestamp: number) {
   const ts = stationTimeSeries[station];
   const st = batteryMinState[station];
 
   if (isNaN(st.floor)) {
     // First sample — initialise
-    st.floor = voltage;
+    st.floor = minVoltage;
     st.lastTs = timestamp;
-    ts.batteryMinVoltage.append(timestamp, voltage);
+    ts.batteryMinVoltage.append(timestamp, minVoltage);
     return;
   }
 
@@ -237,8 +237,9 @@ function updateBatteryMin(station: StationName, voltage: number, timestamp: numb
     st.floor = st.floor + alpha * (voltage - st.floor);
   }
 
-  // Drop instantly if voltage is below floor
-  if (voltage < st.floor) st.floor = voltage;
+  // Drop instantly on sags — minVoltage carries the coalescing-window
+  // envelope from the server, so dips between throttled broadcasts count
+  if (minVoltage < st.floor) st.floor = minVoltage;
 
   ts.batteryMinVoltage.append(timestamp, st.floor);
 }
@@ -252,7 +253,7 @@ export function handleTelemetryUpdate(entry: TelemetryUpdate) {
 
   if (entry.batteryVoltage !== undefined) {
     timeSeries.batteryVoltage.append(timestamp, entry.batteryVoltage);
-    updateBatteryMin(entry.station, entry.batteryVoltage, timestamp);
+    updateBatteryMin(entry.station, entry.batteryVoltage, entry.batteryVoltageMin ?? entry.batteryVoltage, timestamp);
   }
   if (entry.dsCpuPercent !== undefined) timeSeries.dsCpuPercent.append(timestamp, entry.dsCpuPercent);
 

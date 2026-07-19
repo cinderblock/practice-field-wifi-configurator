@@ -22,6 +22,10 @@ export function createTelemetryCoalescer(
     lastSentAt: number;
     lastStatusKey: string;
     timer: ReturnType<typeof setTimeout> | null;
+    /** Lowest voltage seen since the last flush — brief sags between flushes
+     *  would otherwise be dropped by latest-wins coalescing, and the sag
+     *  floor is the main thing the battery charts exist to show. */
+    pendingMin: number;
   }
   const stations = new Map<string, StationState>();
 
@@ -31,14 +35,24 @@ export function createTelemetryCoalescer(
     st.latest = null;
     st.lastSentAt = Date.now();
     if (update.dsStatus !== undefined) st.lastStatusKey = statusKey(update);
+    if (Number.isFinite(st.pendingMin) && st.pendingMin < update.batteryVoltage) {
+      update = { ...update, batteryVoltageMin: st.pendingMin };
+    }
+    st.pendingMin = NaN;
     send(update);
   };
 
   return update => {
     let st = stations.get(update.station);
     if (!st) {
-      st = { latest: null, lastSentAt: 0, lastStatusKey: '', timer: null };
+      st = { latest: null, lastSentAt: 0, lastStatusKey: '', timer: null, pendingMin: NaN };
       stations.set(update.station, st);
+    }
+
+    if (update.batteryVoltage !== undefined) {
+      if (!Number.isFinite(st.pendingMin) || update.batteryVoltage < st.pendingMin) {
+        st.pendingMin = update.batteryVoltage;
+      }
     }
 
     const now = Date.now();

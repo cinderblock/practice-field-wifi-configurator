@@ -130,7 +130,17 @@ hidden` when absent). Verified: video box bounding rect byte-identical
   immediate flush on dsStatus changes (e-stop/enable stay snappy). Verified
   with the real module: 100 updates/s → 5/station/s, latest value preserved,
   status changes flush immediately. Expected on-wire: ~250/s → ~24/s,
-  ~56 KB/s → ~6 KB/s.
+  ~56 KB/s → ~6 KB/s. Deployed + measured live: telemetry 4.1/s, socket
+  total 58 → 2 KB/s.
+- **Sag envelope (user follow-up)**: latest-wins coalescing dropped brief
+  voltage sags (sub-250 ms motor-stall dips) — the exact thing the battery
+  charts' min-voltage floor exists to show. `TelemetryUpdate` gains optional
+  `batteryVoltageMin` = lowest voltage since that station's previous
+  broadcast (coalescer tracks `pendingMin`, omits when equal); StationChart's
+  `updateBatteryMin` relaxes toward the CURRENT voltage but drops the floor
+  using the window MIN. Verified: 50 Hz feed with one 20 ms 9.2 V dip →
+  flushed update carries min=9.2 while V=12.48; E2E the card shows live
+  12.7V with ↓9.2V floor from the envelope alone.
 
 ## Findings / gotchas
 
