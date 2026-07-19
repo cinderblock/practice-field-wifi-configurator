@@ -52,6 +52,7 @@ import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
 import { MatchHistoryStore } from './matchHistoryStore.js';
 import { UsageTracker } from './usageTracker.js';
+import { HostnameResolver } from './hostnameResolver.js';
 import { StationName, StationNameList, StationNameRegex, TeamCheckResults, DriveSessionState } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
@@ -265,6 +266,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
   let onRunTeamChecks: ((station: StationName) => void) | undefined;
   let onDriveAction: ((dsIp: string, station: StationName | null) => void) | undefined;
   let stationTestManager: StationTestManager | undefined;
+  // Resolves guest-network device names (DS laptops) so the UI can show them
+  // instead of bare IPs. `broadcast` is const-declared below; the callback only
+  // fires after async resolutions, well past initialization.
+  const hostnameResolver = new HostnameResolver(state => broadcast(state));
   const { wss, broadcast, broadcastRouteState, publicConnections } = setupWebSocket(
     radioManager,
     matchEngine,
@@ -330,6 +335,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     matchAudio,
     matchHistoryStore,
     usageTracker,
+    hostnameResolver,
   );
   setBroadcast(broadcast);
 
@@ -357,6 +363,8 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         // IP appears under multiple stations or across overlapping scan cycles.
         for (const host of scan.hosts) {
           if (!host.alive || host.source !== 'conntrack') continue;
+          // Guest-network host — resolve its device name for the UI
+          hostnameResolver.track(host.ip);
           if (getPreference(host.ip) || autoConnectInFlight.has(host.ip)) continue;
           autoConnectInFlight.add(host.ip);
           setRoutePreference(host.ip, station, scan.team)
@@ -737,6 +745,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       for (const [station, blocks] of blockedDsRules) {
         if (blocks.size > 0) blockedDs[station] = [...blocks.keys()];
       }
+      // Resolve device names for every DS the UI is about to show — blocked
+      // DSes especially, since "Multiple DSes Detected" should name the laptop.
+      for (const session of Object.values(sessions)) hostnameResolver.track(session.dsIp);
+      for (const ips of Object.values(blockedDs)) ips.forEach(ip => hostnameResolver.track(ip));
       broadcast({ type: 'driveSessionState', sessions, blockedDs } satisfies DriveSessionState);
     }
 
@@ -1230,6 +1242,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
       }
       if (mdnsReflector) {
         latestMdnsActivity = mdnsReflector.getActivity();
+        // mDNS requesters are guest-network hosts — resolve their names too
+        for (const activity of Object.values(latestMdnsActivity.stations)) {
+          for (const entry of activity.recentNames) {
+            if (entry.requester) hostnameResolver.track(entry.requester);
+          }
+        }
         broadcast(latestMdnsActivity);
       }
     }

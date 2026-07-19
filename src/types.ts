@@ -845,6 +845,19 @@ export function isSubnetScanResults(msg: unknown): msg is SubnetScanResults {
   return (msg as SubnetScanResults).type === 'subnetScan';
 }
 
+// ── Guest Host Names ────────────────────────────────────────────────
+
+/** Resolved display names for guest-network hosts (DS laptops etc.), keyed by IP. */
+export interface HostnamesState {
+  type: 'hostnames';
+  hostnames: Record<string, string>;
+}
+
+export function isHostnamesState(msg: unknown): msg is HostnamesState {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as HostnamesState).type === 'hostnames';
+}
+
 // ── App Log Messages ────────────────────────────────────────────────
 
 export type LogLevel = 'info' | 'warn' | 'error';

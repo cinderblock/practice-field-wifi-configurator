@@ -36,6 +36,7 @@ import {
 import { MatchPanelForControl } from './MatchPanel';
 import { TeamChecksModal } from './TeamChecksModal';
 import { StationNetworkCard } from './NetworkPage';
+import { HostDisplay } from './HostDisplay';
 import { StationName, StationNameList, SavedTeamClientConfig, PortConfig } from '../../../src/types';
 import { createHash } from './cryptoUtils';
 import { StationChart, handleStatusUpdate, handleTelemetryUpdate } from './StationChart';
@@ -1054,7 +1055,9 @@ function StationExperience({
               MULTIPLE DRIVER STATIONS DETECTED
               <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
                 <li>
-                  <strong>{multipleDsWarning.acceptedIp}</strong>
+                  <strong>
+                    <HostDisplay ip={multipleDsWarning.acceptedIp} />
+                  </strong>
                   {multipleDsWarning.acceptedIp === yourIp && (
                     <Chip label="YOU" size="small" color="info" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                   )}
@@ -1062,7 +1065,9 @@ function StationExperience({
                 </li>
                 {multipleDsWarning.blockedIps.map(ip => (
                   <li key={ip}>
-                    <strong>{ip}</strong>
+                    <strong>
+                      <HostDisplay ip={ip} />
+                    </strong>
                     {ip === yourIp && (
                       <Chip label="YOU" size="small" color="error" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                     )}
@@ -1518,7 +1523,7 @@ function StationExperience({
                         >
                           <TableHead>
                             <TableRow>
-                              <TableCell>IP</TableCell>
+                              <TableCell>Host</TableCell>
                               <TableCell>Status</TableCell>
                               <TableCell>Device</TableCell>
                               <TableCell>Last Seen</TableCell>
@@ -1527,7 +1532,9 @@ function StationExperience({
                           <TableBody>
                             {scan.hosts.map(host => (
                               <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
-                                <TableCell sx={{ fontFamily: 'monospace' }}>{host.ip}</TableCell>
+                                <TableCell sx={{ fontFamily: 'monospace' }}>
+                                  <HostDisplay ip={host.ip} />
+                                </TableCell>
                                 <TableCell>
                                   <Chip
                                     label={host.alive ? 'UP' : 'DOWN'}

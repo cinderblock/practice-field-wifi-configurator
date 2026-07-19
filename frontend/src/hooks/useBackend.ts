@@ -48,6 +48,8 @@ import {
   UsageState,
   isDriveSessionState,
   DriveSessionState,
+  isHostnamesState,
+  HostnamesState,
   isExternalAccessState,
   isExternalAccessTokenCreated,
   isStationTestState,
@@ -634,6 +636,11 @@ function receiveMessage(detail: Message) {
 
   if (isDriveSessionState(detail)) {
     handleDriveSessionState(detail);
+    return;
+  }
+
+  if (isHostnamesState(detail)) {
+    handleHostnamesState(detail);
     return;
   }
 
@@ -1513,6 +1520,29 @@ export function useDriveSessionState(): DriveSessionState | null {
   }, []);
 
   return state;
+}
+
+// ── Guest Host Names ─────────────────────────────────────────────────
+
+let currentHostnames: HostnamesState['hostnames'] = {};
+
+function handleHostnamesState(state: HostnamesState) {
+  currentHostnames = state.hostnames;
+  events.dispatchEvent(new CustomEvent('hostnamesState', { detail: state }));
+}
+
+/** Resolved device names for guest-network hosts (DS laptops etc.), keyed by IP. */
+export function useHostnames(): HostnamesState['hostnames'] {
+  const [hostnames, setHostnames] = useState(currentHostnames);
+
+  useEffect(() => {
+    setHostnames(currentHostnames);
+    const handler = (e: Event) => setHostnames((e as CustomEvent<HostnamesState>).detail.hostnames);
+    events.addEventListener('hostnamesState', handler);
+    return () => events.removeEventListener('hostnamesState', handler);
+  }, []);
+
+  return hostnames;
 }
 
 export function sendScoreReset() {

@@ -59,6 +59,7 @@ import { TeamChecksPanel } from './TeamChecksPanel';
 import { WaitingForRobot } from './WaitingForRobot';
 import { InlineTestPortMode } from './InlineTestPortMode';
 import Chip from '@mui/material/Chip';
+import { HostDisplay, useHostname } from './HostDisplay';
 
 // Helper function to format numbers with thin space as thousands separator
 function formatNumberWithThinSpace(num: number | undefined): string {
@@ -130,6 +131,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
   const routeState = useRoutePreferenceState();
   const driveSession = useDriveSessionState();
   const yourIp = routeState?.yourIp;
+  const dsHostname = useHostname(driveSession?.sessions?.[station]?.dsIp);
   const { recentSettings, saveSetting, clearSettings, removeSetting } = useSavedWiFiSettings();
   const stagedChanges = useBackendStagedChanges();
   const hasStagedChange = (s: StationName) => s in stagedChanges;
@@ -243,7 +245,11 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
             >
               YOUR DRIVER STATION IS BLOCKED
               <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 400 }}>
-                Another DS (<strong>{session.dsIp}</strong>) is active on this station.
+                Another DS (
+                <strong>
+                  <HostDisplay ip={session.dsIp} />
+                </strong>
+                ) is active on this station.
                 {isSessionStale
                   ? ` It will time out in ${session.timeoutRemaining}s.`
                   : ' Close the other DS to take over (~20s timeout).'}
@@ -262,7 +268,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
               MULTIPLE DRIVER STATIONS DETECTED
               <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '0.9rem', fontWeight: 400 }}>
                 <li>
-                  <strong>{session.dsIp}</strong>
+                  <strong>
+                    <HostDisplay ip={session.dsIp} />
+                  </strong>
                   {session.dsIp === yourIp && (
                     <Chip label="YOU" size="small" color="info" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                   )}
@@ -270,7 +278,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                 </li>
                 {blocked.map(ip => (
                   <li key={ip}>
-                    <strong>{ip}</strong>
+                    <strong>
+                      <HostDisplay ip={ip} />
+                    </strong>
                     {ip === yourIp && (
                       <Chip label="YOU" size="small" color="error" sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }} />
                     )}
@@ -314,7 +324,7 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                   title={`Driver Station: ${driveSession.sessions[station]!.dsIp}${driveSession.sessions[station]!.timeoutRemaining < 20 ? ` (timeout in ${driveSession.sessions[station]!.timeoutRemaining}s)` : ''}`}
                 >
                   <Chip
-                    label={`DS ${driveSession.sessions[station]!.dsIp}`}
+                    label={`DS ${dsHostname ?? driveSession.sessions[station]!.dsIp}`}
                     size="small"
                     variant="outlined"
                     color={driveSession.sessions[station]!.timeoutRemaining < 20 ? 'warning' : 'success'}

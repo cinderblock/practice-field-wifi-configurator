@@ -268,6 +268,10 @@ This catches all UDP packets from the robot destined for the gateway IP on the s
 
 The backend periodically scans each configured team's subnet using `fping`, pinging `.1–.253` every 10 seconds. Discovered devices (IPs that have responded at least once) are tracked with up/down status and first/last-seen timestamps, and broadcast to frontend clients. Results appear in the **Discovered Devices** section on the Network page and are cleared when station config is cleared.
 
+#### Guest Host Names
+
+Guest-network hosts (DS laptops, phones) are shown by device name wherever they appear — Discovered Devices, DS chips, "Multiple DSes Detected" warnings — with the IP available on hover/tap and used as the fallback when no name is known. Since the site router owns guest DHCP (no lease file to read), the backend asks each host directly, in parallel: an mDNS reverse PTR query (unicast to UDP 5353 — answered by Windows 10+, macOS, iOS, Linux), a NetBIOS node-status query (UDP 137 — answered by Windows DS laptops), and a reverse-DNS lookup through the system resolver (works when the site router registers DHCP client names). Names are cached (`src/hostnameResolver.ts`) and pushed to clients as a `hostnames` broadcast.
+
 ### Robot Network Tester
 
 A CSA diagnostic tool at `/test` for checking individual robot network configurations. Set `TEST_INTERFACE` to a dedicated network interface, plug in a cable from a robot's network, and the tool will:

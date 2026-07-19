@@ -33,6 +33,7 @@ import {
   useRoutePreferenceState,
   useSubnetScan,
 } from '../hooks/useBackend';
+import { HostDisplay } from './HostDisplay';
 
 const PULSE_STYLES = {
   '@keyframes ds-pulse': {
@@ -97,7 +98,7 @@ export function StationNetworkCard({
                       animation: 'ds-pulse 2s ease-out forwards',
                     }}
                   />
-                  DS: {dsInfo.ip}
+                  DS: <HostDisplay ip={dsInfo.ip} />
                 </Box>
               }
               size="small"
@@ -115,12 +116,12 @@ export function StationNetworkCard({
               {blockedIps.map((ip, i) => (
                 <span key={ip}>
                   {i > 0 && ', '}
-                  {ip}
+                  <HostDisplay ip={ip} />
                   {ip === yourIp && ' (YOU)'}
                 </span>
               ))}
             </strong>{' '}
-            — only {acceptedDsIp}
+            — only <HostDisplay ip={acceptedDsIp} />
             {acceptedDsIp === yourIp && ' (YOU)'} can control this station. Close the other Driver Station
             {blockedIps.length > 1 ? 's' : ''}.
           </Alert>
@@ -176,7 +177,7 @@ export function StationNetworkCard({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>IP</TableCell>
+                  <TableCell>Host</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Activity</TableCell>
@@ -186,7 +187,7 @@ export function StationNetworkCard({
                 {scan.hosts.map(host => (
                   <TableRow key={host.ip} sx={{ opacity: host.alive ? 1 : 0.5 }}>
                     <TableCell sx={{ fontFamily: 'monospace', py: 0.5 }}>
-                      {host.ip}
+                      <HostDisplay ip={host.ip} />
                       {host.source === 'conntrack' && (
                         <Chip
                           label="Guest"
@@ -273,7 +274,7 @@ export function StationNetworkCard({
                         {entry.resolvedIp ?? '—'}
                       </TableCell>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem', py: 0.5 }}>
-                        {entry.requester ?? '—'}
+                        {entry.requester ? <HostDisplay ip={entry.requester} /> : '—'}
                       </TableCell>
                     </TableRow>
                   ))}

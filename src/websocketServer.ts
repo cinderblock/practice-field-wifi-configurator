@@ -97,6 +97,7 @@ import type { ExternalAccessStore } from './externalAccessStore.js';
 import type { MatchAudio } from './matchAudio.js';
 import type { MatchHistoryStore } from './matchHistoryStore.js';
 import type { UsageTracker } from './usageTracker.js';
+import type { HostnameResolver } from './hostnameResolver.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -178,6 +179,7 @@ export function setupWebSocket(
   matchAudio?: MatchAudio,
   matchHistoryStore?: MatchHistoryStore,
   usageTracker?: UsageTracker,
+  hostnameResolver?: HostnameResolver,
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -437,9 +439,17 @@ export function setupWebSocket(
 
     wsToIp.set(ws, clientIp);
 
+    // Resolve the client's own hostname so pages can label it (e.g. "YOU" rows)
+    hostnameResolver?.track(clientIp);
+
     // Send initial history + match state
     ws.send(JSON.stringify(radioManager.getStatusHistory()));
     ws.send(JSON.stringify(matchEngine.getState()));
+
+    // Send known guest-network hostnames (IP → device name)
+    if (hostnameResolver) {
+      ws.send(JSON.stringify(hostnameResolver.getState()));
+    }
 
     // Send initial route preference state
     sendRouteState(ws, clientIp);

@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import { StationName } from '../../../src/types';
 import { prettyStationName } from '../../../src/utils';
 import { useRoutePreferenceState, sendDrive } from '../hooks/useBackend';
+import { useHostname } from './HostDisplay';
 
 function ConflictingTeamCard({
   team,
@@ -58,6 +59,7 @@ function ConflictingTeamCard({
 
 export function RoutePage() {
   const state = useRoutePreferenceState();
+  const yourHostname = useHostname(state?.yourIp);
 
   const conflictingTeams = state?.conflictingTeams ?? {};
   const hasConflicts = Object.keys(conflictingTeams).length > 0;
@@ -75,11 +77,16 @@ export function RoutePage() {
       {state && (
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            Your IP:
+            {yourHostname ? 'Your device:' : 'Your IP:'}
           </Typography>
           <Typography variant="body2" fontFamily="monospace">
-            {state.yourIp}
+            {yourHostname ?? state.yourIp}
           </Typography>
+          {yourHostname && (
+            <Typography variant="body2" color="text.secondary" fontFamily="monospace">
+              ({state.yourIp})
+            </Typography>
+          )}
         </Box>
       )}
 
