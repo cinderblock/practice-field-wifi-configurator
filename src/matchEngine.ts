@@ -59,6 +59,8 @@ export class MatchEngine {
   private autoClearTimer: NodeJS.Timeout | null = null;
   private lastTickTime = 0;
   private prePausePhase: MatchPhase | null = null;
+  /** Match starts are rejected until this time (see holdStart) */
+  private startHoldUntil = 0;
   private sequenceNumbers = new Map<StationName, number>();
   private stationStates = new Map<StationName, StationControlState>();
   private dsConnections = new Map<StationName, { ip: string; lastSeen: number }>();
@@ -404,9 +406,20 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /** Briefly block match starts, e.g. while the get-ready announcement plays —
+   *  a countdown started mid-announcement finds the exclusive audio device
+   *  busy and the 3-2-1 clip is silently dropped. */
+  holdStart(ms: number) {
+    this.startHoldUntil = Math.max(this.startHoldUntil, Date.now() + ms);
+  }
+
   startMatch() {
     if (this.phase !== 'created') {
       appWarn(`Cannot start match in phase ${this.phase}`);
+      return;
+    }
+    if (Date.now() < this.startHoldUntil) {
+      appWarn('Match start is held for a moment while the get-ready announcement finishes');
       return;
     }
 

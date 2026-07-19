@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -26,6 +26,7 @@ import {
   sendMatchKickStation,
   sendMatchSetAutoWinner,
   sendPlayGetReady,
+  onPlayGetReady,
   sendStationStartMatch,
   sendStationPauseMatch,
   sendStationResumeMatch,
@@ -210,6 +211,23 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
   const blueStations = joinedStations.filter(s => stationStates[s]?.alliance === 'blue');
   const allReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
 
+  // While the get-ready announcement plays, hold off starting: a countdown
+  // started mid-announcement loses its 3-2-1 audio to the busy field speaker.
+  // The server enforces the same hold; this just makes it visible.
+  const [getReadyHold, setGetReadyHold] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = onPlayGetReady(() => {
+      setGetReadyHold(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setGetReadyHold(false), 3000);
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, []);
+
   return (
     <>
       {/* Participants */}
@@ -291,14 +309,14 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Button variant="outlined" color="info" onClick={sendPlayGetReady}>
+            <Button variant="outlined" color="info" disabled={getReadyHold} onClick={sendPlayGetReady}>
               📢 Get Ready
             </Button>
             <Button
               variant="contained"
               color="success"
               size="large"
-              disabled={!allReady}
+              disabled={!allReady || getReadyHold}
               onClick={sendStationStartMatch}
               sx={{ px: 6, fontWeight: 'bold' }}
             >
@@ -308,6 +326,11 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
               Cancel Match
             </Button>
           </Box>
+          {getReadyHold && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+              Get-ready announcement playing — starting is enabled again in a moment...
+            </Typography>
+          )}
           {!allReady && joinedStations.length > 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
               Waiting for all teams to ready up...

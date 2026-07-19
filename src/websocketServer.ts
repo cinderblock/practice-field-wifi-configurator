@@ -699,8 +699,11 @@ export function setupWebSocket(
       } else if (isMatchSetAutoWinner(data)) {
         matchEngine.setAutoWinner(data.winner);
       } else if (isPlayGetReady(data)) {
-        // "Get ready" attention sound: field speaker + every un-muted display
+        // "Get ready" attention sound: field speaker + every un-muted display.
+        // Hold match starts until the clip clears the exclusive audio device,
+        // or a countdown started mid-announcement loses its 3-2-1 audio.
         matchAudio?.play('getready');
+        matchEngine.holdStart(3000);
         broadcast(data);
       } else if (isStationSelfDisable(data)) {
         matchEngine.stationDisable(data.station, 'self');
