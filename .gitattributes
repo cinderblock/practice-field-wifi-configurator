@@ -1,0 +1,11 @@
+# Force LF line endings on checkout for all text files, on every platform.
+#
+# Prettier enforces LF (endOfLine: lf, its default) and the pre-commit hook
+# runs `prettier --check` — so any file materialized with CRLF fails the hook
+# until rewritten. Windows' core.autocrlf=true converts to CRLF whenever git
+# touches a file (checkout, checkout-index, stash pop, ...), which made
+# commits from Windows trip over formatting repeatedly. The `eol=lf` attribute
+# overrides autocrlf, so checkouts are LF everywhere and the hook stays green.
+#
+# Binary files are unaffected: `text=auto` lets git detect and skip them.
+* text=auto eol=lf
