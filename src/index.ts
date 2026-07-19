@@ -51,14 +51,7 @@ import { handleExternalAccessAuth } from './externalAccessAuth.js';
 import { ExternalAccessStore } from './externalAccessStore.js';
 import { MatchHistoryStore } from './matchHistoryStore.js';
 import { UsageTracker } from './usageTracker.js';
-import {
-  StationName,
-  StationNameList,
-  StationNameRegex,
-  TeamCheckResults,
-  DriveSessionState,
-  defaultSlotToRadio,
-} from './types.js';
+import { StationName, StationNameList, StationNameRegex, TeamCheckResults, DriveSessionState } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -1020,7 +1013,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
         const state = matchEngine.getState();
         const joined = state.stationStates[station]?.joined ?? false;
         if (!joined && !tcpReplyAll && !tcpReplyOptIn.has(station)) return undefined;
-        return state.portToSlot?.[station] ?? defaultSlotToRadio[station];
+        // Alliance-aware slot so a blue-alliance DS is assigned a blue station
+        // (which side of the field it shows), not the physical-port default,
+        // even before the match starts and portToSlot is populated.
+        return matchEngine.slotForStation(station);
       },
     }).then(fms => {
       if (!fms) return;

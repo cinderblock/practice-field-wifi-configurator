@@ -12,6 +12,7 @@ import {
   StationNameList,
   StationNumber,
   StationControlState,
+  defaultSlotToRadio,
 } from './types.js';
 import { appWarn, appError } from './appLogger.js';
 
@@ -129,6 +130,29 @@ export class MatchEngine {
   isDsAttached(station: StationName): boolean {
     const last = this.lastDsHeartbeat.get(station);
     return last !== undefined && Date.now() - last < DS_ATTACHED_TIMEOUT_MS;
+  }
+
+  /** The alliance match slot to advertise to a station's DS — this is the byte
+   *  that tells the DS which side of the field it is on. During an active match
+   *  it is the assigned portToSlot mapping; before the match starts it is
+   *  derived from the alliance the station joined, so a blue-alliance DS is told
+   *  it is on the blue side as soon as it attaches (portToSlot is only populated
+   *  at startMatch — the old 'red1' fallback put every joined DS on red until
+   *  the match began). Falls back to the physical default slot when the station
+   *  has no alliance. */
+  slotForStation(station: StationName): MatchSlot {
+    const assigned = this.portToSlot.get(station);
+    if (assigned) return assigned;
+    const state = this.stationStates.get(station);
+    if (state?.joined && state.alliance) {
+      const peers = StationNameList.filter(s => {
+        const p = this.stationStates.get(s)!;
+        return p.joined && p.alliance === state.alliance;
+      });
+      const position = Math.min(Math.max(peers.indexOf(station), 0) + 1, 3) as StationNumber;
+      return `${state.alliance}${position}` as MatchSlot;
+    }
+    return defaultSlotToRadio[station];
   }
 
   /** Set callback used to determine auto winner from scoring data. */
@@ -926,9 +950,9 @@ export class MatchEngine {
 
     const control = new Control(false, false, 'teleOp'); // disabled, not e-stopped
 
-    // Use portToSlot mapping for the match position byte, falling back to 'red1'
-    // for stations not in a match (e.g. duplicate DS blocking outside of match context)
-    const allianceStation = this.portToSlot.get(station) ?? ('red1' as MatchSlot);
+    // Alliance-aware slot (falls back to the physical default for unjoined
+    // stations, e.g. duplicate DS blocking outside of match context).
+    const allianceStation = this.slotForStation(station);
     const packet = makeDSPacket({
       sequence: seq & 0xffff,
       control,
@@ -979,11 +1003,11 @@ export class MatchEngine {
     // Both are backend-only states that prevent re-enabling.
     const control = new Control(false, state.enabled && !state.eStop && !state.aStop, state.mode);
 
-    // Use the portToSlot mapping for the alliance station byte if available.
-    // This is the critical decoupling: the DS sees the alliance position, not the physical port.
-    // Falls back to 'red1' for out-of-match heartbeats — the position byte doesn't matter
-    // when disabled, but the protocol requires a valid value.
-    const allianceStation = this.portToSlot.get(station) ?? ('red1' as MatchSlot);
+    // Alliance station byte — which side of the field the DS shows. Derived from
+    // the joined alliance before the match starts, then the assigned match slot
+    // once it does. This is the critical decoupling: the DS sees the alliance
+    // position, not the physical port.
+    const allianceStation = this.slotForStation(station);
 
     // Build game data tags — during teleop/endgame, send the auto winner character
     // per REBUILT game rules: 'R' = red's goal inactive first, 'B' = blue's goal inactive first
