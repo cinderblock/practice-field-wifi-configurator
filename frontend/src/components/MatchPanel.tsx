@@ -243,17 +243,16 @@ export function MatchPanel({ station }: { station?: StationName }) {
                     variant={ready ? 'outlined' : 'contained'}
                     color={ready ? 'warning' : 'success'}
                     onClick={() => sendStationReady(station, !ready)}
-                    disabled={!ready && !myState?.dsAttached}
                   >
                     {ready ? 'Not Ready' : 'Ready'}
                   </Button>
                   <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                     Leave
                   </Button>
-                  {!ready && !myState?.dsAttached && (
+                  {!ready && myState?.dsAttached === false && (
                     <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
-                      Waiting for the Driver Station to connect to the field — Ready unlocks once it is talking to the
-                      FMS.
+                      The Driver Station isn't talking to the field yet — you can still ready up, but the robot won't
+                      enable until it connects.
                     </Typography>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
@@ -532,7 +531,6 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
                 variant={ready ? 'outlined' : 'contained'}
                 color={ready ? 'warning' : 'success'}
                 onClick={() => sendStationReady(station, !ready)}
-                disabled={!ready && !myState?.dsAttached}
               >
                 {ready ? 'Not Ready' : 'Ready'}
               </Button>
@@ -555,9 +553,10 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                 Leave
               </Button>
-              {!ready && !myState?.dsAttached && (
+              {!ready && myState?.dsAttached === false && (
                 <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
-                  Waiting for the Driver Station to connect to the field — Ready unlocks once it is talking to the FMS.
+                  The Driver Station isn't talking to the field yet — you can still ready up, but the robot won't enable
+                  until it connects.
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>

@@ -321,12 +321,12 @@ export class MatchEngine {
       appWarn(`Station ${station} is not joined, cannot set ready`);
       return;
     }
-    // A DS that isn't heartbeating won't obey match control — readying it up
-    // would start a match against a dead link (2026-07-17: auto never enabled).
-    if (ready && !this.isDsAttached(station)) {
-      appWarn(`Cannot ready ${station}: Driver Station is not attached to the FMS (no status heartbeats)`);
-      return;
-    }
+    // NOTE: Ready is intentionally NOT gated on isDsAttached(). The
+    // dsAttached signal proved unreliable in the field (2026-07-18: it stayed
+    // false for DSes that were heartbeating fine, because it only stamps when
+    // getStationForTeam resolves) and blocked every team from readying. It is
+    // now advisory only (shown in the UI); revisit gating once the attachment
+    // signal is trustworthy.
     state.ready = ready;
     console.log(`Station ${station} ready: ${ready}`);
     this.broadcast();
