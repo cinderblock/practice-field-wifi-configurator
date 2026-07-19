@@ -93,6 +93,33 @@ hidden` when absent). Verified: video box bounding rect byte-identical
        restores. Harness kept at `%TEMP%\pfms-verify\drive.mjs` +
        `%TEMP%\pfms-fake-backend.mjs`.
 
+- **Perf overhaul (user report: sluggish score animation with 6 robots,
+  2026-07-19)**: root cause was 20-40 full-page re-renders/s — telemetry
+  (per-packet, ~18/s with 6 robots) went through page state, score events
+  broadcast per ball, matchState 4 Hz, plus 6 Smoothie canvases at 60 fps.
+  Fixes: (1) module-level `batteryStore` + `useSyncExternalStore` — battery
+  components subscribe themselves (memoized `BatteryGroup`/`BatteryPanel`
+  taking stable string keys `stationInfoKey`/`matchAlliancesKey`), telemetry
+  now causes ZERO page re-renders, UI coalesced to ~1 Hz with a staleness
+  sweep; (2) `ScoringEngine.broadcast()` coalesces on a 100 ms trailing
+  edge (burst of 30 events → 1 broadcast, verified with the real class);
+  (3) `memo` on AllianceScoreBox/PeriodBreakdown/BatchList/FreeplayGlow,
+  hoisted static chart props; (4) Smoothie `limitFPS={15}`. Measured under
+  stress (18 telemetry/s + 10 scoreState/s + 4 matchState/s): commit rate
+  exactly the 15/s floor (pre-fix ~33/s), 60 fps, 0 ms long tasks
+  (`%TEMP%\pfms-verify\drive7.mjs`).
+- **Cast/display recovery (user report: Chromecast stuck on 0-0 FREE PLAY)**:
+  (1) server now heartbeats `serverInfo` (with `now`) every 10 s to all WS
+  clients — doubles as continuous clock re-sync; (2) client watchdog forces
+  a reconnect after 30 s of socket silence (zombie TCP after Wi-Fi naps
+  never fires onclose) — verified by freezing the harness server without
+  closing: reconnect + fresh state within ~35 s; (3) cast receivers
+  re-register on every reconnect, and — found bug — the public /ws/scores
+  socket had NO message handler, so `castReceiverRegister` from real
+  Chromecasts was silently dropped (admin receiver list/stop/swap never
+  worked from them); the public socket now accepts exactly that one
+  message type.
+
 ## Findings / gotchas
 
 - Scores root (`frontend/src/roots/scores.tsx`) wraps in a dark MUI theme —

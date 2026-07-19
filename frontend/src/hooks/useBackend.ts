@@ -85,6 +85,25 @@ import { Message as RadioMessage } from 'syslog-server';
 
 let ws: WebSocket | null = null;
 let wsConnected = false;
+let lastMessageAt = Date.now();
+
+// Dead-socket watchdog: the server heartbeats serverInfo every 10 s, so a
+// socket silent for 30+ s is dead even if TCP never noticed (Chromecast
+// receivers whose Wi-Fi naps are the classic case — the display freezes on
+// stale scores). Force a close; the onclose handler reconnects and the
+// server replays fresh state.
+const WS_SILENCE_TIMEOUT_MS = 30_000;
+setInterval(() => {
+  if (!ws || !wsConnected) return;
+  if (Date.now() - lastMessageAt > WS_SILENCE_TIMEOUT_MS) {
+    console.warn(`WebSocket silent for ${WS_SILENCE_TIMEOUT_MS / 1000}s — forcing reconnect`);
+    try {
+      ws.close();
+    } catch {
+      // already closing
+    }
+  }
+}, 5_000);
 
 function connect() {
   const schema = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -100,6 +119,7 @@ function connect() {
   const nws = new WebSocket(url);
 
   nws.onmessage = msg => {
+    lastMessageAt = Date.now();
     const parsed = JSON.parse(msg.data);
     if (Array.isArray(parsed)) {
       processHistory(parsed);
@@ -110,6 +130,7 @@ function connect() {
 
   nws.onopen = () => {
     console.log('Connected to backend');
+    lastMessageAt = Date.now();
     wsConnected = true;
     events.dispatchEvent(new CustomEvent('wsStatus', { detail: true }));
   };

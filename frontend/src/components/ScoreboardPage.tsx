@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef, useSyncExternalStore, memo } from 'react';
 import type { ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -7,7 +7,13 @@ import Button from '@mui/material/Button';
 import { TeamAvatar } from './TeamAvatar';
 import SmoothieComponent from 'react-smoothie';
 
-import { useScoreState, useMatchState, useTelemetryCallback, sendCastReceiverRegister } from '../hooks/useBackend';
+import {
+  useScoreState,
+  useMatchState,
+  useTelemetryCallback,
+  useWsConnected,
+  sendCastReceiverRegister,
+} from '../hooks/useBackend';
 import type { Alliance, ScoreBatch, StationName, TelemetryUpdate } from '../../../src/types';
 import { StationNameList } from '../../../src/types';
 import { getAllianceShiftState, getAllianceScoringShifts, getMatchSubPeriod } from '../utils/shiftState';
@@ -213,21 +219,30 @@ export function ScoreboardPage() {
   const left: Alliance = swapped ? 'blue' : 'red';
   const right: Alliance = swapped ? 'red' : 'blue';
 
-  // Battery telemetry — hoisted so one subscription feeds both layouts
-  // (bottom row in normal mode, flanking groups in video mode)
-  const { robots: batteryRobots, teamCounts } = useBatteryRobots(matchState, left);
+  // Feed telemetry into the chart TimeSeries and the module-level battery
+  // store WITHOUT touching page state — the battery components subscribe to
+  // the store themselves, so per-packet telemetry never re-renders the page.
+  useTelemetryCallback(
+    useCallback((entry: TelemetryUpdate) => {
+      handleTelemetryUpdate(entry);
+      if (entry.batteryVoltage !== undefined) batteryStore.note(entry.station, entry.batteryVoltage);
+    }, []),
+  );
 
-  // Register as a cast receiver if running on Chromecast
+  // Register as a cast receiver whenever the socket (re)connects — the server
+  // tracks receivers per-connection, so a reconnected socket must re-register
+  const wsUp = useWsConnected();
+  const swappedRef = useRef(swapped);
+  swappedRef.current = swapped;
   useEffect(() => {
-    if (window.__isCastReceiver) {
-      // Small delay to ensure WebSocket is connected
-      const timer = setTimeout(() => {
-        const name = localStorage.getItem('scoreboard-device-name') || document.title || 'Cast Display';
-        sendCastReceiverRegister(name, swapped);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!window.__isCastReceiver || !wsUp) return;
+    // Small delay so the register lands after the state replay settles
+    const timer = setTimeout(() => {
+      const name = localStorage.getItem('scoreboard-device-name') || document.title || 'Cast Display';
+      sendCastReceiverRegister(name, swappedRef.current);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [wsUp]);
 
   // Re-render every second for time-ago displays and alliance shift timing
   useEffect(() => {
@@ -387,18 +402,12 @@ export function ScoreboardPage() {
   const leftLabel = isMatchMode && !leftInMatch ? 'FREE PLAY' : null;
   const rightLabel = isMatchMode && !rightInMatch ? 'FREE PLAY' : null;
 
-  // Video mode: split battery cards to flank the scores. Robots are sorted
-  // left alliance / unassigned / right alliance, so unassigned ones balance
-  // onto whichever side currently has fewer.
-  const leftBatteryRobots: typeof batteryRobots = [];
-  const rightBatteryRobots: typeof batteryRobots = [];
-  if (videoMode) {
-    for (const r of batteryRobots) {
-      if (r.alliance === left) leftBatteryRobots.push(r);
-      else if (r.alliance === right) rightBatteryRobots.push(r);
-      else (leftBatteryRobots.length <= rightBatteryRobots.length ? leftBatteryRobots : rightBatteryRobots).push(r);
-    }
-  }
+  // Stable primitive keys for the memoized battery components — matchState and
+  // score object identities change several times a second; these strings only
+  // change when the underlying assignments actually change, so the memoized
+  // battery tree skips those re-renders entirely.
+  const stationKey = stationInfoKey(matchState);
+  const matchAlliancesKey = matchAlliances.join(',');
 
   // Match progress bar for the video layouts — overlaid on the video's top edge
   // (rather than a flow strip) so a starting match never reflows the page.
@@ -514,9 +523,10 @@ export function ScoreboardPage() {
                 side="left"
               />
               <BatteryGroup
-                robots={leftBatteryRobots}
-                teamCounts={teamCounts}
-                matchAlliances={matchAlliances}
+                side="left"
+                stationKey={stationKey}
+                leftAlliance={left}
+                matchAlliancesKey={matchAlliancesKey}
                 vertical
               />
             </Box>
@@ -604,9 +614,10 @@ export function ScoreboardPage() {
                 side="right"
               />
               <BatteryGroup
-                robots={rightBatteryRobots}
-                teamCounts={teamCounts}
-                matchAlliances={matchAlliances}
+                side="right"
+                stationKey={stationKey}
+                leftAlliance={left}
+                matchAlliancesKey={matchAlliancesKey}
                 vertical
               />
             </Box>
@@ -616,9 +627,10 @@ export function ScoreboardPage() {
             {/* Landscape layout — compact header on top: batteries flank the scores, timer in the middle */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2, py: 1 }}>
               <BatteryGroup
-                robots={leftBatteryRobots}
-                teamCounts={teamCounts}
-                matchAlliances={matchAlliances}
+                side="left"
+                stationKey={stationKey}
+                leftAlliance={left}
+                matchAlliancesKey={matchAlliancesKey}
                 align="right"
               />
               <AllianceScoreBox
@@ -676,9 +688,10 @@ export function ScoreboardPage() {
                 side="right"
               />
               <BatteryGroup
-                robots={rightBatteryRobots}
-                teamCounts={teamCounts}
-                matchAlliances={matchAlliances}
+                side="right"
+                stationKey={stationKey}
+                leftAlliance={left}
+                matchAlliancesKey={matchAlliancesKey}
                 align="left"
               />
             </Box>
@@ -827,7 +840,7 @@ export function ScoreboardPage() {
           </Box>
 
           {/* Battery voltage for connected robots */}
-          <BatteryPanel robots={batteryRobots} teamCounts={teamCounts} matchAlliances={matchAlliances} />
+          <BatteryPanel stationKey={stationKey} leftAlliance={left} matchAlliancesKey={matchAlliancesKey} />
         </>
       )}
     </Box>
@@ -838,7 +851,7 @@ export function ScoreboardPage() {
 
 const GLOW_RGB = { red: '239, 83, 80', blue: '66, 165, 245' } as const;
 
-function FreeplayGlow({
+function FreeplayGlowImpl({
   leftScore,
   rightScore,
   leftAlliance,
@@ -931,72 +944,128 @@ interface BatteryInfo {
   lastSeen: number;
 }
 
-/** Track per-station battery telemetry and build the sorted robot display list. */
-function useBatteryRobots(matchState: ReturnType<typeof useMatchState>, leftAlliance: Alliance) {
-  const [batteries, setBatteries] = useState<Partial<Record<StationName, BatteryInfo>>>({});
+interface BatteryRobot {
+  station: StationName;
+  teamNumber: number | null;
+  alliance: Alliance | null;
+  ssid: string | null;
+  battery: BatteryInfo;
+}
 
-  // Populate TimeSeries (for charts) and track numeric values
-  useTelemetryCallback(
-    useCallback((entry: TelemetryUpdate) => {
-      handleTelemetryUpdate(entry);
-      if (entry.batteryVoltage !== undefined) {
-        setBatteries(prev => ({
-          ...prev,
-          [entry.station]: {
-            current: entry.batteryVoltage,
-            lastSeen: Date.now(),
-          },
-        }));
-      }
-    }, []),
-  );
+// Module-level battery store. With six robots, telemetry arrives many times a
+// second, and routing it through page state re-rendered the entire scoreboard
+// per packet. Battery components subscribe here via useSyncExternalStore and
+// re-render at most once per UI interval; the rest of the page never sees the
+// traffic.
+const BATTERY_UI_INTERVAL_MS = 900;
+const BATTERY_STALE_MS = 15_000;
+const batteryStore = {
+  data: {} as Partial<Record<StationName, BatteryInfo>>,
+  version: 0,
+  listeners: new Set<() => void>(),
+  bumpTimer: null as ReturnType<typeof setTimeout> | null,
+  note(station: StationName, voltage: number) {
+    batteryStore.data[station] = { current: voltage, lastSeen: Date.now() };
+    if (batteryStore.bumpTimer) return;
+    batteryStore.bumpTimer = setTimeout(() => {
+      batteryStore.bumpTimer = null;
+      batteryStore.bump();
+    }, BATTERY_UI_INTERVAL_MS);
+  },
+  bump() {
+    batteryStore.version++;
+    for (const listener of batteryStore.listeners) listener();
+  },
+  subscribe(listener: () => void) {
+    batteryStore.listeners.add(listener);
+    return () => batteryStore.listeners.delete(listener);
+  },
+  getVersion() {
+    return batteryStore.version;
+  },
+};
 
-  // Build the list of robots to display (stations with recent telemetry)
-  const robots = useMemo(() => {
+// Staleness sweep — retire cards for robots that stopped reporting even when
+// no new telemetry arrives to trigger a bump
+setInterval(() => {
+  const now = Date.now();
+  for (const station of StationNameList) {
+    const info = batteryStore.data[station];
+    if (info && now - info.lastSeen > BATTERY_STALE_MS) {
+      delete batteryStore.data[station];
+      if (!batteryStore.bumpTimer) batteryStore.bump();
+    }
+  }
+}, 5_000);
+
+/** Per-station identity info the battery list needs from match state, encoded
+ *  as a stable string so the 4 Hz matchState ticks don't churn memo/prop
+ *  identities in the battery components. */
+function stationInfoKey(matchState: ReturnType<typeof useMatchState>): string {
+  return StationNameList.map(s => {
+    const st = matchState?.stationStates?.[s];
+    return `${s}:${st?.teamNumber ?? ''}:${st?.alliance ?? ''}`;
+  }).join('|');
+}
+
+/** Sorted battery robot list + duplicate-team counts, driven by the battery
+ *  store (updates at most ~1 Hz). */
+function useBatteryRobots(stationKey: string, leftAlliance: Alliance) {
+  const version = useSyncExternalStore(batteryStore.subscribe, batteryStore.getVersion);
+
+  return useMemo(() => {
+    const infoByStation = new Map<string, { teamNumber: number | null; alliance: Alliance | null }>();
+    for (const part of stationKey.split('|')) {
+      const [station, team, alliance] = part.split(':');
+      infoByStation.set(station, {
+        teamNumber: team ? Number(team) : null,
+        alliance: (alliance || null) as Alliance | null,
+      });
+    }
+
     const now = Date.now();
-    const result: Array<{
-      station: StationName;
-      teamNumber: number | null;
-      alliance: Alliance | null;
-      ssid: string | null;
-      battery: BatteryInfo;
-    }> = [];
-
+    const robots: BatteryRobot[] = [];
     for (const station of StationNameList) {
-      const batt = batteries[station];
-      if (!batt || now - batt.lastSeen > 15_000) continue;
-
-      // Get team number and alliance from match state
-      const stationState = matchState?.stationStates?.[station];
-      const teamNumber = stationState?.teamNumber ?? null;
-      const alliance = stationState?.alliance ?? null;
-
-      result.push({ station, teamNumber, alliance, ssid: null, battery: batt });
+      const batt = batteryStore.data[station];
+      if (!batt || now - batt.lastSeen > BATTERY_STALE_MS) continue;
+      const info = infoByStation.get(station);
+      robots.push({
+        station,
+        teamNumber: info?.teamNumber ?? null,
+        alliance: info?.alliance ?? null,
+        ssid: null,
+        battery: batt,
+      });
     }
 
     // Sort: left alliance, then unassigned in the middle, then right alliance
     const rightAlliance = leftAlliance === 'red' ? 'blue' : 'red';
-    result.sort((a, b) => {
+    robots.sort((a, b) => {
       const order = (ally: Alliance | null) => (ally === leftAlliance ? 0 : ally === rightAlliance ? 2 : 1);
       return order(a.alliance) - order(b.alliance);
     });
 
-    return result;
-  }, [batteries, matchState, leftAlliance]);
-
-  // Detect duplicate team numbers to show station name as disambiguator
-  const teamCounts = useMemo(() => {
-    const counts = new Map<number, number>();
+    // Detect duplicate team numbers to show station name as disambiguator
+    const teamCounts = new Map<number, number>();
     for (const r of robots) {
-      if (r.teamNumber) counts.set(r.teamNumber, (counts.get(r.teamNumber) ?? 0) + 1);
+      if (r.teamNumber) teamCounts.set(r.teamNumber, (teamCounts.get(r.teamNumber) ?? 0) + 1);
     }
-    return counts;
-  }, [robots]);
 
-  return { robots, teamCounts };
+    return { robots, teamCounts };
+  }, [version, stationKey, leftAlliance]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-type BatteryRobot = ReturnType<typeof useBatteryRobots>['robots'][number];
+// Static chart options hoisted so each render doesn't rebuild them
+const BATTERY_CHART_GRID = {
+  borderVisible: false,
+  fillStyle: 'transparent',
+  strokeStyle: 'rgba(255,255,255,0.05)',
+  verticalSections: 1,
+  millisPerLine: 0,
+};
+const BATTERY_CHART_LABELS = { disabled: true };
+const BATTERY_CHART_TITLE = { text: '' };
+const emptyChartLabel = () => '';
 
 /** Single robot battery card — voltage chart with team/voltage overlay. */
 function BatteryCard({
@@ -1021,6 +1090,23 @@ function BatteryCard({
   const ts = stationTimeSeries[robot.station];
   const minFloor = batteryMinState[robot.station]?.floor;
   const chartHeight = compact ? 40 : 52;
+
+  const series = useMemo(
+    () => [
+      {
+        data: ts.batteryVoltage,
+        strokeStyle: color,
+        lineWidth: 1.5,
+      },
+      {
+        data: ts.batteryMinVoltage,
+        strokeStyle: 'rgba(244, 67, 54, 0.6)',
+        fillStyle: 'rgba(244, 67, 54, 0.08)',
+        lineWidth: 1,
+      },
+    ],
+    [ts, color],
+  );
 
   return (
     <Box
@@ -1093,53 +1179,60 @@ function BatteryCard({
           millisPerPixel={200}
           minValue={5}
           maxValue={14}
-          grid={{
-            borderVisible: false,
-            fillStyle: 'transparent',
-            strokeStyle: 'rgba(255,255,255,0.05)',
-            verticalSections: 1,
-            millisPerLine: 0,
-          }}
-          labels={{ disabled: true }}
-          title={{ text: '' }}
-          yMinFormatter={() => ''}
-          yMaxFormatter={() => ''}
-          yIntermediateFormatter={() => ''}
-          series={[
-            {
-              data: ts.batteryVoltage,
-              strokeStyle: color,
-              lineWidth: 1.5,
-            },
-            {
-              data: ts.batteryMinVoltage,
-              strokeStyle: 'rgba(244, 67, 54, 0.6)',
-              fillStyle: 'rgba(244, 67, 54, 0.08)',
-              lineWidth: 1,
-            },
-          ]}
+          limitFPS={15}
+          grid={BATTERY_CHART_GRID}
+          labels={BATTERY_CHART_LABELS}
+          title={BATTERY_CHART_TITLE}
+          yMinFormatter={emptyChartLabel}
+          yMaxFormatter={emptyChartLabel}
+          yIntermediateFormatter={emptyChartLabel}
+          series={series}
         />
       </Box>
     </Box>
   );
 }
 
-/** Flanking battery group for video mode. Horizontal rows render as flex
- *  spacers even when empty so the score boxes stay centered; `vertical`
- *  stacks the cards for the square layout's side bars. */
-function BatteryGroup({
-  robots,
-  teamCounts,
-  matchAlliances,
+/** Split the sorted robot list into left/right flanks: alliance robots go to
+ *  their side, unassigned ones balance onto whichever has fewer. Deterministic,
+ *  so both flanking groups compute the same split independently. */
+function splitBatteryRobots(robots: BatteryRobot[], leftAlliance: Alliance): [BatteryRobot[], BatteryRobot[]] {
+  const rightAlliance = leftAlliance === 'red' ? 'blue' : 'red';
+  const leftRobots: BatteryRobot[] = [];
+  const rightRobots: BatteryRobot[] = [];
+  for (const r of robots) {
+    if (r.alliance === leftAlliance) leftRobots.push(r);
+    else if (r.alliance === rightAlliance) rightRobots.push(r);
+    else (leftRobots.length <= rightRobots.length ? leftRobots : rightRobots).push(r);
+  }
+  return [leftRobots, rightRobots];
+}
+
+/** Flanking battery group for video mode. Subscribes to the battery store
+ *  itself (memoized — the page's fast-ticking renders don't reach it).
+ *  Horizontal rows render as flex spacers even when empty so the score boxes
+ *  stay centered; `vertical` stacks the cards for the square layout's side
+ *  bars. */
+const BatteryGroup = memo(function BatteryGroup({
+  side,
+  stationKey,
+  leftAlliance,
+  matchAlliancesKey,
   align,
   vertical,
 }: {
-  robots: BatteryRobot[];
-  teamCounts: Map<number, number>;
-  matchAlliances: Alliance[];
+  side: 'left' | 'right';
+  stationKey: string;
+  leftAlliance: Alliance;
+  matchAlliancesKey: string;
   align?: 'left' | 'right';
   vertical?: boolean;
 }) {
+  const { robots, teamCounts } = useBatteryRobots(stationKey, leftAlliance);
+  const [leftRobots, rightRobots] = splitBatteryRobots(robots, leftAlliance);
+  const mine = side === 'left' ? leftRobots : rightRobots;
+  const matchAlliances = matchAlliancesKey ? (matchAlliancesKey.split(',') as Alliance[]) : [];
+
   return (
     <Box
       sx={
@@ -1156,7 +1249,7 @@ function BatteryGroup({
             }
       }
     >
-      {robots.map(robot => (
+      {mine.map(robot => (
         <BatteryCard
           key={robot.station}
           robot={robot}
@@ -1167,17 +1260,21 @@ function BatteryGroup({
       ))}
     </Box>
   );
-}
+});
 
-function BatteryPanel({
-  robots,
-  teamCounts,
-  matchAlliances,
+/** Bottom battery row for the normal scoreboard. Subscribes to the battery
+ *  store itself (memoized — see BatteryGroup). */
+const BatteryPanel = memo(function BatteryPanel({
+  stationKey,
+  leftAlliance,
+  matchAlliancesKey,
 }: {
-  robots: BatteryRobot[];
-  teamCounts: Map<number, number>;
-  matchAlliances: Alliance[];
+  stationKey: string;
+  leftAlliance: Alliance;
+  matchAlliancesKey: string;
 }) {
+  const { robots, teamCounts } = useBatteryRobots(stationKey, leftAlliance);
+  const matchAlliances = matchAlliancesKey ? (matchAlliancesKey.split(',') as Alliance[]) : [];
   if (robots.length === 0) return null;
 
   return (
@@ -1201,7 +1298,7 @@ function BatteryPanel({
       ))}
     </Box>
   );
-}
+});
 
 // ── Video Mode ────────────────────────────────────────────────────────
 
@@ -1692,7 +1789,7 @@ function VideoSourceConfig({
 /** Ordered sub-periods for determining which are "in the future". */
 const SUB_PERIOD_ORDER: MatchSubPeriod[] = ['auto', 'transition', 'shift1', 'shift2', 'shift3', 'shift4', 'endgame'];
 
-function PeriodBreakdown({
+function PeriodBreakdownImpl({
   alliance,
   breakdown,
   autoWinner,
@@ -1774,7 +1871,7 @@ function PeriodBreakdown({
 
 // ── Alliance Score Box ────────────────────────────────────────────────
 
-function AllianceScoreBox({
+function AllianceScoreBoxImpl({
   alliance,
   total,
   active,
@@ -2093,7 +2190,7 @@ function formatTimeAgo(ts: number): string {
   return `${Math.round(s / 3600)}h ago`;
 }
 
-function BatchList({ batches, color, align }: { batches: ScoreBatch[]; color: string; align: 'left' | 'right' }) {
+function BatchListImpl({ batches, color, align }: { batches: ScoreBatch[]; color: string; align: 'left' | 'right' }) {
   if (batches.length === 0) return null;
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -2119,3 +2216,11 @@ function BatchList({ batches, color, align }: { batches: ScoreBatch[]; color: st
     </Box>
   );
 }
+
+// Memoized wrappers: these are pure displays of primitive/stable props, so
+// they skip the page's fast-ticking re-renders (4 Hz match state, score
+// bursts) and only re-render when their own values actually change.
+const AllianceScoreBox = memo(AllianceScoreBoxImpl);
+const PeriodBreakdown = memo(PeriodBreakdownImpl);
+const BatchList = memo(BatchListImpl);
+const FreeplayGlow = memo(FreeplayGlowImpl);

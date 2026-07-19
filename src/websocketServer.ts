@@ -265,6 +265,27 @@ export function setupWebSocket(
     });
   }
 
+  // Periodic serverInfo heartbeat — keeps every client's clock-offset estimate
+  // fresh and gives them a liveness signal: a socket silent for much longer
+  // than this is dead even if TCP never noticed (e.g. a Chromecast whose Wi-Fi
+  // napped without a close), and the client watchdog forces a reconnect.
+  setInterval(() => {
+    const msg = JSON.stringify({
+      type: 'serverInfo',
+      startTime: serverStartTime,
+      version: serverVersion,
+      now: Date.now(),
+    } satisfies ServerInfo);
+    wss.clients.forEach(client => {
+      if (client.readyState !== WebSocket.OPEN) return;
+      try {
+        client.send(msg);
+      } catch {
+        // Bad socket — its error handler cleans up
+      }
+    });
+  }, 10_000);
+
   function buildRouteState(clientIp: string): RoutePreferenceState {
     return {
       type: 'routePreferenceState',
@@ -375,7 +396,28 @@ export function setupWebSocket(
           now: Date.now(),
         } satisfies ServerInfo),
       );
-      ws.on('close', () => publicConnections.delete(ws));
+      // Cast receivers (Chromecast TVs) load the public scores page, so their
+      // registration arrives on this socket. Accept ONLY that message here —
+      // everything else on the read-only socket stays ignored.
+      ws.on('message', (raw: Buffer) => {
+        try {
+          const data: unknown = JSON.parse(raw.toString());
+          if (isCastReceiverRegister(data)) {
+            const id = `cast-${nextReceiverId++}`;
+            castReceivers.set(ws, { id, name: data.name, swapped: data.swapped });
+            ws.send(JSON.stringify({ type: 'castReceiverId', id }));
+            broadcastReceiverList();
+          }
+        } catch {
+          // Malformed message on the public socket — ignore
+        }
+      });
+      ws.on('close', () => {
+        publicConnections.delete(ws);
+        if (castReceivers.delete(ws)) {
+          broadcastReceiverList();
+        }
+      });
       ws.on('error', err => {
         console.error('Public WebSocket error:', err.message);
         ws.terminate();

@@ -764,15 +764,27 @@ export class ScoringEngine {
     this.events = this.events.filter(e => this.matchAlliances.has(e.awardedTo) || e.timestamp > cutoff);
   }
 
+  /** Broadcasts are coalesced on a trailing edge: bursts of scoring events
+   *  (multiple sensors, rapid balls) collapse into at most one state
+   *  broadcast per window, cutting WebSocket traffic and client re-renders
+   *  during heavy scoring. State is captured when the timer fires, so the
+   *  final broadcast always reflects the latest events. */
+  private static readonly BROADCAST_COALESCE_MS = 100;
+  private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
   private broadcast(): void {
     if (this.suppressBroadcast) return;
-    const state = this.getState();
-    for (const listener of this.listeners) {
-      try {
-        listener(state);
-      } catch (err) {
-        console.error('Error in scoring state listener:', err);
+    if (this.broadcastTimer) return; // already scheduled — it will pick up this change
+    this.broadcastTimer = setTimeout(() => {
+      this.broadcastTimer = null;
+      const state = this.getState();
+      for (const listener of this.listeners) {
+        try {
+          listener(state);
+        } catch (err) {
+          console.error('Error in scoring state listener:', err);
+        }
       }
-    }
+    }, ScoringEngine.BROADCAST_COALESCE_MS);
   }
 }
