@@ -81,6 +81,9 @@ function renderExplainer(w: Window) {
     'button</b>. Press it if your robot misbehaves during auto &mdash; it stops the robot for the rest ' +
     'of auto and re&#8209;enables it automatically for teleop. (E&#8209;Stop stays on the station ' +
     'page.)</li>' +
+    '<li style="margin-bottom:10px;">Already know your auto won&rsquo;t run? <b>Arm A&#8209;Stop now</b> ' +
+    'from the station page &mdash; your robot sits out auto and enables for teleop. You can cancel it ' +
+    'any time before the countdown.</li>' +
     '<li style="margin-bottom:10px;">After auto: a short pause, then <b>teleop</b> &mdash; drive!</li>' +
     '</ul>' +
     '<p style="color:#999;margin:14px 0 0;">Keep this window open &mdash; it closes itself when auto ends.</p>';

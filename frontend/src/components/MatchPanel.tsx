@@ -17,6 +17,7 @@ import {
   sendStationSelfDisable,
   sendStationSelfEStop,
   sendStationSelfAStop,
+  sendStationClearAStop,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
 
@@ -249,6 +250,28 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                     Leave
                   </Button>
+                  {myState?.aStop ? (
+                    <>
+                      <Chip label="A-Stop armed — robot sits out auto" size="small" color="warning" />
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        size="small"
+                        onClick={() => sendStationClearAStop(station)}
+                      >
+                        Cancel A-Stop
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      size="small"
+                      onClick={() => sendStationSelfAStop(station)}
+                    >
+                      A-Stop
+                    </Button>
+                  )}
                   {!ready && myState?.dsAttached === false && (
                     <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
                       The Driver Station isn't talking to the field yet — you can still ready up, but the robot won't
@@ -553,6 +576,23 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                 Leave
               </Button>
+              {myState?.aStop ? (
+                <>
+                  <Chip label="A-Stop armed — robot sits out auto" size="small" color="warning" />
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    size="small"
+                    onClick={() => sendStationClearAStop(station)}
+                  >
+                    Cancel A-Stop
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outlined" color="warning" size="small" onClick={() => sendStationSelfAStop(station)}>
+                  A-Stop
+                </Button>
+              )}
               {!ready && myState?.dsAttached === false && (
                 <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
                   The Driver Station isn't talking to the field yet — you can still ready up, but the robot won't enable

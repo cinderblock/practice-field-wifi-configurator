@@ -96,7 +96,7 @@ The match system is self-service: stations join/leave/ready themselves, and the 
 Both are latched **backend-only** states — the FMS never sends the e-stop or a-stop bit to the DS, only a disable packet — so a station's DS can never get stuck in a hardware-latched stop from an FMS action.
 
 - **E-Stop** (`stationSelfEStop` / admin) — emergency stop for the rest of the match. Requires a human to clear (`adminClearEStop`); matches ended by e-stop never auto-clear.
-- **A-Stop** (`stationSelfAStop`) — autonomous stop. Only accepted during `countdown`, `auto`, or a pause taken during auto; stops the robot for the remainder of auto and **auto-releases when teleop begins**. No clear action needed. The DS→FMS status byte's A-Stop bit (`0x40`) is also honored, but only while an A-Stop is still meaningful, so a DS asserting the bit into teleop cannot keep the station down.
+- **A-Stop** (`stationSelfAStop`) — autonomous stop. Accepted from match setup (`created`, joined stations only) through `countdown`, `auto`, and a pause taken during auto; stops the robot for the remainder of auto and **auto-releases when teleop begins**. No clear action needed after auto starts, but a pre-armed A-Stop can be cancelled (`stationClearAStop`) until the countdown begins — after that it latches, matching official FMS. Pre-armed A-Stops are dropped if the station leaves/is kicked or the match is cancelled. The DS→FMS status byte's A-Stop bit (`0x40`) is also honored, but only while an A-Stop is still meaningful, so a DS asserting the bit into teleop cannot keep the station down.
 
 ### Match Audio
 

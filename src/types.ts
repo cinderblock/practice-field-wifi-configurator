@@ -713,6 +713,14 @@ export function isStationSelfAStop(msg: unknown): msg is StationSelfAStop {
   return m.type === 'stationSelfAStop' && StationNameRegex.test(m.station);
 }
 
+/** Cancel a pre-armed A-Stop (only honored during match setup). */
+export type StationClearAStop = { type: 'stationClearAStop'; station: StationName };
+export function isStationClearAStop(msg: unknown): msg is StationClearAStop {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationClearAStop;
+  return m.type === 'stationClearAStop' && StationNameRegex.test(m.station);
+}
+
 export type MatchClear = { type: 'matchClear' };
 export function isMatchClear(msg: unknown): msg is MatchClear {
   if (typeof msg !== 'object' || !msg) return false;

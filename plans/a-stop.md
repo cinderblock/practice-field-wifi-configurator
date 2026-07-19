@@ -74,6 +74,14 @@ The new A-Stop DS-report path has no such race: we latch only on
       (bandwidth warning, WPA fallback, match history, usage tracking, A-Stop),
       each commit built as a self-consistent tree so lefthook never saw a
       partially-staged file.
+- [x] Deployed to steamboat (1f562c9 → 9b4594d, incl. dropping the redundant
+      disable echo in dsReportedStatus).
+- [x] Follow-up: pre-match A-Stop arming — `canAStop()` accepts `created`
+      (joined stations only), `startMatch` preserves pre-armed A-Stops for
+      joined stations, new `stationClearAStop` lets a team cancel until the
+      countdown begins (latched after), cleared on leave/kick/cancelMatch.
+      UI: arm/cancel button + "A-Stop armed" chip in both MatchPanel created
+      blocks.
 
 ## Gotchas / notes
 

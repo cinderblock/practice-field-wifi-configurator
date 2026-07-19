@@ -200,6 +200,7 @@ export class MatchEngine {
       state.ready = false;
       state.alliance = null;
       state.matchSlot = null;
+      state.aStop = false;
     }
     this.phase = 'idle';
     console.log('Match cancelled');
@@ -245,6 +246,7 @@ export class MatchEngine {
     state.ready = false;
     state.alliance = null;
     state.matchSlot = null;
+    state.aStop = false;
     console.log(`Station ${station} kicked from match`);
     this.broadcast();
   }
@@ -323,6 +325,7 @@ export class MatchEngine {
     state.ready = false;
     state.alliance = null;
     state.matchSlot = null;
+    state.aStop = false;
     this.portToSlot.delete(station);
     console.log(`Station ${station} left match${wasMatchActive ? ' (mid-match)' : ''}`);
 
@@ -447,7 +450,9 @@ export class MatchEngine {
       state.teamNumber = teamNumber;
       state.enabled = false;
       state.eStop = false;
-      state.aStop = false;
+      // Keep pre-armed A-Stops for participating stations — teams that know
+      // their auto won't run can A-Stop during match setup.
+      if (!state.joined) state.aStop = false;
       state.mode = joinedStations.includes(station) ? (effectiveAutoDuration > 0 ? 'auto' : 'teleOp') : 'teleOp';
     }
 
@@ -519,6 +524,7 @@ export class MatchEngine {
     this.phase = this.prePausePhase ?? 'teleop';
     this.prePausePhase = null;
     this.enableParticipating(this.phase === 'auto' ? 'auto' : 'teleOp');
+    this.sendPacketsToAll();
     this.lastTickTime = Date.now();
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     console.log(`Match ${this.matchNumber} resumed (phase: ${this.phase})`);
@@ -576,28 +582,52 @@ export class MatchEngine {
     this.broadcast();
   }
 
-  /** True when an A-Stop request is currently meaningful: before or during the
-   *  autonomous period (including a pause taken during auto). */
+  /** True when an A-Stop request is currently meaningful: any time before or
+   *  during the autonomous period (including match setup and a pause taken
+   *  during auto). */
   private canAStop(): boolean {
     return (
-      this.phase === 'countdown' || this.phase === 'auto' || (this.phase === 'paused' && this.prePausePhase === 'auto')
+      this.phase === 'created' ||
+      this.phase === 'countdown' ||
+      this.phase === 'auto' ||
+      (this.phase === 'paused' && this.prePausePhase === 'auto')
     );
   }
 
   /** A-Stop: stop the robot for the remainder of the autonomous period.
-   *  Automatically released when teleop starts. Like e-stop, this is a
-   *  backend-only state — the DS just sees disable packets. */
+   *  Can be armed as early as match setup (for teams that know their auto
+   *  won't run). Automatically released when teleop starts. Like e-stop,
+   *  this is a backend-only state — the DS just sees disable packets. */
   stationAStop(station: StationName) {
     if (!this.canAStop()) {
       appWarn(`A-Stop ignored for ${station} in phase ${this.phase} — only available before/during auto`);
       return;
     }
     const state = this.stationStates.get(station)!;
+    if (!state.joined) {
+      appWarn(`A-Stop ignored for ${station} — station has not joined the match`);
+      return;
+    }
     if (state.aStop) return;
     state.aStop = true;
     state.enabled = false;
     console.log(`A-Stop: ${station}`);
     this.sendDSPacket(station);
+    this.broadcast();
+  }
+
+  /** Cancel a pre-armed A-Stop. Only allowed during match setup — once the
+   *  countdown begins, A-Stop latches for the rest of auto (official FMS
+   *  behavior). */
+  stationClearAStop(station: StationName) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot cancel A-Stop for ${station} in phase ${this.phase} — latched once the match starts`);
+      return;
+    }
+    const state = this.stationStates.get(station)!;
+    if (!state.aStop) return;
+    state.aStop = false;
+    console.log(`A-Stop cancelled: ${station}`);
     this.broadcast();
   }
 
@@ -627,7 +657,7 @@ export class MatchEngine {
       state.enabled = false;
       console.log(`DS e-stop reported: ${station}`);
       changed = true;
-    } else if (dsAStop && !state.aStop && this.canAStop()) {
+    } else if (dsAStop && !state.aStop && state.joined && this.canAStop()) {
       state.aStop = true;
       state.enabled = false;
       console.log(`DS a-stop reported: ${station}`);
@@ -775,11 +805,13 @@ export class MatchEngine {
           this.phase = 'teleop';
           this.remainingTime = this.config.teleopDuration;
           this.enableParticipating('teleOp');
+          this.sendPacketsToAll();
           console.log('Teleop period started (auto skipped)');
         } else {
           this.phase = 'auto';
           this.remainingTime = this.config.autoDuration;
           this.enableParticipating('auto');
+          this.sendPacketsToAll();
           console.log('Autonomous period started');
         }
         break;
@@ -791,6 +823,7 @@ export class MatchEngine {
           this.phase = 'autoPause';
           this.remainingTime = this.config.pauseDuration;
           this.disableAll();
+          this.sendPacketsToAll();
 
           // If awaiting manual winner selection, freeze the countdown
           if (this.config.autoWinner === 'pause' && !this.autoWinnerAlliance) {
@@ -805,6 +838,7 @@ export class MatchEngine {
           this.phase = 'teleop';
           this.remainingTime = this.config.teleopDuration;
           this.enableParticipating('teleOp');
+          this.sendPacketsToAll();
           console.log('Teleop period started (pause skipped)');
         }
         break;
@@ -816,6 +850,7 @@ export class MatchEngine {
         this.phase = 'teleop';
         this.remainingTime = this.config.teleopDuration;
         this.enableParticipating('teleOp');
+        this.sendPacketsToAll();
         console.log('Teleop period started');
         break;
 
