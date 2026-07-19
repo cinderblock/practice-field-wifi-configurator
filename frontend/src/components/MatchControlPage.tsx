@@ -25,6 +25,7 @@ import {
   sendMatchSwapStation,
   sendMatchKickStation,
   sendMatchSetAutoWinner,
+  sendPlayGetReady,
   sendStationStartMatch,
   sendStationPauseMatch,
   sendStationResumeMatch,
@@ -289,7 +290,10 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
       {/* Start / Cancel controls */}
       <Card>
         <CardContent>
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button variant="outlined" color="info" onClick={sendPlayGetReady}>
+              📢 Get Ready
+            </Button>
             <Button
               variant="contained"
               color="success"

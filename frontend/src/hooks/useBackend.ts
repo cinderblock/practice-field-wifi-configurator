@@ -36,6 +36,7 @@ import {
   isCastReceiverList,
   isCastReceiverSwap,
   isCastReceiverMute,
+  isPlayGetReady,
   isSupportState,
   isSupportChatIncoming,
   isAdminAuthResult,
@@ -60,6 +61,7 @@ import {
   CastReceiverRegister,
   CastReceiverSwap,
   CastReceiverMute,
+  PlayGetReady,
   StopCast,
   RoutePreferenceState,
   RobotTestState,
@@ -616,6 +618,11 @@ function receiveMessage(detail: Message) {
 
   if (isCastReceiverMute(detail)) {
     handleCastReceiverMute(detail);
+    return;
+  }
+
+  if (isPlayGetReady(detail)) {
+    events.dispatchEvent(new CustomEvent('playGetReady'));
     return;
   }
 
@@ -1367,6 +1374,18 @@ export function sendCastReceiverSwap(receiverId: string, swapped: boolean) {
 
 export function sendCastReceiverMute(receiverId: string, muted: boolean) {
   ws?.send(JSON.stringify({ type: 'castReceiverMute', receiverId, muted } satisfies CastReceiverMute));
+}
+
+/** Ask the server to play the "get ready" attention sound everywhere. */
+export function sendPlayGetReady() {
+  ws?.send(JSON.stringify({ type: 'playGetReady' } satisfies PlayGetReady));
+}
+
+/** Subscribe to the server-broadcast "get ready" signal. Returns unsubscribe. */
+export function onPlayGetReady(fn: () => void): () => void {
+  const handler = () => fn();
+  events.addEventListener('playGetReady', handler);
+  return () => events.removeEventListener('playGetReady', handler);
 }
 
 export function sendCastReceiverRegister(name: string, swapped: boolean, muted: boolean) {

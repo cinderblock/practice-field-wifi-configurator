@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { MatchPhase, MatchEndReason } from '../../../src/types';
-import { useMatchState } from './useBackend';
+import { useMatchState, onPlayGetReady } from './useBackend';
 
 type SoundName =
   | 'start'
@@ -11,7 +11,8 @@ type SoundName =
   | 'countdown1'
   | 'countdown2'
   | 'countdown3'
-  | 'countdown4';
+  | 'countdown4'
+  | 'getready';
 
 const COUNTDOWN_NAMES = ['countdown1', 'countdown2', 'countdown3', 'countdown4'] as const;
 
@@ -29,7 +30,7 @@ function countdownVariant(matchId: string | undefined): SoundName {
  * Returns null for sounds that fail to load (e.g. missing files).
  */
 const sounds: Record<SoundName, HTMLAudioElement> = (() => {
-  const names: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', ...COUNTDOWN_NAMES];
+  const names: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'getready', ...COUNTDOWN_NAMES];
   const map = {} as Record<SoundName, HTMLAudioElement>;
   for (const name of names) {
     const el = new Audio(`/sounds/${name}.wav`);
@@ -118,6 +119,10 @@ function getSoundForTransition(
  */
 export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEndReason, matchId?: string): void {
   const prevPhaseRef = useRef<MatchPhase>('idle');
+
+  // Server-broadcast "get ready" attention sound. Subscribed only while this
+  // hook is mounted, so a muted display (bridge unmounted) stays silent.
+  useEffect(() => onPlayGetReady(() => play('getready')), []);
 
   useEffect(() => {
     if (phase === undefined) return;

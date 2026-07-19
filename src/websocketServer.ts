@@ -28,6 +28,7 @@ import {
   isCastReceiverRegister,
   isCastReceiverSwap,
   isCastReceiverMute,
+  isPlayGetReady,
   isRadioConfigureRequest,
   isRemoveSavedTeam,
   isSaveSavedTeam,
@@ -237,7 +238,7 @@ export function setupWebSocket(
   const publicConnections = new Set<WebSocket>();
 
   /** Message types safe to send to public (unauthenticated) connections. */
-  const PUBLIC_SAFE_TYPES = new Set(['scoreState', 'matchState', 'telemetry']);
+  const PUBLIC_SAFE_TYPES = new Set(['scoreState', 'matchState', 'telemetry', 'playGetReady']);
 
   /** Track which WebSocket connections are in which chat sessions */
   const wsToChatSession = new Map<WebSocket, string>();
@@ -697,6 +698,10 @@ export function setupWebSocket(
         matchEngine.kickStation(data.station);
       } else if (isMatchSetAutoWinner(data)) {
         matchEngine.setAutoWinner(data.winner);
+      } else if (isPlayGetReady(data)) {
+        // "Get ready" attention sound: field speaker + every un-muted display
+        matchAudio?.play('getready');
+        broadcast(data);
       } else if (isStationSelfDisable(data)) {
         matchEngine.stationDisable(data.station, 'self');
       } else if (isStationSelfUndisable(data)) {

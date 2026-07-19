@@ -1618,6 +1618,17 @@ export function isCastReceiverSwap(msg: unknown): msg is CastReceiverSwap {
   return (msg as CastReceiverSwap).type === 'castReceiverSwap';
 }
 
+/** Sent by the match page to play the "get ready" attention sound on the
+ *  field speaker and every un-muted display. Re-broadcast to all clients. */
+export interface PlayGetReady {
+  type: 'playGetReady';
+}
+
+export function isPlayGetReady(msg: unknown): msg is PlayGetReady {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as PlayGetReady).type === 'playGetReady';
+}
+
 /** Sent by admin to mute/unmute match audio on a specific receiver. */
 export interface CastReceiverMute {
   type: 'castReceiverMute';

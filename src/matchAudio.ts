@@ -20,7 +20,8 @@ type SoundName =
   | 'countdown1'
   | 'countdown2'
   | 'countdown3'
-  | 'countdown4';
+  | 'countdown4'
+  | 'getready';
 
 const COUNTDOWN_VARIANTS = 4;
 
@@ -105,6 +106,7 @@ export class MatchAudio {
       'countdown2',
       'countdown3',
       'countdown4',
+      'getready',
     ];
     for (const sound of allSounds) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
