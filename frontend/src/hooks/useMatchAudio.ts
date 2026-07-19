@@ -39,6 +39,14 @@ const sounds: Record<SoundName, HTMLAudioElement> = (() => {
   return map;
 })();
 
+/** Stop any in-flight sound (used when a display is muted mid-clip). */
+export function stopAllSounds(): void {
+  for (const el of Object.values(sounds)) {
+    el.pause();
+    el.currentTime = 0;
+  }
+}
+
 function play(name: SoundName): void {
   const el = sounds[name];
   if (!el) return;

@@ -21,12 +21,14 @@ import type { MatchSubPeriod } from '../utils/shiftState';
 import { MatchTimeline } from './MatchTimeline';
 import { MatchTimer, getActiveColor } from './MatchTimer';
 import { handleTelemetryUpdate, stationTimeSeries, batteryMinState } from './StationChart';
+import { MatchAudioBridge, stopAllSounds } from '../hooks/useMatchAudio';
 
 // Cast initialization happens in scores.html before this module loads.
 declare global {
   interface Window {
     __castReady?: boolean;
     __castSendSwap?: (swap: boolean) => void;
+    __castSendMute?: (mute: boolean) => void;
     __isCastReceiver?: boolean;
   }
 }
@@ -108,6 +110,13 @@ function getInitialSwap(): boolean {
   return localStorage.getItem('scoreboard-swap') === '1';
 }
 
+function getInitialMuted(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  const param = params.get('muted');
+  if (param !== null) return param === '1' || param === 'true';
+  return localStorage.getItem('scoreboard-muted') === '1';
+}
+
 // ── Video mode (browser-local) ──────────────────────────────────────
 // The video view is configured per browser: mode and stream source live in
 // localStorage, with URL params (?video=1&videoSrc=...) as overrides.
@@ -143,6 +152,7 @@ export function ScoreboardPage() {
   const matchState = useMatchState();
   const [, setTick] = useState(0);
   const [swapped, setSwapped] = useState(getInitialSwap);
+  const [muted, setMuted] = useState(getInitialMuted);
   const [videoMode, setVideoMode] = useState(getInitialVideoMode);
   const [videoSource, setVideoSource] = useState(getInitialVideoSource);
   const [videoLayout, setVideoLayout] = useState(getInitialVideoLayout);
@@ -194,6 +204,16 @@ export function ScoreboardPage() {
     });
   };
 
+  const toggleMute = () => {
+    setMuted(m => {
+      const next = !m;
+      localStorage.setItem('scoreboard-muted', next ? '1' : '0');
+      if (next) stopAllSounds();
+      window.__castSendMute?.(next);
+      return next;
+    });
+  };
+
   const toggleVideoMode = () => {
     setVideoMode(v => {
       const next = !v;
@@ -234,12 +254,14 @@ export function ScoreboardPage() {
   const wsUp = useWsConnected();
   const swappedRef = useRef(swapped);
   swappedRef.current = swapped;
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   useEffect(() => {
     if (!window.__isCastReceiver || !wsUp) return;
     // Small delay so the register lands after the state replay settles
     const timer = setTimeout(() => {
       const name = localStorage.getItem('scoreboard-device-name') || document.title || 'Cast Display';
-      sendCastReceiverRegister(name, swappedRef.current);
+      sendCastReceiverRegister(name, swappedRef.current, mutedRef.current);
     }, 1000);
     return () => clearTimeout(timer);
   }, [wsUp]);
@@ -358,19 +380,22 @@ export function ScoreboardPage() {
 
   if (!score) {
     return (
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: window.__isCastReceiver ? '100vh' : '100dvh',
-          bgcolor: '#000',
-        }}
-      >
-        <Typography variant="h4" color="text.secondary">
-          Connecting...
-        </Typography>
-      </Box>
+      <>
+        {!muted && <MatchAudioBridge />}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: window.__isCastReceiver ? '100vh' : '100dvh',
+            bgcolor: '#000',
+          }}
+        >
+          <Typography variant="h4" color="text.secondary">
+            Connecting...
+          </Typography>
+        </Box>
+      </>
     );
   }
 
@@ -434,6 +459,9 @@ export function ScoreboardPage() {
         transition: 'background 1s ease',
       }}
     >
+      {/* Match sounds — unmounted entirely while this display is muted */}
+      {!muted && <MatchAudioBridge />}
+
       {/* Freeplay score-reactive glow backgrounds */}
       {isFreePlay && (
         <FreeplayGlow
@@ -473,6 +501,12 @@ export function ScoreboardPage() {
             />
           )}
           <ControlChip icon="⇄" label="swap" onClick={toggleSwap} />
+          <ControlChip
+            icon={muted ? '🔇' : '🔊'}
+            label={muted ? 'muted' : 'sound'}
+            active={muted}
+            onClick={toggleMute}
+          />
           {window.__castReady && (
             <google-cast-launcher style={{ width: 24, height: 24, cursor: 'pointer', opacity: 0.5 }} />
           )}

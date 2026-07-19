@@ -20,8 +20,19 @@
               if (data && data.deviceName) {
                 localStorage.setItem('scoreboard-device-name', data.deviceName);
               }
-              if (data && data.swap !== undefined) {
+              if (data && data.swap !== undefined && data.mute !== undefined) {
+                // Combined session-start state: apply both, reload once if changed
+                var changed =
+                  localStorage.getItem('scoreboard-swap') !== (data.swap ? '1' : '0') ||
+                  localStorage.getItem('scoreboard-muted') !== (data.mute ? '1' : '0');
                 localStorage.setItem('scoreboard-swap', data.swap ? '1' : '0');
+                localStorage.setItem('scoreboard-muted', data.mute ? '1' : '0');
+                if (changed) window.location.reload();
+              } else if (data && data.swap !== undefined) {
+                localStorage.setItem('scoreboard-swap', data.swap ? '1' : '0');
+                window.location.reload();
+              } else if (data && data.mute !== undefined) {
+                localStorage.setItem('scoreboard-muted', data.mute ? '1' : '0');
                 window.location.reload();
               }
             } catch (e) {}
@@ -47,20 +58,21 @@
             receiverApplicationId: '260A23F5',
             autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
           });
-          // When a Cast session starts, send the current swap state to the receiver
+          // When a Cast session starts, send the current swap + mute state to the receiver
           ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, function (event) {
             if (
               event.sessionState === cast.framework.SessionState.SESSION_STARTED ||
               event.sessionState === cast.framework.SessionState.SESSION_RESUMED
             ) {
               var swap = localStorage.getItem('scoreboard-swap') === '1';
+              var mute = localStorage.getItem('scoreboard-muted') === '1';
               var session = ctx.getCurrentSession();
               if (session) {
                 var deviceName = '';
                 try {
                   deviceName = session.getCastDevice().friendlyName;
                 } catch (e) {}
-                session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap, deviceName: deviceName }));
+                session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap, mute: mute, deviceName: deviceName }));
               }
             }
           });
@@ -69,12 +81,20 @@
           console.warn('Cast init failed:', e);
         }
       };
-      // Allow the scoreboard component to send swap updates to the receiver
+      // Allow the scoreboard component to send swap/mute updates to the receiver
       window.__castSendSwap = function (swap) {
         try {
           var session = cast.framework.CastContext.getInstance().getCurrentSession();
           if (session) {
             session.sendMessage(CAST_NAMESPACE, JSON.stringify({ swap: swap }));
+          }
+        } catch (e) {}
+      };
+      window.__castSendMute = function (mute) {
+        try {
+          var session = cast.framework.CastContext.getInstance().getCurrentSession();
+          if (session) {
+            session.sendMessage(CAST_NAMESPACE, JSON.stringify({ mute: mute }));
           }
         } catch (e) {}
       };

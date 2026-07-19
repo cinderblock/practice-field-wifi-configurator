@@ -49,6 +49,7 @@ import {
   sendStopCast,
   useCastReceivers,
   sendCastReceiverSwap,
+  sendCastReceiverMute,
   useFirmwareStore,
   sendCreateApiKey,
   sendRevokeApiKey,
@@ -781,17 +782,24 @@ function ScoringSection() {
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
               {castReceivers.map(r => (
-                <Chip
-                  key={r.id}
-                  label={`${r.name} (${r.swapped ? 'swapped' : 'normal'})`}
-                  size="small"
-                  variant="outlined"
-                  color="success"
-                  onClick={() => sendCastReceiverSwap(r.id, !r.swapped)}
-                  onDelete={() => sendStopCast(r.id)}
-                  deleteIcon={<Typography sx={{ fontSize: '0.7rem', cursor: 'pointer', px: 0.5 }}>✕</Typography>}
-                  title={`Click to ${r.swapped ? 'un-swap' : 'swap'} red/blue. ✕ to stop.`}
-                />
+                <Box key={r.id} sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+                  <Chip
+                    label={`${r.name} (${r.swapped ? 'swapped' : 'normal'})`}
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                    onClick={() => sendCastReceiverSwap(r.id, !r.swapped)}
+                    onDelete={() => sendStopCast(r.id)}
+                    deleteIcon={<Typography sx={{ fontSize: '0.7rem', cursor: 'pointer', px: 0.5 }}>✕</Typography>}
+                  />
+                  <Chip
+                    label={r.muted ? '🔇 muted' : '🔊 sound'}
+                    size="small"
+                    variant={r.muted ? 'filled' : 'outlined'}
+                    color={r.muted ? 'warning' : 'success'}
+                    onClick={() => sendCastReceiverMute(r.id, !r.muted)}
+                  />
+                </Box>
               ))}
             </Box>
           </Box>

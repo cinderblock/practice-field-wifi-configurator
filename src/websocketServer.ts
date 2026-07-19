@@ -27,6 +27,7 @@ import {
   isStopCast,
   isCastReceiverRegister,
   isCastReceiverSwap,
+  isCastReceiverMute,
   isRadioConfigureRequest,
   isRemoveSavedTeam,
   isSaveSavedTeam,
@@ -239,7 +240,7 @@ export function setupWebSocket(
 
   /** Track registered cast receivers (TV displays) */
   let nextReceiverId = 1;
-  const castReceivers = new Map<WebSocket, { id: string; name: string; swapped: boolean }>();
+  const castReceivers = new Map<WebSocket, { id: string; name: string; swapped: boolean; muted: boolean }>();
 
   function broadcastReceiverList() {
     const list: CastReceiverList = {
@@ -405,7 +406,7 @@ export function setupWebSocket(
           const data: unknown = JSON.parse(raw.toString());
           if (isCastReceiverRegister(data)) {
             const id = `cast-${nextReceiverId++}`;
-            castReceivers.set(ws, { id, name: data.name, swapped: data.swapped });
+            castReceivers.set(ws, { id, name: data.name, swapped: data.swapped, muted: !!data.muted });
             ws.send(JSON.stringify({ type: 'castReceiverId', id }));
             broadcastReceiverList();
           }
@@ -714,7 +715,7 @@ export function setupWebSocket(
         }
       } else if (isCastReceiverRegister(data)) {
         const id = `cast-${nextReceiverId++}`;
-        castReceivers.set(ws, { id, name: data.name, swapped: data.swapped });
+        castReceivers.set(ws, { id, name: data.name, swapped: data.swapped, muted: !!data.muted });
         // Send the assigned ID back to the receiver
         ws.send(JSON.stringify({ type: 'castReceiverId', id }));
         broadcastReceiverList();
@@ -765,6 +766,18 @@ export function setupWebSocket(
         for (const [rws, info] of castReceivers) {
           if (info.id === data.receiverId) {
             info.swapped = data.swapped;
+            if (rws.readyState === WebSocket.OPEN) {
+              rws.send(JSON.stringify(data));
+            }
+            break;
+          }
+        }
+        broadcastReceiverList();
+      } else if (isCastReceiverMute(data)) {
+        // Find the target receiver and send it the mute command
+        for (const [rws, info] of castReceivers) {
+          if (info.id === data.receiverId) {
+            info.muted = data.muted;
             if (rws.readyState === WebSocket.OPEN) {
               rws.send(JSON.stringify(data));
             }

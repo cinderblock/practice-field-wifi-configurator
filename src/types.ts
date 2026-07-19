@@ -1554,6 +1554,8 @@ export interface CastReceiverRegister {
   /** Human-readable name for the display (e.g. "Warehouse TV") */
   name: string;
   swapped: boolean;
+  /** True if this display's match audio is muted (optional for old clients). */
+  muted?: boolean;
 }
 
 export function isCastReceiverRegister(msg: unknown): msg is CastReceiverRegister {
@@ -1573,10 +1575,22 @@ export function isCastReceiverSwap(msg: unknown): msg is CastReceiverSwap {
   return (msg as CastReceiverSwap).type === 'castReceiverSwap';
 }
 
+/** Sent by admin to mute/unmute match audio on a specific receiver. */
+export interface CastReceiverMute {
+  type: 'castReceiverMute';
+  receiverId: string;
+  muted: boolean;
+}
+
+export function isCastReceiverMute(msg: unknown): msg is CastReceiverMute {
+  if (typeof msg !== 'object' || !msg) return false;
+  return (msg as CastReceiverMute).type === 'castReceiverMute';
+}
+
 /** Broadcast to all clients: current state of all cast receivers. */
 export interface CastReceiverList {
   type: 'castReceiverList';
-  receivers: { id: string; name: string; swapped: boolean }[];
+  receivers: { id: string; name: string; swapped: boolean; muted: boolean }[];
 }
 
 export function isCastReceiverList(msg: unknown): msg is CastReceiverList {

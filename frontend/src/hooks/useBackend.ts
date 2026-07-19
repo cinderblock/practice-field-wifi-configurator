@@ -35,6 +35,7 @@ import {
   isStopCast,
   isCastReceiverList,
   isCastReceiverSwap,
+  isCastReceiverMute,
   isSupportState,
   isSupportChatIncoming,
   isAdminAuthResult,
@@ -56,6 +57,7 @@ import {
   CastReceiverList,
   CastReceiverRegister,
   CastReceiverSwap,
+  CastReceiverMute,
   StopCast,
   RoutePreferenceState,
   RobotTestState,
@@ -607,6 +609,11 @@ function receiveMessage(detail: Message) {
 
   if (isCastReceiverSwap(detail)) {
     handleCastReceiverSwap(detail);
+    return;
+  }
+
+  if (isCastReceiverMute(detail)) {
+    handleCastReceiverMute(detail);
     return;
   }
 
@@ -1318,6 +1325,14 @@ function handleCastReceiverSwap(msg: CastReceiverSwap) {
   }
 }
 
+function handleCastReceiverMute(msg: CastReceiverMute) {
+  // On receiver: apply the mute
+  if (window.__isCastReceiver) {
+    localStorage.setItem('scoreboard-muted', msg.muted ? '1' : '0');
+    window.location.reload();
+  }
+}
+
 export function useCastReceivers(): CastReceiverList['receivers'] {
   const [receivers, setReceivers] = useState(currentCastReceivers);
 
@@ -1335,8 +1350,12 @@ export function sendCastReceiverSwap(receiverId: string, swapped: boolean) {
   ws?.send(JSON.stringify({ type: 'castReceiverSwap', receiverId, swapped } satisfies CastReceiverSwap));
 }
 
-export function sendCastReceiverRegister(name: string, swapped: boolean) {
-  ws?.send(JSON.stringify({ type: 'castReceiverRegister', name, swapped } satisfies CastReceiverRegister));
+export function sendCastReceiverMute(receiverId: string, muted: boolean) {
+  ws?.send(JSON.stringify({ type: 'castReceiverMute', receiverId, muted } satisfies CastReceiverMute));
+}
+
+export function sendCastReceiverRegister(name: string, swapped: boolean, muted: boolean) {
+  ws?.send(JSON.stringify({ type: 'castReceiverRegister', name, swapped, muted } satisfies CastReceiverRegister));
 }
 
 // ── Server Responses ─────────────────────────────────────────────────
