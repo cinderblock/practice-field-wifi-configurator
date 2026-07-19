@@ -50,10 +50,23 @@ get_match_phase() {
     || echo "unknown"
 }
 
+# Phases where robots are under field control or scores are still counting —
+# reloading would interrupt a live match, so wait these out. Everything else
+# ('idle', 'created' while teams set up, 'unknown' when the server is down)
+# is safe to reload through: worst case, joined teams re-join after the
+# deploy. 'created' must NOT block — it never expires on its own, so waiting
+# on it hangs the deploy indefinitely.
+is_active_phase() {
+  case "$1" in
+    countdown | auto | autoPause | paused | teleop | endgame | postMatch) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Wait for any active match to finish before reloading
 MATCH_PHASE=$(get_match_phase)
 
-if [ "$MATCH_PHASE" != "idle" ] && [ "$MATCH_PHASE" != "unknown" ]; then
+if is_active_phase "$MATCH_PHASE"; then
   if $FORCE; then
     echo "⚠️  Match in progress (phase: $MATCH_PHASE) — forcing reload (--force)"
   else
@@ -64,8 +77,8 @@ if [ "$MATCH_PHASE" != "idle" ] && [ "$MATCH_PHASE" != "unknown" ]; then
     while true; do
       sleep 5
       MATCH_PHASE=$(get_match_phase)
-      if [ "$MATCH_PHASE" = "idle" ] || [ "$MATCH_PHASE" = "unknown" ]; then
-        echo "✅ Match finished — proceeding with reload."
+      if ! is_active_phase "$MATCH_PHASE"; then
+        echo "✅ Match finished (phase: $MATCH_PHASE) — proceeding with reload."
         break
       fi
       echo "   Still waiting... (phase: $MATCH_PHASE)"
