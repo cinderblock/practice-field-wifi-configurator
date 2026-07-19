@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
 const CONFIG_FILE = 'audio-config.json';
 
-type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause' | 'count3' | 'count2' | 'count1';
+type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause' | 'countdown';
 
 const PLAYERS = ['aplay', 'paplay', 'ffplay', 'mpv', 'play', 'afplay'];
 
@@ -73,17 +73,7 @@ export class MatchAudio {
     }
 
     // Cache which sound files exist
-    const allSounds: SoundName[] = [
-      'start',
-      'end',
-      'resume',
-      'warning',
-      'abort',
-      'pause',
-      'count3',
-      'count2',
-      'count1',
-    ];
+    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'pause', 'countdown'];
     for (const sound of allSounds) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
         this.availableSounds.add(sound);
@@ -142,12 +132,12 @@ export class MatchAudio {
     }
   }
 
-  play(sound: SoundName): void {
-    if (!this.player) return;
-    if (!this.availableSounds.has(sound)) return;
+  play(sound: SoundName): ChildProcess | null {
+    if (!this.player) return null;
+    if (!this.availableSounds.has(sound)) return null;
 
     const device = this.resolveDevice();
-    if (!device) return;
+    if (!device) return null;
 
     const file = resolve(SOUNDS_DIR, `${sound}.wav`);
 
@@ -165,6 +155,7 @@ export class MatchAudio {
 
     child.unref();
     child.on('error', () => {}); // silently ignore
+    return child;
   }
 
   // ── State broadcasting ──────────────────────────────────────────
@@ -232,27 +223,31 @@ export class MatchAudio {
 
   attachToEngine(engine: MatchEngine): void {
     let lastPhase = 'idle';
-    let lastCountdownSecond = 0;
+    // The in-flight "3… 2… 1…" announcer, so an aborted countdown goes quiet.
+    // A single pre-timed clip (numbers at 0/1/2s, ending before the 3s horn)
+    // rather than per-second clips: aplay holds the ALSA device exclusively,
+    // so back-to-back one-second clips race it and drop numbers.
+    let countdownChild: ChildProcess | null = null;
 
     engine.addStateListener(state => {
-      // Announce "3… 2… 1…" as the pre-start countdown ticks. The countdown
-      // enters at exactly 3s and broadcasts every tick, so each whole second
-      // fires once; an aborted countdown resets for the next start.
-      if (state.phase === 'countdown') {
-        const second = Math.ceil(state.remainingTime);
-        if (second !== lastCountdownSecond && second >= 1 && second <= 3) {
-          lastCountdownSecond = second;
-          this.play(`count${second}` as SoundName);
-        }
-      } else {
-        lastCountdownSecond = 0;
-      }
-
       if (state.phase === lastPhase) return;
       const prevPhase = lastPhase;
       lastPhase = state.phase;
 
+      if (prevPhase === 'countdown' && state.phase !== 'auto' && state.phase !== 'teleop') {
+        // Countdown aborted — cut the announcer off
+        try {
+          countdownChild?.kill();
+        } catch {
+          // already exited
+        }
+      }
+      if (state.phase !== 'countdown') countdownChild = null;
+
       switch (state.phase) {
+        case 'countdown':
+          countdownChild = this.play('countdown');
+          break;
         case 'auto':
           if (prevPhase === 'paused') {
             // user resumed during auto
