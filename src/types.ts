@@ -515,6 +515,8 @@ export type MatchState = {
   autoWinnerAlliance?: Alliance | null;
   /** True when in autoPause waiting for manual auto-winner selection ('pause' mode) */
   awaitingAutoWinner?: boolean;
+  /** When phase is 'paused', the phase the match was in before pausing (A-Stop is only meaningful for a pause taken during auto) */
+  pausedFrom?: MatchPhase;
 };
 
 export function isMatchState(msg: unknown): msg is MatchState {

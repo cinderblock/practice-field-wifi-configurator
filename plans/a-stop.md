@@ -82,6 +82,18 @@ The new A-Stop DS-report path has no such race: we latch only on
       countdown begins (latched after), cleared on leave/kick/cancelMatch.
       UI: arm/cancel button + "A-Stop armed" chip in both MatchPanel created
       blocks.
+- [x] Follow-up 2: pop-out window upgraded to a full match console (user
+      request): Ready toggle, A-Stop pre-arm/giant button, two-tap E-Stop,
+      phase + timer, all-robots ready strip, "close at match start" checkbox
+      (localStorage `pfms-match-popup-close-at-start`). Window now lives
+      through the whole match (closes at post-match) unless the checkbox is
+      ticked. Backend: `MatchState.pausedFrom` exposes the pre-pause phase so
+      the giant A-Stop only shows for a pause taken during auto.
+      `openMatchGuidePopup` renamed to `openMatchPopup`; AStopPopout now takes
+      only `station` and reads match state itself. Handlers read the station
+      from `lastState` so the window opened by the Join click (before state
+      arrives) targets the right station.
+- [ ] NOT DEPLOYED yet — user said prep only; deploy on their explicit go.
 
 ## Gotchas / notes
 

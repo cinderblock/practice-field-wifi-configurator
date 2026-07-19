@@ -2,35 +2,93 @@ import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { MatchPhase, StationName } from '../../../src/types';
-import { sendStationSelfAStop } from '../hooks/useBackend';
+import { MatchPhase, MatchState, StationName } from '../../../src/types';
+import {
+  useMatchState,
+  sendStationReady,
+  sendStationSelfAStop,
+  sendStationClearAStop,
+  sendStationSelfEStop,
+} from '../hooks/useBackend';
 
 /**
- * The match pop-out window. One named browser window with two lives:
+ * The match pop-out window. One named browser window that follows the match:
  *
- * 1. **Match guide** — opened by the Join button click (a user gesture, so it
- *    is never pop-up-blocked). Explains that the robot is now field-controlled
- *    and what happens when the match starts.
- * 2. **A-Stop** — at the countdown the same window is rewritten into one giant
- *    A-Stop button for the autonomous period. Reusing the already-open named
- *    window needs no pop-up permission; opening it fresh at countdown does.
+ * 1. **Setup** — opened by the Join button click (a user gesture, so it is
+ *    never pop-up-blocked). Shows everyone's ready status, a Ready toggle,
+ *    A-Stop pre-arm, this robot's E-Stop, and a "close at match start" option.
+ * 2. **Match** — from the countdown the same window shows the phase + timer.
+ *    During countdown/auto it is dominated by a giant A-STOP button; after
+ *    auto the A-Stop is gone (released for teleop) and the timer + E-Stop
+ *    remain. It closes at post-match.
  *
- * It closes itself when auto ends (surviving a pause taken during auto), when
- * the station leaves the match, and when the page goes away.
+ * It also closes when the station leaves the match, when the page goes away,
+ * and — if the "close at match start" box is ticked — at the countdown.
  *
  * The window content is plain DOM built by hand (not a React portal): MUI's
  * styles live in the opener's document, and React event delegation does not
- * cross into another window's document.
+ * cross into another window's document. All dynamic data is set via
+ * textContent — no user data goes through innerHTML.
  *
  * Module-level state so the window survives React re-renders and can be opened
  * from the Join button's own click handler.
  */
-type PopupMode = 'explainer' | 'astop';
+type PopupMode = 'setup' | 'match';
+
+const CLOSE_AT_START_KEY = 'pfms-match-popup-close-at-start';
+
+function closeAtStartPref(): boolean {
+  try {
+    return localStorage.getItem(CLOSE_AT_START_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setCloseAtStartPref(v: boolean) {
+  try {
+    localStorage.setItem(CLOSE_AT_START_KEY, v ? '1' : '0');
+  } catch {
+    // Ignore quota/privacy failures — the checkbox just won't persist.
+  }
+}
+
+type ConsoleRobot = {
+  team: number | null;
+  alliance: 'red' | 'blue' | null;
+  ready: boolean;
+  self: boolean;
+};
+
+type ConsoleState = {
+  station: StationName;
+  phase: MatchPhase;
+  pausedFrom?: MatchPhase;
+  remainingTime: number;
+  ready: boolean;
+  aStop: boolean;
+  eStop: boolean;
+  robots: ConsoleRobot[];
+};
 
 let popupWin: Window | null = null;
-let popupMode: PopupMode | null = null;
-let astopBtn: HTMLButtonElement | null = null;
 let popupOpenedAt = 0;
+let lastState: ConsoleState | null = null;
+
+// Console element refs (valid while the current window's DOM is built)
+let phaseEl: HTMLElement | null = null;
+let timerEl: HTMLElement | null = null;
+let robotsEl: HTMLElement | null = null;
+let hintEl: HTMLElement | null = null;
+let readyBtn: HTMLButtonElement | null = null;
+let astopBtn: HTMLButtonElement | null = null;
+let estopBtn: HTMLButtonElement | null = null;
+let footerEl: HTMLElement | null = null;
+let closeBox: HTMLInputElement | null = null;
+
+// Two-tap E-Stop confirmation
+let estopArmed = false;
+let estopArmTimer: ReturnType<typeof setTimeout> | null = null;
 
 function popupIsOpen(): boolean {
   return !!popupWin && !popupWin.closed;
@@ -38,11 +96,10 @@ function popupIsOpen(): boolean {
 
 function ensureWindow(): Window | null {
   if (popupWin && !popupWin.closed) return popupWin;
-  const w = window.open('', 'pfms-astop', 'popup=yes,width=540,height=480');
+  const w = window.open('', 'pfms-astop', 'popup=yes,width=540,height=520');
   if (!w) return null;
   popupWin = w;
-  popupMode = null;
-  astopBtn = null;
+  phaseEl = null; // force a rebuild — a reused named window may hold stale content
   popupOpenedAt = Date.now();
   return w;
 }
@@ -50,111 +107,318 @@ function ensureWindow(): Window | null {
 function closePopup() {
   if (popupWin && !popupWin.closed) popupWin.close();
   popupWin = null;
-  popupMode = null;
-  astopBtn = null;
-}
-
-function baseDoc(w: Window, title: string) {
-  const doc = w.document;
-  doc.title = title;
-  doc.body.innerHTML = ''; // a reused named window may hold stale content
-  doc.body.style.cssText = 'margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif;';
-  return doc;
-}
-
-/** Static markup only — no user data goes through innerHTML. */
-function renderExplainer(w: Window) {
-  if (popupMode === 'explainer') return;
-  const doc = baseDoc(w, 'Match Guide');
-  const div = doc.createElement('div');
-  div.style.cssText = 'padding:20px 24px;font-size:15px;line-height:1.55;max-width:640px;';
-  div.innerHTML =
-    '<h2 style="margin:0 0 12px;color:#ffb300;">You&rsquo;re in the match!</h2>' +
-    '<ul style="margin:0;padding-left:20px;">' +
-    '<li style="margin-bottom:10px;"><b>Your robot is now controlled by the field</b> and stays ' +
-    '<b>disabled</b> until the match starts. Want to keep driving instead? Leave the match on your ' +
-    'station page.</li>' +
-    '<li style="margin-bottom:10px;">Once everyone is <b>Ready</b>, the match can start: a ' +
-    '<b>3&#8209;second countdown</b>, then <b>autonomous</b> &mdash; your robot enables and runs its ' +
-    'auto on its own.</li>' +
-    '<li style="margin-bottom:10px;">At the countdown, <b>this window turns into a giant A&#8209;STOP ' +
-    'button</b>. Press it if your robot misbehaves during auto &mdash; it stops the robot for the rest ' +
-    'of auto and re&#8209;enables it automatically for teleop. (E&#8209;Stop stays on the station ' +
-    'page.)</li>' +
-    '<li style="margin-bottom:10px;">Already know your auto won&rsquo;t run? <b>Arm A&#8209;Stop now</b> ' +
-    'from the station page &mdash; your robot sits out auto and enables for teleop. You can cancel it ' +
-    'any time before the countdown.</li>' +
-    '<li style="margin-bottom:10px;">After auto: a short pause, then <b>teleop</b> &mdash; drive!</li>' +
-    '</ul>' +
-    '<p style="color:#999;margin:14px 0 0;">Keep this window open &mdash; it closes itself when auto ends.</p>';
-  doc.body.appendChild(div);
-  popupMode = 'explainer';
-  astopBtn = null;
-}
-
-function renderAStop(w: Window, station: StationName) {
-  if (popupMode === 'astop' && astopBtn) return;
-  const doc = baseDoc(w, 'A-Stop');
-  const btn = doc.createElement('button');
-  btn.textContent = 'A-STOP';
-  btn.style.cssText =
-    'position:fixed;inset:0;width:100vw;height:100vh;border:none;cursor:pointer;' +
-    'background:#ffb300;color:#000;font-size:18vmin;font-weight:900;font-family:inherit;letter-spacing:0.05em;';
-  btn.addEventListener('click', () => sendStationSelfAStop(station));
-  doc.body.appendChild(btn);
-  popupMode = 'astop';
-  astopBtn = btn;
-}
-
-function updateAStopLatched(aStop: boolean) {
-  const btn = astopBtn;
-  if (!btn || !popupIsOpen()) return;
-  if (aStop) {
-    btn.textContent = 'A-STOPPED — until teleop';
-    btn.disabled = true;
-    btn.style.background = '#555';
-    btn.style.color = '#ffb300';
-    btn.style.fontSize = '8vmin';
-    btn.style.cursor = 'default';
-  } else {
-    btn.textContent = 'A-STOP';
-    btn.disabled = false;
-    btn.style.background = '#ffb300';
-    btn.style.color = '#000';
-    btn.style.fontSize = '18vmin';
-    btn.style.cursor = 'pointer';
+  phaseEl = null;
+  estopArmed = false;
+  if (estopArmTimer) {
+    clearTimeout(estopArmTimer);
+    estopArmTimer = null;
   }
+}
+
+const phaseLabels: Partial<Record<MatchPhase, string>> = {
+  created: 'Match Setup',
+  countdown: 'Countdown',
+  auto: 'Autonomous',
+  autoPause: 'Pause',
+  paused: 'Match Paused',
+  teleop: 'Teleoperated',
+  endgame: 'Endgame',
+};
+
+const phaseColors: Partial<Record<MatchPhase, string>> = {
+  created: '#4fc3f7',
+  countdown: '#ffb300',
+  auto: '#4fc3f7',
+  autoPause: '#9e9e9e',
+  paused: '#ffb300',
+  teleop: '#66bb6a',
+  endgame: '#ffb300',
+};
+
+function mkBtn(doc: Document, onClick: () => void): HTMLButtonElement {
+  const b = doc.createElement('button');
+  b.style.cssText =
+    'border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:800;letter-spacing:0.04em;';
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** Build the console DOM once per window. Content is painted by updateConsole().
+ *  Handlers read the station from lastState so a window opened before the join
+ *  round-trips (no state yet) still targets the right station afterwards. */
+function buildConsole(w: Window) {
+  if (phaseEl && popupWin === w) return; // already built in this window
+  const doc = w.document;
+  doc.title = 'Match Window';
+  doc.body.innerHTML = ''; // a reused named window may hold stale content
+  doc.body.style.cssText =
+    'margin:0;background:#111;color:#eee;font-family:system-ui,sans-serif;' +
+    'display:flex;flex-direction:column;height:100vh;overflow:hidden;';
+
+  const header = doc.createElement('div');
+  header.style.cssText = 'text-align:center;padding:10px 12px 2px;';
+  phaseEl = doc.createElement('div');
+  phaseEl.style.cssText = 'font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;';
+  timerEl = doc.createElement('div');
+  timerEl.style.cssText =
+    'font-family:ui-monospace,SFMono-Regular,monospace;font-size:46px;font-weight:700;line-height:1.1;';
+  header.append(phaseEl, timerEl);
+
+  robotsEl = doc.createElement('div');
+  robotsEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:6px 10px;';
+
+  const main = doc.createElement('div');
+  main.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:8px;padding:2px 10px;min-height:0;';
+
+  readyBtn = mkBtn(doc, () => {
+    if (lastState) sendStationReady(lastState.station, !lastState.ready);
+  });
+  readyBtn.style.flex = '1';
+  readyBtn.style.fontSize = '26px';
+
+  astopBtn = mkBtn(doc, () => {
+    if (!lastState) return;
+    if (lastState.phase === 'created' && lastState.aStop) sendStationClearAStop(lastState.station);
+    else if (!lastState.aStop) sendStationSelfAStop(lastState.station);
+  });
+  astopBtn.style.flex = '2';
+
+  estopBtn = mkBtn(doc, () => {
+    if (!lastState || lastState.eStop) return;
+    if (!estopArmed) {
+      estopArmed = true;
+      if (estopArmTimer) clearTimeout(estopArmTimer);
+      estopArmTimer = setTimeout(() => {
+        estopArmed = false;
+        estopArmTimer = null;
+        refreshConsole();
+      }, 3000);
+      refreshConsole();
+      return;
+    }
+    estopArmed = false;
+    if (estopArmTimer) {
+      clearTimeout(estopArmTimer);
+      estopArmTimer = null;
+    }
+    sendStationSelfEStop(lastState.station);
+  });
+  estopBtn.style.cssText +=
+    'flex:0 0 46px;font-size:16px;background:transparent;border:2px solid #f44336;color:#f44336;border-radius:10px;';
+
+  main.append(readyBtn, astopBtn, estopBtn);
+
+  hintEl = doc.createElement('div');
+  hintEl.style.cssText = 'color:#999;font-size:12.5px;line-height:1.45;padding:4px 12px 0;text-align:center;';
+  hintEl.textContent =
+    'Your robot is field-controlled and disabled until the match starts. Leave the match on your station page to drive freely.';
+
+  footerEl = doc.createElement('label');
+  footerEl.style.cssText =
+    'display:flex;align-items:center;gap:8px;justify-content:center;padding:6px 12px 10px;color:#bbb;font-size:13px;cursor:pointer;';
+  closeBox = doc.createElement('input');
+  closeBox.type = 'checkbox';
+  closeBox.checked = closeAtStartPref();
+  closeBox.addEventListener('change', () => setCloseAtStartPref(!!closeBox?.checked));
+  const boxText = doc.createElement('span');
+  boxText.textContent = 'Close this window when the match starts';
+  footerEl.append(closeBox, boxText);
+
+  doc.body.append(header, robotsEl, main, hintEl, footerEl);
+}
+
+function formatTime(phase: MatchPhase, remainingTime: number): string {
+  const t = Math.ceil(Math.max(0, remainingTime));
+  if (phase === 'countdown') return String(t);
+  const m = Math.floor(t / 60);
+  const s = t % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function refreshConsole() {
+  if (lastState) updateConsole(lastState);
+}
+
+/** Paint the console from match state. Safe to call on every broadcast. */
+function updateConsole(state: ConsoleState) {
+  lastState = state;
+  if (!popupIsOpen() || !phaseEl || !timerEl || !robotsEl || !readyBtn || !astopBtn || !estopBtn) return;
+  const doc = popupWin!.document;
+  const { phase, pausedFrom, ready, aStop, eStop, robots } = state;
+
+  const setup = phase === 'created';
+  // The giant A-Stop is live during countdown/auto and a pause taken during auto
+  const astopLive = phase === 'countdown' || phase === 'auto' || (phase === 'paused' && pausedFrom === 'auto');
+
+  phaseEl.textContent = phaseLabels[phase] ?? '';
+  phaseEl.style.color = phaseColors[phase] ?? '#eee';
+  timerEl.style.display = setup ? 'none' : 'block';
+  timerEl.style.color = phaseColors[phase] ?? '#eee';
+  if (!setup) timerEl.textContent = formatTime(phase, state.remainingTime);
+
+  // Robots ready strip — hidden while the giant A-Stop needs the room
+  robotsEl.style.display = astopLive ? 'none' : 'flex';
+  if (!astopLive) {
+    robotsEl.innerHTML = '';
+    for (const r of robots) {
+      const chip = doc.createElement('span');
+      chip.textContent = `${r.team ?? '—'} ${r.ready ? '✓' : '·'}`;
+      const red = r.alliance === 'red';
+      chip.style.cssText =
+        'padding:3px 12px;border-radius:999px;font-size:14px;font-weight:600;' +
+        `background:${red ? 'rgba(211,47,47,0.22)' : 'rgba(21,101,192,0.25)'};` +
+        `border:${r.self ? '2px solid' : '1px solid'} ${red ? '#e57373' : '#64b5f6'};` +
+        (r.self ? 'font-weight:800;' : '');
+      robotsEl.appendChild(chip);
+    }
+    if (robots.length === 0) {
+      const none = doc.createElement('span');
+      none.textContent = 'No robots joined yet';
+      none.style.cssText = 'color:#888;font-size:13px;';
+      robotsEl.appendChild(none);
+    }
+  }
+
+  // Ready toggle — setup only
+  readyBtn.style.display = setup && !eStop ? 'block' : 'none';
+  if (setup) {
+    readyBtn.textContent = ready ? '✓ READY — tap to un-ready' : 'READY UP';
+    readyBtn.style.background = ready ? 'transparent' : '#2e7d32';
+    readyBtn.style.border = ready ? '2px solid #66bb6a' : '0';
+    readyBtn.style.color = ready ? '#66bb6a' : '#fff';
+  }
+
+  // A-Stop — pre-arm during setup, giant during countdown/auto, gone after auto
+  astopBtn.style.display = (setup || astopLive) && !eStop ? 'block' : 'none';
+  if (setup) {
+    astopBtn.style.fontSize = '18px';
+    astopBtn.style.flex = '0 0 52px';
+    astopBtn.disabled = false;
+    astopBtn.style.cursor = 'pointer';
+    if (aStop) {
+      astopBtn.textContent = 'A-STOP ARMED — sits out auto · tap to cancel';
+      astopBtn.style.background = '#ffb300';
+      astopBtn.style.border = '0';
+      astopBtn.style.color = '#000';
+    } else {
+      astopBtn.textContent = 'ARM A-STOP — sit out auto';
+      astopBtn.style.background = 'transparent';
+      astopBtn.style.border = '2px solid #ffb300';
+      astopBtn.style.color = '#ffb300';
+    }
+  } else if (astopLive) {
+    astopBtn.style.flex = '2';
+    astopBtn.style.border = '0';
+    if (aStop) {
+      astopBtn.textContent = 'A-STOPPED — until teleop';
+      astopBtn.disabled = true;
+      astopBtn.style.background = '#555';
+      astopBtn.style.color = '#ffb300';
+      astopBtn.style.fontSize = '7vmin';
+      astopBtn.style.cursor = 'default';
+    } else {
+      astopBtn.textContent = 'A-STOP';
+      astopBtn.disabled = false;
+      astopBtn.style.background = '#ffb300';
+      astopBtn.style.color = '#000';
+      astopBtn.style.fontSize = '15vmin';
+      astopBtn.style.cursor = 'pointer';
+    }
+  }
+
+  // E-Stop — always present, two-tap confirm, latched once tripped
+  if (eStop) {
+    estopBtn.textContent = 'E-STOPPED — see field staff to clear';
+    estopBtn.disabled = true;
+    estopBtn.style.background = '#b71c1c';
+    estopBtn.style.border = 'none';
+    estopBtn.style.color = '#fff';
+    estopBtn.style.cursor = 'default';
+    estopBtn.style.flex = '1';
+    estopBtn.style.fontSize = '22px';
+  } else if (estopArmed) {
+    estopBtn.textContent = 'TAP AGAIN TO E-STOP';
+    estopBtn.disabled = false;
+    estopBtn.style.background = '#f44336';
+    estopBtn.style.border = 'none';
+    estopBtn.style.color = '#fff';
+    estopBtn.style.cursor = 'pointer';
+    estopBtn.style.flex = '0 0 46px';
+    estopBtn.style.fontSize = '16px';
+  } else {
+    estopBtn.textContent = 'E-STOP';
+    estopBtn.disabled = false;
+    estopBtn.style.background = 'transparent';
+    estopBtn.style.border = '2px solid #f44336';
+    estopBtn.style.color = '#f44336';
+    estopBtn.style.cursor = 'pointer';
+    estopBtn.style.flex = '0 0 46px';
+    estopBtn.style.fontSize = '16px';
+  }
+
+  if (hintEl) hintEl.style.display = setup ? 'block' : 'none';
+  if (footerEl) footerEl.style.display = setup ? 'flex' : 'none';
+  if (closeBox) closeBox.checked = closeAtStartPref();
+}
+
+function consoleStateFrom(match: MatchState, station: StationName): ConsoleState {
+  const my = match.stationStates[station];
+  const robots: ConsoleRobot[] = (Object.entries(match.stationStates) as [StationName, typeof my][])
+    .filter(([, s]) => s?.joined)
+    .map(([name, s]) => ({
+      team: s?.teamNumber ?? null,
+      alliance: s?.alliance ?? null,
+      ready: s?.ready ?? false,
+      self: name === station,
+    }));
+  return {
+    station,
+    phase: match.phase,
+    pausedFrom: match.pausedFrom,
+    remainingTime: match.remainingTime,
+    ready: my?.ready ?? false,
+    aStop: my?.aStop ?? false,
+    eStop: my?.eStop ?? false,
+    robots,
+  };
 }
 
 /** Call from the Join button's own onClick — the click gesture guarantees the
  *  window opens even without pop-up permission. */
-export function openMatchGuidePopup() {
+export function openMatchPopup() {
   const w = ensureWindow();
-  if (w) renderExplainer(w);
+  if (!w) return;
+  buildConsole(w);
+  // First paint happens when the join round-trips and match state arrives
+  if (phaseEl) {
+    phaseEl.textContent = 'Joining…';
+    phaseEl.style.color = '#4fc3f7';
+  }
 }
 
-export function AStopPopout({
-  station,
-  phase,
-  aStop,
-  joined,
-}: {
-  station: StationName;
-  phase: MatchPhase;
-  aStop: boolean;
-  joined: boolean;
-}) {
+export function AStopPopout({ station }: { station: StationName }) {
+  const matchState = useMatchState();
   const [isOpen, setIsOpen] = useState(popupIsOpen);
   const [blocked, setBlocked] = useState(false);
 
-  // Keep the A-Stop through a pause (an A-Stop during a pause taken in auto is
-  // still honored); close for every phase past auto.
+  const phase = matchState?.phase ?? 'idle';
+  const joined = matchState?.stationStates[station]?.joined ?? false;
+
+  // Window lives from join (setup) through the match; closes at post-match,
+  // on leave, and — if the box is ticked — at the countdown.
   const desired: 'closed' | PopupMode = !joined
     ? 'closed'
     : phase === 'created'
-      ? 'explainer'
-      : phase === 'countdown' || phase === 'auto' || phase === 'paused'
-        ? 'astop'
+      ? 'setup'
+      : phase === 'countdown' ||
+          phase === 'auto' ||
+          phase === 'autoPause' ||
+          phase === 'paused' ||
+          phase === 'teleop' ||
+          phase === 'endgame'
+        ? closeAtStartPref()
+          ? 'closed'
+          : 'match'
         : 'closed';
 
   // Drive the window's lifecycle and content from match state
@@ -165,10 +429,10 @@ export function AStopPopout({
       return;
     }
     let w = popupIsOpen() ? popupWin : null;
-    if (!w && desired === 'astop' && phase === 'countdown') {
-      // Auto-open at the countdown. Permission-free when the guide window from
+    if (!w && desired === 'match' && phase === 'countdown') {
+      // Auto-open at the countdown. Permission-free when the setup window from
       // Join is still open (named-window reuse); a fresh open needs pop-up
-      // permission — when blocked, the inline button below still works.
+      // permission — when blocked, the inline buttons on the page still work.
       w = ensureWindow();
       if (!w) setBlocked(true);
     }
@@ -176,18 +440,13 @@ export function AStopPopout({
       setIsOpen(false);
       return;
     }
-    if (desired === 'explainer') renderExplainer(w);
-    else renderAStop(w, station);
+    buildConsole(w);
+    if (matchState) updateConsole(consoleStateFrom(matchState, station));
     setIsOpen(true);
     setBlocked(false);
-  }, [desired, phase, station]);
+  }, [desired, phase, station, matchState]);
 
-  // Reflect the latched state into the A-Stop button
-  useEffect(() => {
-    if (desired === 'astop') updateAStopLatched(aStop);
-  }, [aStop, desired, isOpen]);
-
-  // Notice manual closes; also reap a stray guide window when the join it was
+  // Notice manual closes; also reap a stray setup window when the join it was
   // opened for never landed (e.g. alliance full) — with a grace period so the
   // window opened by the Join click isn't closed before the join round-trips.
   useEffect(() => {
@@ -210,27 +469,25 @@ export function AStopPopout({
       setBlocked(true);
       return;
     }
-    if (desired === 'explainer') renderExplainer(w);
-    else {
-      renderAStop(w, station);
-      updateAStopLatched(aStop);
-    }
+    buildConsole(w);
+    if (matchState) updateConsole(consoleStateFrom(matchState, station));
     setIsOpen(true);
     setBlocked(false);
   };
 
+  const astopPhase = phase === 'countdown' || phase === 'auto';
   return (
     <>
-      <Button variant="outlined" color={desired === 'astop' ? 'warning' : 'info'} size="small" onClick={reopen}>
-        {desired === 'astop' ? 'Pop Out A-Stop' : 'Match Guide'}
+      <Button variant="outlined" color={astopPhase ? 'warning' : 'info'} size="small" onClick={reopen}>
+        {astopPhase ? 'Pop Out A-Stop' : 'Pop Out Match Window'}
       </Button>
       {blocked && (
         <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
           <Box component="span" fontWeight={700}>
             Pop-up blocked.
           </Box>{' '}
-          Keep the match guide window from Join open, or allow pop-ups for this site, and the A-Stop window will appear
-          by itself when the match starts.
+          Keep the match window from Join open, or allow pop-ups for this site, and the A-Stop window will appear by
+          itself when the match starts.
         </Typography>
       )}
     </>

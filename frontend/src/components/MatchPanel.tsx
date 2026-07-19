@@ -6,7 +6,7 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { TeamAvatar } from './TeamAvatar';
-import { AStopPopout, openMatchGuidePopup } from './AStopPopout';
+import { AStopPopout, openMatchPopup } from './AStopPopout';
 import { MatchPhase, StationName, StationControlState } from '../../../src/types';
 import {
   useMatchState,
@@ -229,7 +229,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   variant="contained"
                   color="primary"
                   onClick={() => {
-                    openMatchGuidePopup();
+                    openMatchPopup();
                     sendStationJoin(station);
                   }}
                 >
@@ -325,10 +325,10 @@ export function MatchPanel({ station }: { station?: StationName }) {
                 </Button>
               )}
 
-              {/* Match guide / A-Stop pop-out window controller — always
-                  mounted so the window survives the created→countdown→auto
-                  transitions instead of being torn down between blocks */}
-              <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} joined={joined} />
+              {/* Match pop-out window controller — always mounted so the
+                  window survives phase transitions instead of being torn
+                  down between blocks */}
+              <AStopPopout station={station} />
             </>
           )}
         </Box>
@@ -515,7 +515,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button
                 variant="contained"
                 onClick={() => {
-                  openMatchGuidePopup();
+                  openMatchPopup();
                   sendStationJoinAlliance(station, 'red');
                 }}
                 sx={{
@@ -531,7 +531,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button
                 variant="contained"
                 onClick={() => {
-                  openMatchGuidePopup();
+                  openMatchPopup();
                   sendStationJoinAlliance(station, 'blue');
                 }}
                 sx={{
@@ -646,9 +646,9 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
             </Button>
           )}
 
-          {/* Match guide / A-Stop pop-out window controller — always mounted so
-              the window survives the created→countdown→auto transitions */}
-          <AStopPopout station={station} phase={phase} aStop={!!myState?.aStop} joined={joined} />
+          {/* Match pop-out window controller — always mounted so the window
+              survives phase transitions instead of being torn down */}
+          <AStopPopout station={station} />
         </Box>
 
         {/* Match timing config — visual timeline (created phase only, when joined) */}

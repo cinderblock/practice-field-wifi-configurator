@@ -728,6 +728,7 @@ export class MatchEngine {
       portToSlot: this.portToSlot.size > 0 ? Object.fromEntries(this.portToSlot) : undefined,
       autoWinnerAlliance: this.autoWinnerAlliance,
       awaitingAutoWinner: awaitingAutoWinner || undefined,
+      pausedFrom: this.phase === 'paused' ? (this.prePausePhase ?? undefined) : undefined,
     };
   }
 
