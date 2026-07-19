@@ -400,6 +400,17 @@ export function ScoreboardPage() {
     }
   }
 
+  // Match progress bar for the video layouts — overlaid on the video's top edge
+  // (rather than a flow strip) so a starting match never reflows the page.
+  const videoTimelineOverlay = (
+    <VideoTimelineOverlay
+      matchState={matchState}
+      matchProgress={matchProgress}
+      autoWinner={autoWinner}
+      remainingTime={displayRemaining}
+    />
+  );
+
   return (
     <Box
       sx={{
@@ -459,8 +470,9 @@ export function ScoreboardPage() {
         </Box>
       )}
 
-      {/* Match timeline progress bar — full width across top */}
-      {matchProgress !== null && matchState && (
+      {/* Match timeline progress bar — full width across top (normal mode only;
+          the video layouts overlay it on the video to avoid reflow) */}
+      {!videoMode && matchProgress !== null && matchState && (
         <Box sx={{ px: 0 }}>
           <MatchTimeline
             config={matchState.config}
@@ -526,12 +538,13 @@ export function ScoreboardPage() {
                 layout={videoLayout}
                 onLayoutChange={saveVideoLayout}
                 onAspectRatio={reportVideoAspect}
+                timelineOverlay={videoTimelineOverlay}
               >
-                {/* Title + timer overlaid on the top edge of the video */}
+                {/* Title + timer overlaid on the video, below the timeline bar */}
                 <Box
                   sx={{
                     position: 'absolute',
-                    top: 8,
+                    top: 52,
                     left: 0,
                     right: 0,
                     display: 'flex',
@@ -610,6 +623,7 @@ export function ScoreboardPage() {
               />
               <AllianceScoreBox
                 compact
+                reserveDecor
                 alliance={left}
                 total={score[left].total}
                 active={leftActive}
@@ -633,17 +647,25 @@ export function ScoreboardPage() {
                 >
                   {titleText}
                 </Typography>
-                {isMatchMode && matchState && matchProgress !== null && (
+                {/* Always mounted (faded when idle) so the header height — and
+                    thus the video below — doesn't shift when a match starts. */}
+                <Box
+                  sx={{
+                    opacity: isMatchMode && matchState && matchProgress !== null ? 1 : 0,
+                    transition: 'opacity 0.8s ease',
+                  }}
+                >
                   <MatchTimer
                     remainingTime={displayRemaining}
                     color={activeColor}
                     pulse={shouldPulse}
                     fontSize="clamp(1.8rem, 4vw, 3.2rem)"
                   />
-                )}
+                </Box>
               </Box>
               <AllianceScoreBox
                 compact
+                reserveDecor
                 alliance={right}
                 total={score[right].total}
                 active={rightActive}
@@ -672,6 +694,7 @@ export function ScoreboardPage() {
                 layout={videoLayout}
                 onLayoutChange={saveVideoLayout}
                 onAspectRatio={reportVideoAspect}
+                timelineOverlay={videoTimelineOverlay}
               />
             </Box>
           </>
@@ -1217,6 +1240,55 @@ function ControlChip({
   );
 }
 
+/** Match timeline overlaid on the top edge of the video. Always mounted (so it
+ *  can fade rather than reflow the layout when a match starts or ends) and it
+ *  remembers the last shown frame so it fades OUT gracefully after a match
+ *  clears instead of vanishing. */
+function VideoTimelineOverlay({
+  matchState,
+  matchProgress,
+  autoWinner,
+  remainingTime,
+}: {
+  matchState: ReturnType<typeof useMatchState>;
+  matchProgress: number | null;
+  autoWinner: Alliance | null;
+  remainingTime: number;
+}) {
+  const visible = matchProgress !== null && matchState !== null;
+  const lastRef = useRef<React.ComponentProps<typeof MatchTimeline> | null>(null);
+  if (visible) {
+    lastRef.current = {
+      config: matchState.config,
+      progress: matchProgress,
+      autoWinnerAlliance: autoWinner,
+      phase: matchState.phase,
+      remainingTime,
+    };
+  }
+  const props = lastRef.current;
+  if (!props) return null; // no match this session yet — nothing to fade
+
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        px: 0.5,
+        pt: 0.5,
+        zIndex: 1,
+        pointerEvents: 'none',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 0.8s ease',
+      }}
+    >
+      <MatchTimeline {...props} />
+    </Box>
+  );
+}
+
 /** The video container: stream (or source config) filling its parent, with
  *  the "⚙ source" edit affordance. Extra overlays render via children. */
 function VideoArea({
@@ -1228,6 +1300,7 @@ function VideoArea({
   layout,
   onLayoutChange,
   onAspectRatio,
+  timelineOverlay,
   children,
 }: {
   source: string;
@@ -1239,6 +1312,8 @@ function VideoArea({
   onLayoutChange: (layout: VideoLayout) => void;
   /** Reports the playing stream's width/height ratio once known */
   onAspectRatio?: (ratio: number) => void;
+  /** Match timeline, overlaid on the video's top edge (both layouts) */
+  timelineOverlay?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -1255,6 +1330,7 @@ function VideoArea({
       {source && !editing ? (
         <>
           <VideoStream source={source} onAspectRatio={onAspectRatio} />
+          {timelineOverlay}
           {!window.__isCastReceiver && (
             <Typography
               onClick={onEditStart}
@@ -1708,6 +1784,7 @@ function AllianceScoreBox({
   isFreePlay,
   side,
   compact,
+  reserveDecor,
 }: {
   alliance: Alliance;
   total: number;
@@ -1724,6 +1801,10 @@ function AllianceScoreBox({
   side?: 'left' | 'right';
   /** Smaller box for the video-mode header row */
   compact?: boolean;
+  /** Always reserve space for the off-goal count and auto-winner badge (kept
+   *  hidden when absent) so the box height doesn't change when a match starts —
+   *  used in the video landscape header to prevent the video from reflowing. */
+  reserveDecor?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
   const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'clamp(4rem, 15vw, 12rem)';
@@ -1954,7 +2035,7 @@ function AllianceScoreBox({
         </Box>
       )}
       {/* Off-goal count — swaps saturation prominence with main score */}
-      {hasInactive && (
+      {(hasInactive || reserveDecor) && (
         <Typography
           sx={{
             color,
@@ -1964,9 +2045,10 @@ function AllianceScoreBox({
             mt: 0.5,
             opacity: goalOff ? 1 : 0.3,
             filter: goalOff ? 'none' : 'saturate(0.3)',
+            visibility: hasInactive ? 'visible' : 'hidden',
           }}
         >
-          +{inactiveTotal}
+          +{inactiveTotal ?? 0}
         </Typography>
       )}
       {freePlayLabel && (
@@ -1984,7 +2066,7 @@ function AllianceScoreBox({
         </Typography>
       )}
       {/* Auto winner badge — shown below the winning alliance's score */}
-      {isAutoWinner && (
+      {(isAutoWinner || reserveDecor) && (
         <Typography
           sx={{
             color,
@@ -1994,6 +2076,7 @@ function AllianceScoreBox({
             letterSpacing: 2,
             mt: 0.5,
             opacity: 0.8,
+            visibility: isAutoWinner ? 'visible' : 'hidden',
           }}
         >
           Auto Winner

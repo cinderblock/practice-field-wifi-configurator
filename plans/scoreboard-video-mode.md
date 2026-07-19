@@ -51,6 +51,22 @@ the mode and stream source persist in `localStorage` per browser.
   🎥 glyph): top-right controls are labeled chips ("🎥 video", "▭ wide"/
   "▯ square", "⇄ swap") that brighten to full opacity on mouse/touch
   activity and fade to 0.2 after 3 s idle.
+- **Progress bar overlaid + no reflow + fade (user follow-up 2026-07-18)**:
+  in video mode the match timeline is NOT a flow strip; `VideoTimelineOverlay`
+  renders it absolutely on the video's top edge (via `VideoArea`'s
+  `timelineOverlay` prop), always mounted, opacity-faded (0.8 s) by
+  `matchProgress !== null`, and it caches the last frame so it fades OUT
+  gracefully after a match clears. Normal (non-video) scoreboard keeps its
+  flow timeline. To keep the video box from reflowing when a match starts,
+  the square layout is reflow-proof by construction (video is a height:100%
+  flex sibling; scores/batteries in side panels), and the landscape header is
+  height-stabilised by reserving the match-only decorations: the center timer
+  is always mounted (faded), and the compact score boxes get `reserveDecor`
+  (always render the `+2` off-goal line and AUTO WINNER badge, `visibility:
+hidden` when absent). Verified: video box bounding rect byte-identical
+  across an idle→match→idle toggle in BOTH layouts, timeline fades in/out
+  (mid-transition opacity between 0 and 1) — `%TEMP%\pfms-verify\drive6.mjs`
+  with the fake backend's new `START_IDLE` + `GET /match?on=0|1` toggle.
 
 ## Plan
 
