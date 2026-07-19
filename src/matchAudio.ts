@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
 const CONFIG_FILE = 'audio-config.json';
 
-type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause';
+type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause' | 'count3' | 'count2' | 'count1';
 
 const PLAYERS = ['aplay', 'paplay', 'ffplay', 'mpv', 'play', 'afplay'];
 
@@ -73,7 +73,17 @@ export class MatchAudio {
     }
 
     // Cache which sound files exist
-    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'pause'];
+    const allSounds: SoundName[] = [
+      'start',
+      'end',
+      'resume',
+      'warning',
+      'abort',
+      'pause',
+      'count3',
+      'count2',
+      'count1',
+    ];
     for (const sound of allSounds) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
         this.availableSounds.add(sound);
@@ -222,8 +232,22 @@ export class MatchAudio {
 
   attachToEngine(engine: MatchEngine): void {
     let lastPhase = 'idle';
+    let lastCountdownSecond = 0;
 
     engine.addStateListener(state => {
+      // Announce "3… 2… 1…" as the pre-start countdown ticks. The countdown
+      // enters at exactly 3s and broadcasts every tick, so each whole second
+      // fires once; an aborted countdown resets for the next start.
+      if (state.phase === 'countdown') {
+        const second = Math.ceil(state.remainingTime);
+        if (second !== lastCountdownSecond && second >= 1 && second <= 3) {
+          lastCountdownSecond = second;
+          this.play(`count${second}` as SoundName);
+        }
+      } else {
+        lastCountdownSecond = 0;
+      }
+
       if (state.phase === lastPhase) return;
       const prevPhase = lastPhase;
       lastPhase = state.phase;

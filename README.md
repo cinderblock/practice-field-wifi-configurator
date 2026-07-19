@@ -68,7 +68,7 @@ The admin page provides safety overrides: global e-stop, per-station e-stop/disa
 
 ### Match Audio
 
-Sound effects (charge horn, end buzzer, warning, pause/resume tones) play on phase transitions via a detected system audio player. Place `.wav` files in `sounds/`.
+Sound effects (charge horn, end buzzer, warning, pause/resume tones) play on phase transitions via a detected system audio player. A spoken "3… 2… 1…" countdown (`count3.wav`, `count2.wav`, `count1.wav`) plays during the 3-second pre-start countdown, one number per second, before the start horn. Place `.wav` files in `sounds/`.
 
 ### Scoring System
 

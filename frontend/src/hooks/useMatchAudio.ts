@@ -2,14 +2,14 @@ import { useEffect, useRef } from 'react';
 import type { MatchPhase, MatchEndReason } from '../../../src/types';
 import { useMatchState } from './useBackend';
 
-type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort';
+type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'count3' | 'count2' | 'count1';
 
 /**
  * Preload sound files as HTMLAudioElement instances so playback is instant.
  * Returns null for sounds that fail to load (e.g. missing files).
  */
 const sounds: Record<SoundName, HTMLAudioElement> = (() => {
-  const names: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort'];
+  const names: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'count3', 'count2', 'count1'];
   const map = {} as Record<SoundName, HTMLAudioElement>;
   for (const name of names) {
     const el = new Audio(`/sounds/${name}.wav`);
@@ -75,8 +75,25 @@ function getSoundForTransition(phase: MatchPhase, prevPhase: MatchPhase, endReas
  * control page the operator will have clicked before any sound fires. On
  * passive displays (scoreboard TVs) the first sound may be silently blocked.
  */
-export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEndReason): void {
+export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEndReason, remainingTime?: number): void {
   const prevPhaseRef = useRef<MatchPhase>('idle');
+  const lastCountRef = useRef(0);
+
+  // Announce "3… 2… 1…" as the pre-start countdown ticks. The countdown
+  // enters at exactly 3s and matchState broadcasts every tick, so each whole
+  // second fires once; an aborted countdown resets for the next start.
+  useEffect(() => {
+    if (phase !== 'countdown') {
+      lastCountRef.current = 0;
+      return;
+    }
+    if (remainingTime === undefined) return;
+    const second = Math.ceil(remainingTime);
+    if (second !== lastCountRef.current && second >= 1 && second <= 3) {
+      lastCountRef.current = second;
+      play(`count${second}` as SoundName);
+    }
+  }, [phase, remainingTime]);
 
   useEffect(() => {
     if (phase === undefined) return;
@@ -96,6 +113,6 @@ export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEn
  */
 export function MatchAudioBridge(): null {
   const matchState = useMatchState();
-  useMatchAudio(matchState?.phase, matchState?.endReason);
+  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.remainingTime);
   return null;
 }
