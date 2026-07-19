@@ -131,8 +131,25 @@ Match 1 today at 16:54 worked).
       immediately; leave/kick/post-match release force a re-handshake that
       returns local control. Fixes takeover/release lag on long-lived DS
       connections.
-- [ ] Fix #3 (gate ready/start on FMS-attached), #6 (enable race), #7 (match
-      history for abandoned ends) — follow-ups.
+- [x] Fix #3 attempt + REVERT (2026-07-18/19): gated Ready on `isDsAttached`
+      (UDP heartbeats within 5s), commit 41829b9. It BROKE the field —
+      `dsAttached` read false even for DSes heartbeating fine (only stamped when
+      `getStationForTeam` resolves), so Ready was disabled for every team and no
+      match could start. Reverted in 267e94e (deployed): dsAttached is now
+      advisory-only (station-page warning), Ready not gated. Re-gating needs a
+      trustworthy attachment signal first.
+- [x] Blue-alliance robots shown on the RED side before match start (2026-07-19,
+      commit 2b152bb, **pushed, NOT yet deployed** — team running a manual
+      match). The alliance-station byte (which side the DS shows + the slot it
+      latches from the 0x19 handshake) came from `portToSlot`, only populated at
+      startMatch; before that every joined station fell back to `'red1'`. The
+      immediate join-takeover (a35019d) made it visible: the DS attaches at join
+      and sees red. Fixed with `MatchEngine.slotForStation()` — derives the slot
+      from the joined alliance (position by join order) until portToSlot is set;
+      used by both the UDP packet and the index.ts 0x19 reply.
+      **DEPLOY PENDING**: steamboat still on 267e94e; run `./update.sh` when the
+      manual match is done to ship 2b152bb.
+- [ ] Fix #6 (enable race), #7 (match history for abandoned ends) — follow-ups.
 
 ## Open questions
 
