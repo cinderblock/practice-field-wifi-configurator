@@ -70,18 +70,35 @@ if is_active_phase "$MATCH_PHASE"; then
   if $FORCE; then
     echo "⚠️  Match in progress (phase: $MATCH_PHASE) — forcing reload (--force)"
   else
+    # A normal match runs ~3 minutes plus a 2-minute postMatch counting
+    # period, so 10 minutes covers back-to-back finishes. A match paused
+    # indefinitely would otherwise hold the deploy forever.
+    MAX_WAIT=600
+    WAITED=0
     echo ""
-    echo "⏳ Match in progress (phase: $MATCH_PHASE) — waiting for it to finish..."
+    echo "⏳ Match in progress (phase: $MATCH_PHASE) — waiting up to $((MAX_WAIT / 60)) minutes for it to finish..."
     echo "   (use './update.sh force' to skip this wait)"
     echo ""
     while true; do
       sleep 5
+      WAITED=$((WAITED + 5))
       MATCH_PHASE=$(get_match_phase)
       if ! is_active_phase "$MATCH_PHASE"; then
         echo "✅ Match finished (phase: $MATCH_PHASE) — proceeding with reload."
         break
       fi
-      echo "   Still waiting... (phase: $MATCH_PHASE)"
+      if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+        echo ""
+        echo "❌ Gave up after $((MAX_WAIT / 60)) minutes — the field is still in use (phase: $MATCH_PHASE)."
+        echo ""
+        echo "   The backend was NOT reloaded, but the new frontend is already synced and"
+        echo "   being served against the old backend — finish the deploy soon to avoid a"
+        echo "   version mismatch:"
+        echo "     ./update.sh          try again (waits for the field to free up)"
+        echo "     ./update.sh force    reload now (interrupts the match in progress)"
+        exit 1
+      fi
+      echo "   Still waiting... (phase: $MATCH_PHASE, ${WAITED}s elapsed)"
     done
   fi
 fi
