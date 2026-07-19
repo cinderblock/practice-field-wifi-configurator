@@ -120,6 +120,18 @@ hidden` when absent). Verified: video box bounding rect byte-identical
   worked from them); the public socket now accepts exactly that one
   message type.
 
+- **Telemetry firehose (root cause of "scores lag behind reality",
+  2026-07-19)**: live measurement of /ws/scores showed **250 telemetry
+  msgs/s** (~42/robot — RobotPacketCapture emits per sniffed packet), 56 of
+  58 KB/s total. On a slow display (Chromecast on TV Wi-Fi) the backlog
+  queues AHEAD of score updates → visible score lag. Fix:
+  `src/telemetryThrottle.ts` `createTelemetryCoalescer` wraps both broadcast
+  call sites in index.ts — per-station latest-wins throttle (250 ms), with
+  immediate flush on dsStatus changes (e-stop/enable stay snappy). Verified
+  with the real module: 100 updates/s → 5/station/s, latest value preserved,
+  status changes flush immediately. Expected on-wire: ~250/s → ~24/s,
+  ~56 KB/s → ~6 KB/s.
+
 ## Findings / gotchas
 
 - Scores root (`frontend/src/roots/scores.tsx`) wraps in a dark MUI theme —

@@ -27,6 +27,7 @@ import {
 import { buildNetworkStats } from './networkStats.js';
 import { setBroadcast, appInfo, appWarn } from './appLogger.js';
 import { TelemetryManager } from './telemetryManager.js';
+import { createTelemetryCoalescer } from './telemetryThrottle.js';
 import { MatchAudio } from './matchAudio.js';
 import { SubnetScanner } from './subnetScanner.js';
 import { MdnsReflector } from './mdnsReflector.js';
@@ -487,6 +488,12 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     );
   }
 
+  // Telemetry reaches clients through a per-station coalescer: packet capture
+  // fires per sniffed packet (250+/s with six robots), which floods slow
+  // displays and delays the score updates queued behind it. Status changes
+  // still flush immediately.
+  const broadcastTelemetry = createTelemetryCoalescer(update => broadcast(update));
+
   // Passive robot packet capture — sniff robot→DS UDP to extract battery voltage
   // and robot status without taking FMS control of the Driver Station.
   let robotPacketCapture: RobotPacketCapture | undefined;
@@ -494,7 +501,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     robotPacketCapture = new RobotPacketCapture(
       VlanInterface,
       () => radioManager.getTeamMappings(),
-      update => broadcast(update),
+      update => broadcastTelemetry(update),
       false, // dryRun
       // Resolve station from VLAN ID for disambiguating duplicate teams
       (vlanId: number) => {
@@ -606,8 +613,9 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     const telemetryManager = new TelemetryManager(
       () => radioManager.getTeamMappings(),
       update => {
-        broadcast(update);
+        broadcastTelemetry(update);
         // When a robot transitions to disabled, check if we can flush a deferred commit
+        // (outside the coalescer — this reacts to the transition itself)
         if (update.dsStatus && !update.dsStatus.enabled) {
           radioManager.retryDeferredCommit();
         }
