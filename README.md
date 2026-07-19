@@ -68,7 +68,7 @@ The admin page provides safety overrides: global e-stop, per-station e-stop/disa
 
 ### Match Audio
 
-Sound effects (charge horn, end buzzer, warning, pause/resume tones) play on phase transitions via a detected system audio player. A spoken "3… 2… 1…" announcer (`countdown.wav`, a single pre-timed clip with the numbers at 0/1/2 seconds) plays when the 3-second pre-start countdown begins, ending just before the start horn. It must remain a single clip: the server plays sounds through an exclusive ALSA device, so separate per-second clips race each other and drop numbers. Place `.wav` files in `sounds/`.
+Sound effects (charge horn, end buzzer, warning, pause/resume tones) play on phase transitions via a detected system audio player. A spoken "3… 2… 1…" announcer plays when the 3-second pre-start countdown begins: `countdown1.wav`–`countdown4.wav` are pre-timed clips (four different voices) with the numbers at 0/1/2 seconds and the charge horn baked in at exactly 3 seconds (no separate start sound plays after a countdown). The voice is picked per match by hashing the match id, so the field speaker and every open browser page agree. Each variant must remain a single clip: the server plays sounds through an exclusive ALSA device, so separate clips race each other and drop sounds. Place `.wav` files in `sounds/`.
 
 ### Scoring System
 

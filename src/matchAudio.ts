@@ -10,7 +10,28 @@ const execFileAsync = promisify(execFile);
 const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
 const CONFIG_FILE = 'audio-config.json';
 
-type SoundName = 'start' | 'end' | 'resume' | 'warning' | 'abort' | 'pause' | 'countdown';
+type SoundName =
+  | 'start'
+  | 'end'
+  | 'resume'
+  | 'warning'
+  | 'abort'
+  | 'pause'
+  | 'countdown1'
+  | 'countdown2'
+  | 'countdown3'
+  | 'countdown4';
+
+const COUNTDOWN_VARIANTS = 4;
+
+/** Deterministic per-match countdown voice pick. Must match the browser logic
+ *  in frontend/src/hooks/useMatchAudio.ts so the field speaker and every open
+ *  page play the same voice for a given match. */
+function countdownVariant(matchId: string | undefined): SoundName {
+  let h = 0;
+  for (let i = 0; i < (matchId?.length ?? 0); i++) h = (h + matchId!.charCodeAt(i)) % COUNTDOWN_VARIANTS;
+  return `countdown${h + 1}` as SoundName;
+}
 
 const PLAYERS = ['aplay', 'paplay', 'ffplay', 'mpv', 'play', 'afplay'];
 
@@ -73,7 +94,18 @@ export class MatchAudio {
     }
 
     // Cache which sound files exist
-    const allSounds: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'pause', 'countdown'];
+    const allSounds: SoundName[] = [
+      'start',
+      'end',
+      'resume',
+      'warning',
+      'abort',
+      'pause',
+      'countdown1',
+      'countdown2',
+      'countdown3',
+      'countdown4',
+    ];
     for (const sound of allSounds) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
         this.availableSounds.add(sound);
@@ -223,10 +255,10 @@ export class MatchAudio {
 
   attachToEngine(engine: MatchEngine): void {
     let lastPhase = 'idle';
-    // The in-flight "3… 2… 1…" announcer, so an aborted countdown goes quiet.
-    // A single pre-timed clip (numbers at 0/1/2s, ending before the 3s horn)
-    // rather than per-second clips: aplay holds the ALSA device exclusively,
-    // so back-to-back one-second clips race it and drop numbers.
+    // The in-flight "3… 2… 1… <horn>" announcer, so an aborted countdown goes
+    // quiet. A single pre-timed clip (numbers at 0/1/2s, charge horn at 3s)
+    // rather than separate clips: aplay holds the ALSA device exclusively, so
+    // back-to-back clips race it and drop sounds.
     let countdownChild: ChildProcess | null = null;
 
     engine.addStateListener(state => {
@@ -246,14 +278,16 @@ export class MatchAudio {
 
       switch (state.phase) {
         case 'countdown':
-          countdownChild = this.play('countdown');
+          countdownChild = this.play(countdownVariant(state.matchId));
           break;
         case 'auto':
           if (prevPhase === 'paused') {
             // user resumed during auto
             this.play('resume');
-          } else {
-            // countdown → auto: charge horn
+          } else if (prevPhase !== 'countdown') {
+            // countdown → auto plays nothing here: the charge horn is baked
+            // into countdown.wav at the 3s mark (a second aplay would find
+            // the exclusive ALSA device busy and drop the horn)
             this.play('start');
           }
           break;
@@ -264,8 +298,10 @@ export class MatchAudio {
           break;
 
         case 'teleop':
-          // autoPause → teleop, or user resumed during teleop: resume horn
-          this.play('resume');
+          // autoPause → teleop, or user resumed during teleop: resume horn.
+          // countdown → teleop (skipAuto) is silent here — the horn is baked
+          // into countdown.wav.
+          if (prevPhase !== 'countdown') this.play('resume');
           break;
 
         case 'endgame':
