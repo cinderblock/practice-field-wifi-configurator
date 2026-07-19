@@ -348,6 +348,21 @@ export class MatchEngine {
   }
 
   setReady(station: StationName, ready: boolean) {
+    // A joined team backing out during the pre-start countdown cancels the
+    // start: abort back to setup and mark them un-ready, so the match can't
+    // restart until they ready up again.
+    if (this.phase === 'countdown' && !ready) {
+      const state = this.stationStates.get(station)!;
+      if (!state.joined) {
+        appWarn(`Station ${station} is not joined, cannot set ready`);
+        return;
+      }
+      this.abortCountdown();
+      state.ready = false;
+      console.log(`Station ${station} un-readied during countdown — countdown aborted`);
+      this.broadcast();
+      return;
+    }
     if (this.phase !== 'created') {
       appWarn(`Cannot change ready state for ${station} in phase ${this.phase}`);
       return;

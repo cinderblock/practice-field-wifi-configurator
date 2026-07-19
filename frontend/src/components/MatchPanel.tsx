@@ -149,6 +149,12 @@ function SelfServiceControls({
 
   return (
     <>
+      {/* Countdown: backing out aborts the 3-2-1 and returns everyone to setup */}
+      {phase === 'countdown' && (
+        <Button variant="outlined" color="warning" onClick={blurring(() => sendStationReady(station, false))}>
+          Not Ready — Cancel Countdown
+        </Button>
+      )}
       {myState?.enabled ? (
         <Button variant="outlined" color="warning" onClick={blurring(() => sendStationSelfDisable(station))}>
           Disable
