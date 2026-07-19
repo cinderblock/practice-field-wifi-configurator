@@ -45,6 +45,7 @@ import {
   sendAdminGlobalEStop,
   sendAdminStationEStop,
   sendAdminStationDisable,
+  sendAdminStationEnable,
   sendAdminClearEStop,
   sendStopCast,
   useCastReceivers,
@@ -163,15 +164,25 @@ function StationControlCard({ station }: { station: StationName }) {
               <Button size="small" variant="outlined" onClick={() => sendAdminClearEStop(station)}>
                 Clear E-Stop
               </Button>
+            ) : stationState?.enabled ? (
+              <Button size="small" variant="contained" color="warning" onClick={() => sendAdminStationDisable(station)}>
+                Disable
+              </Button>
             ) : (
+              // Recovery: put a stopped robot back in the match (works for team
+              // disables and after a cleared e-stop; robots-running phases only)
               <Button
                 size="small"
-                variant={stationState?.enabled ? 'contained' : 'outlined'}
-                color="warning"
-                onClick={() => sendAdminStationDisable(station)}
-                disabled={!stationState?.enabled}
+                variant="outlined"
+                color="success"
+                onClick={() => sendAdminStationEnable(station)}
+                disabled={
+                  !stationState?.joined ||
+                  stationState?.aStop ||
+                  !(matchState?.phase === 'auto' || matchState?.phase === 'teleop' || matchState?.phase === 'endgame')
+                }
               >
-                Disable
+                Enable
               </Button>
             )}
             {!stationState?.eStop && (

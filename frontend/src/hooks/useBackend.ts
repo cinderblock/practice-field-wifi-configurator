@@ -964,6 +964,10 @@ export function sendStationSelfDisable(station: StationName) {
   ws?.send(JSON.stringify({ type: 'stationSelfDisable', station }));
 }
 
+export function sendStationSelfUndisable(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'stationSelfUndisable', station }));
+}
+
 export function sendStationSelfEStop(station: StationName) {
   ws?.send(JSON.stringify({ type: 'stationSelfEStop', station }));
 }
@@ -990,6 +994,10 @@ export function sendAdminStationEStop(station: StationName) {
 
 export function sendAdminStationDisable(station: StationName) {
   ws?.send(JSON.stringify({ type: 'adminStationDisable', station }));
+}
+
+export function sendAdminStationEnable(station: StationName) {
+  ws?.send(JSON.stringify({ type: 'adminStationEnable', station }));
 }
 
 export function sendAdminClearEStop(station?: StationName) {

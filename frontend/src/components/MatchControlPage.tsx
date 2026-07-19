@@ -30,6 +30,7 @@ import {
   sendStationResumeMatch,
   sendStationAbandonMatch,
   sendAdminStationDisable,
+  sendAdminStationEnable,
   sendAdminStationEStop,
   sendAdminGlobalEStop,
   sendAdminClearEStop,
@@ -585,8 +586,12 @@ function ActiveMatchView({
 
 /** A participant row during an active match, with per-station disable/e-stop controls */
 function ActiveParticipantRow({ station, state }: { station: StationName; state: StationControlState | undefined }) {
+  const phase = useMatchState()?.phase;
   const isEnabled = state?.enabled ?? false;
   const isEStopped = state?.eStop ?? false;
+  // Re-enable is only meaningful while robots run; A-Stop latches through auto
+  const canEnable =
+    (phase === 'auto' || phase === 'teleop' || phase === 'endgame') && !state?.aStop && (state?.joined ?? false);
 
   return (
     <Box
@@ -629,15 +634,21 @@ function ActiveParticipantRow({ station, state }: { station: StationName; state:
           </Button>
         ) : (
           <>
-            <Button
-              size="small"
-              variant="outlined"
-              color="warning"
-              onClick={() => sendAdminStationDisable(station)}
-              disabled={!isEnabled}
-            >
-              Disable
-            </Button>
+            {isEnabled ? (
+              <Button size="small" variant="outlined" color="warning" onClick={() => sendAdminStationDisable(station)}>
+                Disable
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                color="success"
+                onClick={() => sendAdminStationEnable(station)}
+                disabled={!canEnable}
+              >
+                Enable
+              </Button>
+            )}
             <Button size="small" variant="contained" color="error" onClick={() => sendAdminStationEStop(station)}>
               E-Stop
             </Button>

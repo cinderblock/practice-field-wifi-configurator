@@ -9,6 +9,7 @@ import {
   sendStationSelfAStop,
   sendStationClearAStop,
   sendStationSelfEStop,
+  sendStationSelfUndisable,
 } from '../hooks/useBackend';
 
 /**
@@ -68,6 +69,8 @@ type ConsoleState = {
   ready: boolean;
   aStop: boolean;
   eStop: boolean;
+  enabled: boolean;
+  disabledBy: 'ds' | 'self' | 'admin' | null;
   robots: ConsoleRobot[];
 };
 
@@ -82,6 +85,7 @@ let robotsEl: HTMLElement | null = null;
 let hintEl: HTMLElement | null = null;
 let readyBtn: HTMLButtonElement | null = null;
 let astopBtn: HTMLButtonElement | null = null;
+let reenableBtn: HTMLButtonElement | null = null;
 let estopBtn: HTMLButtonElement | null = null;
 let footerEl: HTMLElement | null = null;
 let closeBox: HTMLInputElement | null = null;
@@ -177,13 +181,28 @@ function buildConsole(w: Window) {
   readyBtn.style.fontSize = '26px';
 
   astopBtn = mkBtn(doc, () => {
+    // Drop focus so a stray Space/Enter (drivers reach for the DS hotkeys in a
+    // panic) can't re-activate whichever button was tapped last.
+    astopBtn?.blur();
     if (!lastState) return;
     if (lastState.phase === 'created' && lastState.aStop) sendStationClearAStop(lastState.station);
     else if (!lastState.aStop) sendStationSelfAStop(lastState.station);
   });
   astopBtn.style.flex = '2';
 
+  reenableBtn = mkBtn(doc, () => {
+    reenableBtn?.blur();
+    if (!lastState || lastState.enabled || lastState.disabledBy === 'admin') return;
+    sendStationSelfUndisable(lastState.station);
+  });
+  reenableBtn.style.flex = '1';
+  reenableBtn.style.fontSize = '22px';
+
   estopBtn = mkBtn(doc, () => {
+    // Blur on every tap: an armed-and-still-focused E-Stop would otherwise be
+    // confirmed by a stray Space/Enter meant for the Driver Station — the
+    // browser "clicks" the focused button on those keys (no key listeners here).
+    estopBtn?.blur();
     if (!lastState || lastState.eStop) return;
     if (!estopArmed) {
       estopArmed = true;
@@ -206,7 +225,7 @@ function buildConsole(w: Window) {
   estopBtn.style.cssText +=
     'flex:0 0 46px;font-size:16px;background:transparent;border:2px solid #f44336;color:#f44336;border-radius:10px;';
 
-  main.append(readyBtn, astopBtn, estopBtn);
+  main.append(readyBtn, astopBtn, reenableBtn, estopBtn);
 
   hintEl = doc.createElement('div');
   hintEl.style.cssText = 'color:#999;font-size:12.5px;line-height:1.45;padding:4px 12px 0;text-align:center;';
@@ -242,9 +261,10 @@ function refreshConsole() {
 /** Paint the console from match state. Safe to call on every broadcast. */
 function updateConsole(state: ConsoleState) {
   lastState = state;
-  if (!popupIsOpen() || !phaseEl || !timerEl || !robotsEl || !readyBtn || !astopBtn || !estopBtn) return;
+  if (!popupIsOpen() || !phaseEl || !timerEl || !robotsEl || !readyBtn || !astopBtn || !reenableBtn || !estopBtn)
+    return;
   const doc = popupWin!.document;
-  const { phase, pausedFrom, ready, aStop, eStop, robots } = state;
+  const { phase, pausedFrom, ready, aStop, eStop, enabled, disabledBy, robots } = state;
 
   const setup = phase === 'created';
   // The giant A-Stop is live during countdown/auto and a pause taken during auto
@@ -326,6 +346,29 @@ function updateConsole(state: ConsoleState) {
     }
   }
 
+  // Re-enable — the recovery path after an accidental disable (console button
+  // or DS Enter key) or a staff-cleared e-stop. Only shown while robots run.
+  const robotsRunning = phase === 'auto' || phase === 'teleop' || phase === 'endgame';
+  const showReenable = robotsRunning && !enabled && !eStop && !aStop;
+  reenableBtn.style.display = showReenable ? 'block' : 'none';
+  if (showReenable) {
+    if (disabledBy === 'admin') {
+      reenableBtn.textContent = 'DISABLED BY FIELD STAFF';
+      reenableBtn.disabled = true;
+      reenableBtn.style.background = '#333';
+      reenableBtn.style.border = '2px solid #777';
+      reenableBtn.style.color = '#aaa';
+      reenableBtn.style.cursor = 'default';
+    } else {
+      reenableBtn.textContent = 'RE-ENABLE ROBOT';
+      reenableBtn.disabled = false;
+      reenableBtn.style.background = '#2e7d32';
+      reenableBtn.style.border = '0';
+      reenableBtn.style.color = '#fff';
+      reenableBtn.style.cursor = 'pointer';
+    }
+  }
+
   // E-Stop — always present, two-tap confirm, latched once tripped
   if (eStop) {
     estopBtn.textContent = 'E-STOPPED — see field staff to clear';
@@ -379,6 +422,8 @@ function consoleStateFrom(match: MatchState, station: StationName): ConsoleState
     ready: my?.ready ?? false,
     aStop: my?.aStop ?? false,
     eStop: my?.eStop ?? false,
+    enabled: my?.enabled ?? false,
+    disabledBy: my?.disabledBy ?? null,
     robots,
   };
 }

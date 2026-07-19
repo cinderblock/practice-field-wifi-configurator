@@ -457,6 +457,12 @@ export type StationControlState = {
    *  Ready is gated on this — a DS that isn't heartbeating won't obey match
    *  control, so letting it ready up would start a match against a dead link. */
   dsAttached?: boolean;
+  /** Who latched the current disable, when it wasn't ordinary phase control:
+   *  the team's DS (Enter key), the team's own station console, or field
+   *  staff. Teams may re-enable themselves after a 'ds' or 'self' disable
+   *  (stationSelfUndisable); an 'admin' disable only clears from the admin
+   *  console. Null when enabled or when disabled by phase control. */
+  disabledBy: 'ds' | 'self' | 'admin' | null;
 };
 
 export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';
@@ -640,6 +646,20 @@ export function isAdminStationDisable(msg: unknown): msg is AdminStationDisable 
   return true;
 }
 
+/** Re-enable a station a team stopped mid-match (DS/console disable, or after
+ *  an e-stop was cleared). Admin form of stationSelfUndisable — also overrides
+ *  an admin disable. */
+export type AdminStationEnable = { type: 'adminStationEnable'; station: StationName };
+
+export function isAdminStationEnable(msg: unknown): msg is AdminStationEnable {
+  if (typeof msg !== 'object') return false;
+  if (!msg) return false;
+  const m = msg as AdminStationEnable;
+  if (m.type !== 'adminStationEnable') return false;
+  if (!StationNameRegex.test(m.station)) return false;
+  return true;
+}
+
 export type AdminClearEStop = { type: 'adminClearEStop'; station?: StationName };
 
 export function isAdminClearEStop(msg: unknown): msg is AdminClearEStop {
@@ -713,6 +733,16 @@ export function isStationSelfAStop(msg: unknown): msg is StationSelfAStop {
   if (typeof msg !== 'object' || !msg) return false;
   const m = msg as StationSelfAStop;
   return m.type === 'stationSelfAStop' && StationNameRegex.test(m.station);
+}
+
+/** Team-side recovery from an accidental mid-match disable (DS Enter key or
+ *  the console Disable button). Refused while e-stopped, a-stopped, admin-
+ *  disabled, or outside the auto/teleop/endgame phases. */
+export type StationSelfUndisable = { type: 'stationSelfUndisable'; station: StationName };
+export function isStationSelfUndisable(msg: unknown): msg is StationSelfUndisable {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StationSelfUndisable;
+  return m.type === 'stationSelfUndisable' && StationNameRegex.test(m.station);
 }
 
 /** Cancel a pre-armed A-Stop (only honored during match setup). */

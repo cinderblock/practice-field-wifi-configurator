@@ -48,9 +48,11 @@ import {
   isMatchKickStation,
   isMatchSetAutoWinner,
   isStationSelfDisable,
+  isStationSelfUndisable,
   isStationSelfEStop,
   isStationSelfAStop,
   isStationClearAStop,
+  isAdminStationEnable,
   isSubmitSupportIssue,
   isStartSupportChat,
   isSendSupportChatMessage,
@@ -666,7 +668,9 @@ export function setupWebSocket(
       } else if (isAdminStationEStop(data)) {
         matchEngine.stationEStop(data.station);
       } else if (isAdminStationDisable(data)) {
-        matchEngine.stationDisable(data.station);
+        matchEngine.stationDisable(data.station, 'admin');
+      } else if (isAdminStationEnable(data)) {
+        matchEngine.undisable(data.station, true);
       } else if (isAdminClearEStop(data)) {
         matchEngine.clearEStop(data.station);
       } else if (isMatchCreate(data)) {
@@ -684,7 +688,9 @@ export function setupWebSocket(
       } else if (isMatchSetAutoWinner(data)) {
         matchEngine.setAutoWinner(data.winner);
       } else if (isStationSelfDisable(data)) {
-        matchEngine.stationDisable(data.station);
+        matchEngine.stationDisable(data.station, 'self');
+      } else if (isStationSelfUndisable(data)) {
+        matchEngine.undisable(data.station, false);
       } else if (isStationSelfEStop(data)) {
         matchEngine.stationEStop(data.station);
       } else if (isStationSelfAStop(data)) {

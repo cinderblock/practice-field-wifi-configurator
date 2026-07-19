@@ -21,6 +21,11 @@ const HEARTBEAT_INTERVAL_MS = 200;
 /** A DS counts as FMS-attached if a UDP status heartbeat (2 Hz) arrived this
  *  recently. Only an attached DS obeys match control, so Ready is gated on it. */
 const DS_ATTACHED_TIMEOUT_MS = 5_000;
+/** After the FMS enables a station, ignore DS "disabled" status reports for
+ *  this long. The DS status heartbeat is 2 Hz, so right after an enable a
+ *  stale packet still carrying the pre-enable state can arrive — without the
+ *  grace it would instantly re-latch the disable that was just cleared. */
+const FMS_ENABLE_GRACE_MS = 2_000;
 /** Post-match scoring delay for balls in flight (up to 3s per rules) */
 const POST_MATCH_COUNT_SECONDS = 3;
 /** How long a finished match lingers in postMatch before auto-clearing to idle.
@@ -58,6 +63,8 @@ export class MatchEngine {
   private dsConnections = new Map<StationName, { ip: string; lastSeen: number }>();
   /** Last FMS UDP status heartbeat per station — only an FMS-attached DS sends these */
   private lastDsHeartbeat = new Map<StationName, number>();
+  /** When the FMS last enabled each station — gates the DS-disable re-latch grace */
+  private lastFmsEnable = new Map<StationName, number>();
   private udpSocket: dgram.Socket;
   private listeners: ((state: MatchState) => void)[] = [];
   private matchNumber = 0;
@@ -87,6 +94,7 @@ export class MatchEngine {
         ready: false,
         alliance: null,
         matchSlot: null,
+        disabledBy: null,
       });
       this.sequenceNumbers.set(station, 0);
     }
@@ -178,6 +186,7 @@ export class MatchEngine {
       state.enabled = false;
       state.eStop = false;
       state.aStop = false;
+      state.disabledBy = null;
     }
     this.pendingConfig = { ...OFFICIAL_CONFIG };
     this.config = null;
@@ -450,6 +459,7 @@ export class MatchEngine {
       state.teamNumber = teamNumber;
       state.enabled = false;
       state.eStop = false;
+      state.disabledBy = null;
       // Keep pre-armed A-Stops for participating stations — teams that know
       // their auto won't run can A-Stop during match setup.
       if (!state.joined) state.aStop = false;
@@ -631,10 +641,47 @@ export class MatchEngine {
     this.broadcast();
   }
 
-  stationDisable(station: StationName) {
+  stationDisable(station: StationName, source: 'admin' | 'self' = 'admin') {
     const state = this.stationStates.get(station)!;
     state.enabled = false;
-    console.log(`Disabled: ${station}`);
+    state.disabledBy = source;
+    console.log(`Disabled: ${station} (by ${source})`);
+    this.sendDSPacket(station);
+    this.broadcast();
+  }
+
+  /** Re-enable a station stopped mid-match — the recovery path for a team
+   *  that accidentally disabled (DS Enter key or console button), or whose
+   *  e-stop was just cleared by staff. Only meaningful in the phases where
+   *  robots run; every other phase disables everyone by design. Teams cannot
+   *  override a staff disable; the admin console can override anything. */
+  undisable(station: StationName, byAdmin = false) {
+    const state = this.stationStates.get(station)!;
+    if (this.phase !== 'auto' && this.phase !== 'teleop' && this.phase !== 'endgame') {
+      appWarn(`Cannot re-enable ${station} in phase ${this.phase} — robots only run during auto/teleop/endgame`);
+      return;
+    }
+    if (!state.joined) {
+      appWarn(`Cannot re-enable ${station}: station has not joined the match`);
+      return;
+    }
+    if (state.eStop || state.aStop) {
+      appWarn(`Cannot re-enable ${station}: ${state.eStop ? 'e-stop' : 'a-stop'} is latched`);
+      return;
+    }
+    if (state.disabledBy === 'admin' && !byAdmin) {
+      appWarn(`Cannot re-enable ${station}: disabled by field staff — clear it from the admin console`);
+      return;
+    }
+    if (state.enabled) return;
+    // Re-stamp the mode: a robot stopped during auto still carries mode
+    // 'auto', and re-enabling it in teleop with that mode would re-run its
+    // auto routine on the open field.
+    state.mode = this.phase === 'auto' ? 'auto' : 'teleOp';
+    state.enabled = true;
+    state.disabledBy = null;
+    this.lastFmsEnable.set(station, Date.now());
+    console.log(`Re-enabled: ${station}${byAdmin ? ' (admin)' : ' (self)'}`);
     this.sendDSPacket(station);
     this.broadcast();
   }
@@ -663,9 +710,16 @@ export class MatchEngine {
       console.log(`DS a-stop reported: ${station}`);
       changed = true;
     } else if (!dsEnabled && state.enabled) {
-      state.enabled = false;
-      console.log(`DS disable reported: ${station}`);
-      changed = true;
+      // Grace window: right after the FMS enables a station, the DS's 2 Hz
+      // status can still carry the pre-enable "disabled" state — honoring it
+      // would instantly undo the enable (and make undisable silently fail).
+      const enabledAt = this.lastFmsEnable.get(station);
+      if (enabledAt === undefined || Date.now() - enabledAt > FMS_ENABLE_GRACE_MS) {
+        state.enabled = false;
+        state.disabledBy = 'ds';
+        console.log(`DS disable reported: ${station}`);
+        changed = true;
+      }
     }
     if (changed) {
       // No packet sent here: the DS already stopped itself before reporting,
@@ -975,6 +1029,8 @@ export class MatchEngine {
       if (state.joined && !state.eStop && !state.aStop) {
         state.enabled = true;
         state.mode = mode;
+        state.disabledBy = null;
+        this.lastFmsEnable.set(station, Date.now());
       }
     }
   }

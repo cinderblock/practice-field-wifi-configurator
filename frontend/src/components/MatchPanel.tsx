@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -15,6 +15,7 @@ import {
   sendStationLeave,
   sendStationReady,
   sendStationSelfDisable,
+  sendStationSelfUndisable,
   sendStationSelfEStop,
   sendStationSelfAStop,
   sendStationClearAStop,
@@ -113,6 +114,106 @@ function computeBarProgress(
  * NOTE: Start/Pause/Resume/Abandon are NOT available from station views.
  * Those controls are only on the /match controller page.
  */
+/** Self-service controls while a match is running: disable / re-enable,
+ *  A-Stop, and E-Stop. The E-Stop needs a second tap to fire (same arm step
+ *  as the pop-out console) — a single stray click next to the A-Stop button
+ *  must not latch a match-long e-stop. Re-enable is the recovery path after
+ *  an accidental disable (console button or DS Enter key), and after field
+ *  staff clear an e-stop. */
+function SelfServiceControls({
+  station,
+  phase,
+  myState,
+}: {
+  station: StationName;
+  phase: MatchPhase;
+  myState: StationControlState | undefined;
+}) {
+  const [estopArmed, setEstopArmed] = useState(false);
+  useEffect(() => {
+    if (!estopArmed) return;
+    const t = setTimeout(() => setEstopArmed(false), 3000);
+    return () => clearTimeout(t);
+  }, [estopArmed]);
+
+  const robotsRunning = phase === 'auto' || phase === 'teleop' || phase === 'endgame';
+  const staffDisabled = myState?.disabledBy === 'admin';
+
+  // Blur after every activation: the browser "clicks" the focused button on
+  // Space/Enter, and drivers hit those keys aiming for the Driver Station —
+  // a previously-tapped robot-stopping (or -starting) button must not fire.
+  const blurring = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.blur();
+    fn();
+  };
+
+  return (
+    <>
+      {myState?.enabled ? (
+        <Button variant="outlined" color="warning" onClick={blurring(() => sendStationSelfDisable(station))}>
+          Disable
+        </Button>
+      ) : myState?.eStop || myState?.aStop ? null : robotsRunning ? (
+        <>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={blurring(() => sendStationSelfUndisable(station))}
+            disabled={staffDisabled}
+          >
+            Re-enable
+          </Button>
+          {staffDisabled && (
+            <Typography variant="caption" color="warning.main" sx={{ width: '100%' }}>
+              Disabled by field staff — they can re-enable you from the admin console.
+            </Typography>
+          )}
+        </>
+      ) : (
+        <Button variant="outlined" color="warning" disabled>
+          Disable
+        </Button>
+      )}
+      {/* A-Stop: only meaningful before/during auto; self-releases at teleop */}
+      {(phase === 'countdown' || phase === 'auto') &&
+        (myState?.aStop ? (
+          <Chip label="A-Stopped until teleop" size="small" color="warning" />
+        ) : (
+          <Button
+            variant="contained"
+            color="warning"
+            size="small"
+            onClick={blurring(() => sendStationSelfAStop(station))}
+          >
+            A-Stop
+          </Button>
+        ))}
+      {myState?.eStop ? (
+        <Chip label="E-Stopped — field staff can clear it" size="small" color="error" />
+      ) : (
+        <Button
+          variant={estopArmed ? 'contained' : 'outlined'}
+          color="error"
+          size="small"
+          onClick={blurring(() => {
+            if (!estopArmed) {
+              setEstopArmed(true);
+              return;
+            }
+            setEstopArmed(false);
+            sendStationSelfEStop(station);
+          })}
+        >
+          {estopArmed ? 'Tap again to E-Stop' : 'E-Stop'}
+        </Button>
+      )}
+      <Button variant="outlined" onClick={() => sendStationLeave(station)}>
+        Leave Match
+      </Button>
+    </>
+  );
+}
+
 export function MatchPanel({ station }: { station?: StationName }) {
   const matchState = useMatchState();
   if (!matchState) return null;
@@ -285,38 +386,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
               )}
 
               {/* Active match: self-service controls */}
-              {joined && isActive && (
-                <>
-                  <Button
-                    variant="outlined"
-                    color="warning"
-                    onClick={() => sendStationSelfDisable(station)}
-                    disabled={!myState?.enabled}
-                  >
-                    Disable
-                  </Button>
-                  {/* A-Stop: only meaningful before/during auto; self-releases at teleop */}
-                  {(phase === 'countdown' || phase === 'auto') &&
-                    (myState?.aStop ? (
-                      <Chip label="A-Stopped until teleop" size="small" color="warning" />
-                    ) : (
-                      <Button
-                        variant="contained"
-                        color="warning"
-                        size="small"
-                        onClick={() => sendStationSelfAStop(station)}
-                      >
-                        A-Stop
-                      </Button>
-                    ))}
-                  <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
-                    E-Stop
-                  </Button>
-                  <Button variant="outlined" onClick={() => sendStationLeave(station)}>
-                    Leave Match
-                  </Button>
-                </>
-              )}
+              {joined && isActive && <SelfServiceControls station={station} phase={phase} myState={myState} />}
 
               {/* Post-match: leave to get control back */}
               {joined && isPostMatch && (
@@ -606,38 +676,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
           )}
 
           {/* Active match: self-service controls */}
-          {joined && isActive && (
-            <>
-              <Button
-                variant="outlined"
-                color="warning"
-                onClick={() => sendStationSelfDisable(station)}
-                disabled={!myState?.enabled}
-              >
-                Disable
-              </Button>
-              {/* A-Stop: only meaningful before/during auto; self-releases at teleop */}
-              {(phase === 'countdown' || phase === 'auto') &&
-                (myState?.aStop ? (
-                  <Chip label="A-Stopped until teleop" size="small" color="warning" />
-                ) : (
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    size="small"
-                    onClick={() => sendStationSelfAStop(station)}
-                  >
-                    A-Stop
-                  </Button>
-                ))}
-              <Button variant="contained" color="error" size="small" onClick={() => sendStationSelfEStop(station)}>
-                E-Stop
-              </Button>
-              <Button variant="outlined" onClick={() => sendStationLeave(station)}>
-                Leave Match
-              </Button>
-            </>
-          )}
+          {joined && isActive && <SelfServiceControls station={station} phase={phase} myState={myState} />}
 
           {/* Post-match: leave */}
           {joined && isPostMatch && (
