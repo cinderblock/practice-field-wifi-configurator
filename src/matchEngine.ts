@@ -15,6 +15,7 @@ import {
   defaultSlotToRadio,
 } from './types.js';
 import { appWarn, appError } from './appLogger.js';
+import { getAllianceShiftState, getMatchSubPeriod } from './shiftState.js';
 
 const TICK_INTERVAL_MS = 250;
 const HEARTBEAT_INTERVAL_MS = 200;
@@ -781,11 +782,29 @@ export class MatchEngine {
     const awaitingAutoWinner =
       this.phase === 'autoPause' && this.config?.autoWinner === 'pause' && !this.autoWinnerAlliance;
 
+    // Shift scoring state — computed from the game phase, which survives
+    // pauses (a paused match stays in its pre-pause sub-period)
+    const effectivePhase = this.phase === 'paused' ? (this.prePausePhase ?? undefined) : this.phase;
+    const subPeriod = this.config
+      ? getMatchSubPeriod(effectivePhase, this.remainingTime, this.config.teleopDuration)
+      : null;
+    const inactiveGoalAlliance = this.config
+      ? getAllianceShiftState(
+          effectivePhase,
+          this.remainingTime,
+          this.config.teleopDuration,
+          this.config.endgameDuration,
+          this.autoWinnerAlliance,
+        )
+      : null;
+
     return {
       type: 'matchState',
       // Kept after the match ends (postMatch/idle) so late consumers can still link to it
       matchId: this.matchId ?? undefined,
       matchNumber: this.matchNumber || undefined,
+      subPeriod,
+      inactiveGoalAlliance,
       phase: this.phase,
       remainingTime: Math.max(0, this.remainingTime),
       totalMatchTime: this.totalMatchTime,

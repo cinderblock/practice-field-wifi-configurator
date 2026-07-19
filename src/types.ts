@@ -1,3 +1,6 @@
+// Type-only import — shiftState imports types back, but both are erased at runtime
+import type { MatchSubPeriod } from './shiftState.js';
+
 export interface StationDetails {
   ssid: string;
   hashedWpaKey: string;
@@ -508,6 +511,12 @@ export type MatchState = {
   matchId?: string;
   /** Sequential match counter (since server start) for display purposes. */
   matchNumber?: number;
+  /** Current sub-period (auto/transition/shift1-4/endgame) for REBUILT shift
+   *  scoring. Frozen at its pre-pause value while paused. */
+  subPeriod?: MatchSubPeriod | null;
+  /** Whose goal is currently INACTIVE due to shift scoring (null = both
+   *  active). Frozen at its pre-pause value while paused. */
+  inactiveGoalAlliance?: Alliance | null;
   remainingTime: number;
   totalMatchTime: number;
   config: MatchConfig;
