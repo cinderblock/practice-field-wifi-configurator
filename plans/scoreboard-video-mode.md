@@ -39,6 +39,14 @@ the mode and stream source persist in `localStorage` per browser.
   scores + batteries in the black side bars, timer overlaid on the video
   top). Stored in `scoreboard-video-layout` / `?videoLayout=`; switchable
   from the ▭/▯ control chip and the source-config panel.
+- **Square layout is aspect-fit** (user follow-up): the video box sizes to
+  the stream's measured width/height ratio (`aspectRatio` CSS; reported by
+  the media elements via `onAspectRatio` — video/img/WHEP; iframes can't
+  report, which falls back to fixed panels + flex video). Side panels
+  `flex: 1 1 0` to absorb ALL leftover width, so no black bars remain
+  around the video content. Verified: 4:3 WHEP stream → video box exactly
+  4:3 (1354×1016 @1080p), panels symmetric 283px; landscape unaffected
+  (`%TEMP%\pfms-verify\drive5.mjs`).
 - **Controls must be discoverable** (user couldn't find the original tiny
   🎥 glyph): top-right controls are labeled chips ("🎥 video", "▭ wide"/
   "▯ square", "⇄ swap") that brighten to full opacity on mouse/touch

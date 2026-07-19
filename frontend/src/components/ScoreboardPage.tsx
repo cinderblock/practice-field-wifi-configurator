@@ -142,6 +142,16 @@ export function ScoreboardPage() {
   const [videoLayout, setVideoLayout] = useState(getInitialVideoLayout);
   const [editingVideoSource, setEditingVideoSource] = useState(false);
 
+  // Measured aspect ratio of the playing stream (width/height). The square
+  // layout sizes the video box to exactly height×aspect so the side panels
+  // absorb all leftover width instead of leaving black bars around the video.
+  const [videoAspect, setVideoAspect] = useState<number | null>(null);
+  useEffect(() => setVideoAspect(null), [videoSource]);
+  const reportVideoAspect = useCallback((ratio: number) => {
+    if (!isFinite(ratio) || ratio <= 0) return;
+    setVideoAspect(prev => (prev !== null && Math.abs(prev - ratio) < 0.01 ? prev : ratio));
+  }, []);
+
   // Top-right controls are revealed by pointer activity and fade when idle,
   // so they're findable with a mouse but don't clutter a wall-mounted display
   const [controlsActive, setControlsActive] = useState(false);
@@ -476,6 +486,8 @@ export function ScoreboardPage() {
                 pt: 1,
                 minWidth: 190,
                 overflowY: 'auto',
+                // Absorb the width the aspect-sized video box doesn't use
+                flex: videoAspect ? '1 1 0' : '0 0 auto',
               }}
             >
               <AllianceScoreBox
@@ -496,7 +508,15 @@ export function ScoreboardPage() {
                 vertical
               />
             </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box
+              sx={{
+                minWidth: 0,
+                // Once the stream's aspect ratio is known, size the video box
+                // to exactly fill the height — the flexing side panels then
+                // soak up all remaining width (no black bars around the video)
+                ...(videoAspect ? { flex: '0 1 auto', height: '100%', aspectRatio: String(videoAspect) } : { flex: 1 }),
+              }}
+            >
               <VideoArea
                 source={videoSource}
                 editing={editingVideoSource}
@@ -505,6 +525,7 @@ export function ScoreboardPage() {
                 onCancelEdit={() => setEditingVideoSource(false)}
                 layout={videoLayout}
                 onLayoutChange={saveVideoLayout}
+                onAspectRatio={reportVideoAspect}
               >
                 {/* Title + timer overlaid on the top edge of the video */}
                 <Box
@@ -554,6 +575,8 @@ export function ScoreboardPage() {
                 pt: 1,
                 minWidth: 190,
                 overflowY: 'auto',
+                // Absorb the width the aspect-sized video box doesn't use
+                flex: videoAspect ? '1 1 0' : '0 0 auto',
               }}
             >
               <AllianceScoreBox
@@ -648,6 +671,7 @@ export function ScoreboardPage() {
                 onCancelEdit={() => setEditingVideoSource(false)}
                 layout={videoLayout}
                 onLayoutChange={saveVideoLayout}
+                onAspectRatio={reportVideoAspect}
               />
             </Box>
           </>
@@ -1203,6 +1227,7 @@ function VideoArea({
   onCancelEdit,
   layout,
   onLayoutChange,
+  onAspectRatio,
   children,
 }: {
   source: string;
@@ -1212,6 +1237,8 @@ function VideoArea({
   onCancelEdit: () => void;
   layout: VideoLayout;
   onLayoutChange: (layout: VideoLayout) => void;
+  /** Reports the playing stream's width/height ratio once known */
+  onAspectRatio?: (ratio: number) => void;
   children?: ReactNode;
 }) {
   return (
@@ -1227,7 +1254,7 @@ function VideoArea({
     >
       {source && !editing ? (
         <>
-          <VideoStream source={source} />
+          <VideoStream source={source} onAspectRatio={onAspectRatio} />
           {!window.__isCastReceiver && (
             <Typography
               onClick={onEditStart}
@@ -1290,10 +1317,15 @@ function whepEndpoint(source: string): string {
 /** WebRTC player: POSTs an SDP offer to a WHEP endpoint and plays the
  *  answered stream. Media flows directly (UDP); only signaling uses HTTP.
  *  Reconnects automatically if the session drops. */
-function WhepVideo({ endpoint }: { endpoint: string }) {
+function WhepVideo({ endpoint, onAspectRatio }: { endpoint: string; onAspectRatio?: (ratio: number) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+
+  const reportAspect = (e: { currentTarget: HTMLVideoElement }) => {
+    const v = e.currentTarget;
+    if (v.videoWidth && v.videoHeight) onAspectRatio?.(v.videoWidth / v.videoHeight);
+  };
 
   useEffect(() => {
     setError(null);
@@ -1369,7 +1401,15 @@ function WhepVideo({ endpoint }: { endpoint: string }) {
 
   return (
     <>
-      <video ref={videoRef} autoPlay muted playsInline style={VIDEO_FILL_STYLE} />
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        style={VIDEO_FILL_STYLE}
+        onLoadedMetadata={reportAspect}
+        onResize={reportAspect}
+      />
       {error && (
         <Typography
           sx={{
@@ -1396,10 +1436,15 @@ const VIDEO_FILL_STYLE = {
   border: 0,
 } as const;
 
-function VideoStream({ source }: { source: string }) {
+function VideoStream({ source, onAspectRatio }: { source: string; onAspectRatio?: (ratio: number) => void }) {
   const kind = classifyVideoSource(source);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const reportVideoAspect = (e: { currentTarget: HTMLVideoElement }) => {
+    const v = e.currentTarget;
+    if (v.videoWidth && v.videoHeight) onAspectRatio?.(v.videoWidth / v.videoHeight);
+  };
 
   // Local webcam: acquire on mount, release tracks on unmount
   useEffect(() => {
@@ -1436,11 +1481,47 @@ function VideoStream({ source }: { source: string }) {
         </Box>
       );
     }
-    return <video ref={videoRef} autoPlay muted playsInline style={VIDEO_FILL_STYLE} />;
+    return (
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        style={VIDEO_FILL_STYLE}
+        onLoadedMetadata={reportVideoAspect}
+        onResize={reportVideoAspect}
+      />
+    );
   }
-  if (kind === 'whep') return <WhepVideo endpoint={whepEndpoint(source)} />;
-  if (kind === 'image') return <img src={source} alt="Video stream" style={VIDEO_FILL_STYLE} />;
-  if (kind === 'video') return <video src={source} autoPlay muted playsInline loop style={VIDEO_FILL_STYLE} />;
+  if (kind === 'whep') return <WhepVideo endpoint={whepEndpoint(source)} onAspectRatio={onAspectRatio} />;
+  if (kind === 'image') {
+    return (
+      <img
+        src={source}
+        alt="Video stream"
+        style={VIDEO_FILL_STYLE}
+        onLoad={e => {
+          const img = e.currentTarget;
+          if (img.naturalWidth && img.naturalHeight) onAspectRatio?.(img.naturalWidth / img.naturalHeight);
+        }}
+      />
+    );
+  }
+  if (kind === 'video') {
+    return (
+      <video
+        src={source}
+        autoPlay
+        muted
+        playsInline
+        loop
+        style={VIDEO_FILL_STYLE}
+        onLoadedMetadata={reportVideoAspect}
+        onResize={reportVideoAspect}
+      />
+    );
+  }
+  // iframe contents are opaque — no aspect ratio to report
   return <iframe src={source} allow="autoplay; fullscreen" style={VIDEO_FILL_STYLE} />;
 }
 
