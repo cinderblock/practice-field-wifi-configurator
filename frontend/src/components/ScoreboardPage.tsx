@@ -783,8 +783,14 @@ export function ScoreboardPage() {
               display: 'grid',
               gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
               alignItems: 'center',
-              px: 'max(16px, 3vw)',
+              // Tighter than before so the flanking period-breakdown columns keep
+              // enough width to render their labels without clipping at the edges.
+              px: 'max(10px, 1.5vw)',
               minHeight: 0,
+              // Size container: the hero score's 42cqh cap scales it to this
+              // region's remaining height so it never overflows onto the batteries.
+              containerType: 'size',
+              containerName: 'scoreboard',
             }}
           >
             {/* Left alliance — flanking info + score box */}
@@ -793,8 +799,8 @@ export function ScoreboardPage() {
                 display: 'flex',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
-                pr: 2,
-                gap: 2,
+                pr: 1.5,
+                gap: 1.5,
                 minWidth: 0,
                 overflow: 'hidden',
               }}
@@ -842,8 +848,8 @@ export function ScoreboardPage() {
                 display: 'flex',
                 justifyContent: 'flex-start',
                 alignItems: 'center',
-                pl: 2,
-                gap: 2,
+                pl: 1.5,
+                gap: 1.5,
                 minWidth: 0,
                 overflow: 'hidden',
               }}
@@ -1107,6 +1113,7 @@ function BatteryCard({
   inMatch,
   isDuplicate,
   compact,
+  fill,
 }: {
   robot: BatteryRobot;
   /** Robots participating in a match get alliance colors; non-participants get white */
@@ -1114,6 +1121,9 @@ function BatteryCard({
   isDuplicate: boolean;
   /** Smaller card for the video-mode header row */
   compact?: boolean;
+  /** Flex to share the row's width (with a max) instead of a fixed width, so the
+   *  bottom panel keeps every robot on one row rather than wrapping. */
+  fill?: boolean;
 }) {
   const color = inMatch ? (robot.alliance === 'red' ? '#ef5350' : '#42a5f5') : 'rgba(255,255,255,0.5)';
   const bgColor = inMatch
@@ -1148,7 +1158,13 @@ function BatteryCard({
         border: `1px solid ${color}`,
         borderRadius: 1,
         backgroundColor: bgColor,
-        width: compact ? 170 : 180,
+        // Fill mode: equal flex columns capped at a max, so N robots always share
+        // one row (never wrap, which would break the red→blue left-right order).
+        // Inline-size container so the header can drop the least-critical figure
+        // when a card gets narrow. Otherwise a fixed width (video-mode groups).
+        ...(fill
+          ? { flex: '1 1 0', minWidth: 0, maxWidth: compact ? 170 : 190, containerType: 'inline-size' }
+          : { width: compact ? 170 : 180 }),
         overflow: 'hidden',
       }}
     >
@@ -1170,6 +1186,7 @@ function BatteryCard({
               fontWeight: 700,
               color: 'rgba(255,255,255,0.7)',
               whiteSpace: 'nowrap',
+              '@container (max-width: 150px)': { fontSize: '0.8rem' },
             }}
           >
             {robot.teamNumber ?? robot.station}
@@ -1188,6 +1205,7 @@ function BatteryCard({
             fontWeight: 700,
             color,
             whiteSpace: 'nowrap',
+            '@container (max-width: 150px)': { fontSize: '0.95rem' },
           }}
         >
           {robot.battery.current.toFixed(1)}V
@@ -1199,6 +1217,9 @@ function BatteryCard({
               fontSize: compact ? '0.7rem' : '0.8rem',
               color: 'rgba(244, 67, 54, 0.8)',
               whiteSpace: 'nowrap',
+              // Least-critical figure — drop it before the card gets so tight it
+              // would clip the team number or current voltage.
+              '@container (max-width: 132px)': { display: 'none' },
             }}
           >
             ↓{minFloor.toFixed(1)}V
@@ -1311,13 +1332,17 @@ const BatteryPanel = memo(function BatteryPanel({
   const matchAlliances = matchAlliancesKey ? (matchAlliancesKey.split(',') as Alliance[]) : [];
   if (robots.length === 0) return null;
 
+  // Single row, never wrapping: the cards are sorted red → unassigned → blue to
+  // read left-to-right in line with the score boxes, and a wrapped second row
+  // would break that grouping. The `fill` cards flex to share the width (capped),
+  // shrinking to fit however many robots are on the field.
   return (
     <Box
       sx={{
         display: 'flex',
         justifyContent: 'center',
-        flexWrap: 'wrap',
-        gap: 1.5,
+        flexWrap: 'nowrap',
+        gap: 1,
         px: 2,
         pb: 2,
       }}
@@ -1326,6 +1351,7 @@ const BatteryPanel = memo(function BatteryPanel({
         <BatteryCard
           key={robot.station}
           robot={robot}
+          fill
           inMatch={robot.alliance != null && matchAlliances.includes(robot.alliance)}
           isDuplicate={robot.teamNumber ? (teamCounts.get(robot.teamNumber) ?? 0) > 1 : false}
         />
@@ -1868,7 +1894,7 @@ function PeriodBreakdownImpl({
             key={label}
             sx={{
               display: 'flex',
-              gap: 1.5,
+              gap: 1,
               alignItems: 'baseline',
               flexDirection: align === 'right' ? 'row' : 'row-reverse',
             }}
@@ -1938,7 +1964,17 @@ function AllianceScoreBoxImpl({
   reserveDecor?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
-  const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'clamp(4rem, 15vw, 12rem)';
+  // Cap the hero number to a fraction of the score region's own height (cqh, via
+  // the `scoreboard` size-container on the grid) so a crowded display — 6 teams
+  // wrapping the batteries to two rows — can't push the score box taller than its
+  // band and overlap the batteries. This is self-correcting: as the batteries
+  // take more vertical space the region shrinks and the number shrinks to match,
+  // regardless of the display's resolution. A smaller number is also narrower,
+  // which frees horizontal room for the flanking period labels. The cqh cap only
+  // ever applies here (normal mode); the video layouts use the `compact` font and
+  // aren't inside the container. On roomy displays the 12rem clamp wins, so
+  // normal/2-team layouts are unchanged.
+  const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'min(clamp(4rem, 15vw, 12rem), 42cqh)';
   const rgb = alliance === 'red' ? '239, 83, 80' : '66, 165, 245';
   const bgColor = isFreePlay
     ? alliance === 'red'
@@ -2062,7 +2098,7 @@ function AllianceScoreBoxImpl({
       sx={{
         position: 'relative',
         textAlign: 'center',
-        px: compact ? 3 : 6,
+        px: compact ? 3 : 'clamp(1.5rem, 3vw, 3rem)',
         py: compact ? 1 : 3,
         borderRadius: 2,
         border: `3px solid ${showChase ? 'transparent' : color}`,
