@@ -35,7 +35,11 @@ export function createTelemetryCoalescer(
     st.latest = null;
     st.lastSentAt = Date.now();
     if (update.dsStatus !== undefined) st.lastStatusKey = statusKey(update);
-    if (Number.isFinite(st.pendingMin) && st.pendingMin < update.batteryVoltage) {
+    if (
+      update.batteryVoltage !== undefined &&
+      Number.isFinite(st.pendingMin) &&
+      st.pendingMin < update.batteryVoltage
+    ) {
       update = { ...update, batteryVoltageMin: st.pendingMin };
     }
     st.pendingMin = NaN;

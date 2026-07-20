@@ -83,7 +83,9 @@ export type LogDataMessage = {
   type: 0x16;
   roundTripTime: number;
   lostPackets: number;
-  voltage: number;
+  /** Robot battery voltage, or undefined when the robot isn't connected to the
+   *  DS (the DS then reports the 0xFFFF sentinel — see parseBatteryVoltage). */
+  voltage: number | undefined;
   status: Status;
   CAN: number;
   SignalDb: number;
@@ -122,6 +124,17 @@ export type DSMessage =
   | ErrorAndEventDataMessage
   | ChallengeResponseMessage
   | DSPingMessage;
+
+/**
+ * Convert the raw 16-bit battery-voltage field (fixed-point, /256) to volts.
+ * A disconnected robot's DS reports 0xFFFF as a "no reading" sentinel; that
+ * would otherwise decode to 255.996V and display as "256.0V". Return undefined
+ * in that case so downstream telemetry omits the value rather than charting it.
+ */
+function parseBatteryVoltage(raw: number): number | undefined {
+  if (raw === 0xffff) return undefined;
+  return raw / 256;
+}
 
 function byteToStatus(byte: number): Status {
   return {
@@ -168,7 +181,7 @@ function parseIncomingTcpMessage(data: Buffer): DSMessage | null {
         type,
         roundTripTime: r.readNumber(1),
         lostPackets: r.readNumber(1),
-        voltage: r.readNumber(2) / 256,
+        voltage: parseBatteryVoltage(r.readNumber(2)),
         status: byteToStatus(r.readNumber(1)),
         CAN: r.readNumber(1) * 2,
         SignalDb: r.readNumber(1) * 2,
@@ -284,7 +297,9 @@ export type UdpMessage = {
   commVersion: number;
   status: DsStatus;
   teamNumber: number;
-  BatteryVoltage: number;
+  /** Robot battery voltage, or undefined when the robot isn't connected to the
+   *  DS (the DS then reports the 0xFFFF sentinel — see parseBatteryVoltage). */
+  BatteryVoltage: number | undefined;
   tags: Tags;
 };
 
@@ -294,7 +309,7 @@ function parseIncomingUdpMessage(buff: Buffer): UdpMessage {
   const commVersion = r.readNumber(1);
   const status = byteToDsStatus(r.readNumber(1));
   const teamNumber = r.readNumber(2);
-  const BatteryVoltage = r.readNumber(2) / 256;
+  const BatteryVoltage = parseBatteryVoltage(r.readNumber(2));
   const tags: Tags = [];
 
   while (r.remaining > 0) {

@@ -722,7 +722,9 @@ export function StationStatus({ station, full }: { station: StationName; full?: 
                             <TableBody>
                               <TableRow>
                                 <TableCell sx={{ whiteSpace: 'nowrap', color: 'success.main', textAlign: 'right' }}>
-                                  {telemetry.batteryVoltage?.toFixed(1)} V
+                                  {telemetry.batteryVoltage !== undefined
+                                    ? `${telemetry.batteryVoltage.toFixed(1)} V`
+                                    : '—'}
                                 </TableCell>
                                 <TableCell sx={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                                   {telemetry.rttMs !== undefined ? `${telemetry.rttMs} ms` : '—'}

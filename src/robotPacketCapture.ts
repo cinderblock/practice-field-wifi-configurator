@@ -143,7 +143,14 @@ export class RobotPacketCapture {
     if (data.length < payloadOffset + 7) return; // Need at least through battery bytes
     const statusByte = data[payloadOffset + 3];
     const traceByte = data[payloadOffset + 4];
-    const batteryVoltage = data[payloadOffset + 5] + data[payloadOffset + 6] / 256;
+    // 0xFFFF is the DS "no reading" sentinel (robot not connected); it would
+    // decode to 255.996V and display as "256.0V". Report undefined instead.
+    // This packet-driven path only fires when the robot IS connected, so this
+    // is defensive, but it keeps the sentinel handling consistent everywhere.
+    const batteryVoltage =
+      data[payloadOffset + 5] === 0xff && data[payloadOffset + 6] === 0xff
+        ? undefined
+        : data[payloadOffset + 5] + data[payloadOffset + 6] / 256;
 
     // Extract team number from source IP (10.TE.AM.x)
     const team = teamFromIp(srcIp);
@@ -193,7 +200,7 @@ export class RobotPacketCapture {
     if (!this.debuggedTeams.has(team)) {
       this.debuggedTeams.add(team);
       console.log(
-        `RobotPacketCapture: team ${team} → ${batteryVoltage.toFixed(2)}V ${enabled ? 'enabled' : 'disabled'} ${mode}${hasRobotCode ? '' : ' (no code)'}`,
+        `RobotPacketCapture: team ${team} → ${batteryVoltage !== undefined ? `${batteryVoltage.toFixed(2)}V` : 'no reading'} ${enabled ? 'enabled' : 'disabled'} ${mode}${hasRobotCode ? '' : ' (no code)'}`,
       );
     }
 

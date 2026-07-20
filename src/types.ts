@@ -774,7 +774,10 @@ export interface TelemetryUpdate {
   type: 'telemetry';
   station: StationName;
   timestamp: number;
-  batteryVoltage: number;
+  /** Robot battery voltage in volts. Omitted when the robot isn't connected to
+   *  its Driver Station (the DS reports a 0xFFFF sentinel, which would otherwise
+   *  decode to ~256V) — consumers render a "no reading" placeholder instead. */
+  batteryVoltage?: number;
   /** Lowest batteryVoltage observed since this station's previous broadcast.
    *  Telemetry is throttled per-station (latest wins), so brief voltage sags
    *  between broadcasts would otherwise be invisible — this carries the
