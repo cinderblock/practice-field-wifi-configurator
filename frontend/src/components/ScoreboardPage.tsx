@@ -787,10 +787,6 @@ export function ScoreboardPage() {
               // enough width to render their labels without clipping at the edges.
               px: 'max(10px, 1.5vw)',
               minHeight: 0,
-              // Size container: the hero score's 42cqh cap scales it to this
-              // region's remaining height so it never overflows onto the batteries.
-              containerType: 'size',
-              containerName: 'scoreboard',
             }}
           >
             {/* Left alliance — flanking info + score box */}
@@ -1964,17 +1960,7 @@ function AllianceScoreBoxImpl({
   reserveDecor?: boolean;
 }) {
   const color = alliance === 'red' ? '#ef5350' : '#42a5f5';
-  // Cap the hero number to a fraction of the score region's own height (cqh, via
-  // the `scoreboard` size-container on the grid) so a crowded display — 6 teams
-  // wrapping the batteries to two rows — can't push the score box taller than its
-  // band and overlap the batteries. This is self-correcting: as the batteries
-  // take more vertical space the region shrinks and the number shrinks to match,
-  // regardless of the display's resolution. A smaller number is also narrower,
-  // which frees horizontal room for the flanking period labels. The cqh cap only
-  // ever applies here (normal mode); the video layouts use the `compact` font and
-  // aren't inside the container. On roomy displays the 12rem clamp wins, so
-  // normal/2-team layouts are unchanged.
-  const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'min(clamp(4rem, 15vw, 12rem), 42cqh)';
+  const mainFontSize = compact ? 'clamp(2rem, 5vw, 4rem)' : 'clamp(4rem, 15vw, 12rem)';
   const rgb = alliance === 'red' ? '239, 83, 80' : '66, 165, 245';
   const bgColor = isFreePlay
     ? alliance === 'red'

@@ -45,15 +45,10 @@ width crowds out the flank columns (horizontal clipping).
 
 ## Plan / steps
 
-1. Cap the hero number to a fraction of the **score region's own height** with a
-   container query: make the score grid a `containerType:size` /
-   `containerName:scoreboard`, and set the non-compact font to
-   `min(clamp(4rem,15vw,12rem), 42cqh)`. Self-correcting: two battery rows shrink
-   the region → the number shrinks to fit → no overlap, at any resolution. A
-   smaller number is also narrower, freeing horizontal room for the flank labels.
-   (A plain `vh` cap was rejected: the number is already clamped to 12rem/192px,
-   so `40vh` only bites below a 480px-tall viewport — inert on realistic TVs. The
-   cqh cap is relative to the region, so it works regardless of display size.)
+1. ~~Cap the hero number by `42cqh` via a size container on the grid.~~ **Tried,
+   shipped, reverted** — collapsed the idle-freeplay 0–0 font to ~0 (see
+   Findings). The single-row battery fix (step 3) removes the overlap this was
+   meant to solve, so the hero font stays plain `clamp(4rem,15vw,12rem)`.
 2. Recover horizontal room for the period labels (insurance): trim the score
    grid outer padding, the flank `pr/pl` + gap, the score-box `px`, and the
    `PeriodBreakdown` internal gap — all modest.
@@ -68,22 +63,28 @@ width crowds out the flank columns (horizontal clipping).
 
 ## Findings / gotchas
 
-- cq (container-query) units are the _self-correcting_ fix (scale the number to
-  the score region's own height). Safe here because the `42cqh` value lives only
-  in the **non-compact** font string, which is used only in normal mode — inside
-  the `scoreboard` container. The video layouts use the separate `compact` font
-  and never evaluate cqh, so there's no cross-contamination. `container-type:size`
-  is valid on the grid because its size comes from `flex:1` (determinate), not its
-  content. Requires container-query support (Chrome 105+/Safari 16+ — fine for the
-  modern WHEP/wakeLock browser on the display).
-- Could not drive a live 6-robot render here (no mock/sim harness; needs backend
-  - six robots). Changes are reasoned from the CSS; the wall display should be
-    sanity-checked, or tell me the TV's effective resolution to tune the 40vh cap
-    and dense-card threshold.
+- **The `42cqh` container-query cap shipped and REGRESSED — reverted.** On the
+  live scoreboard the idle-freeplay 0–0 score stopped rendering: `container-type:
+size` on the grid did not give a usable resolved height in that state, so
+  `42cqh` collapsed toward 0 and `min(clamp(4rem,15vw,12rem), 42cqh)` drove the
+  hero font to ~0 (invisible "0"). `container-type:size` is too finicky (needs a
+  definite size in both axes and establishes size containment) to rely on here.
+- With the batteries now on a **single row**, the original two-row overlap that
+  the cap was meant to solve no longer occurs — the shorter battery band leaves
+  enough vertical room for the (12rem-capped) hero number. So the cap isn't
+  needed; hero font is back to the plain `clamp(4rem,15vw,12rem)`.
+- If hero-vs-battery overlap ever resurfaces on a very short display, use a
+  JS-measured cap (ResizeObserver on the score region → px max-height), which is
+  deterministic — NOT `cqh`/`vh`.
+- Could not drive a live 6-robot / freeplay render here (no mock/sim harness;
+  needs backend + robots). Changes reasoned from the CSS + the live regression
+  report; sanity-check on the wall display.
 
 ## Progress log
 
-- [x] Hero number capped to `42cqh`; score grid made a `scoreboard` size container.
+- [x] ~~Hero number capped to `42cqh`; score grid made a size container.~~
+      REVERTED — regressed idle-freeplay 0–0 (font collapsed to ~0). Hero font
+      back to `clamp(4rem,15vw,12rem)`; size container removed.
 - [x] Horizontal tightening: grid px `max(16px,3vw)`→`max(10px,1.5vw)`; flank
       `pr/pl` 2→1.5 and gap 2→1.5; score-box px 6→`clamp(1.5rem,3vw,3rem)`;
       PeriodBreakdown row gap 1.5→1.
@@ -98,6 +99,7 @@ width crowds out the flank columns (horizontal clipping).
 
 ## Things not to do
 
-- Don't shrink the hero number unconditionally (spectators read it) — only cap by
-  height so normal displays are untouched.
-- Don't put cq units in the shared score box (breaks video mode).
+- Don't shrink the hero number unconditionally (spectators read it).
+- **Don't use `cqh`/`container-type:size` to cap the hero number** — it collapsed
+  the idle-freeplay 0–0 to an invisible font. If a height cap is ever needed
+  again, measure with JS (ResizeObserver → px max-height).
