@@ -1,0 +1,177 @@
+# Setup & Deployment
+
+## Requirements
+
+Works with [`PRACTICE` or `OFFSEASON` firmware](https://frc-radio.vivid-hosting.net/access-points/fms-ap-firmware-releases)
+on the VH-113 AP (or VH-109). `PRACTICE` is recommended for simplicity and
+programmer connectivity.
+
+Currently, only Linux is supported for network management due to
+dependencies on `iptables` and `iputils-arping`. The app must run with
+root privileges to manage VLAN interfaces and routing rules. (Development
+on any OS works with [`DRY_RUN`](internals.md#dry-run-mode).)
+
+## Install
+
+1. System dependencies (Linux, for VLAN/routing):
+
+   ```bash
+   sudo apt install fping iptables iputils-arping
+   ```
+
+   - `fping` — fast parallel pinging for the subnet scanner (device
+     discovery on team VLANs)
+   - `iptables` — MASQUERADE rules for site network ↔ robot routing
+   - `iputils-arping` — duplicate address detection (OFFSEASON firmware
+     mode only)
+
+   > **OFFSEASON firmware only:** also install `dnsmasq-base` for per-VLAN
+   > DHCP serving.
+
+2. JavaScript dependencies (the project uses [bun](https://bun.sh)):
+
+   ```bash
+   bun install
+   ```
+
+## Production Deployment
+
+1. `bun run build` — compiles the backend to `dist/` and builds the
+   frontend to `frontend/dist/`
+2. `bun run start` (or `node dist`) — starts the backend from the compiled
+   output
+3. Configure a web server to serve the static frontend and proxy `/ws` and
+   `/api/*` to the backend (examples below)
+
+### Update Script
+
+`./update.sh` pulls, builds, deploys static assets, and reloads the
+service. If a match is running it waits (up to 10 minutes) for the field
+to free up before reloading; `./update.sh force` reloads immediately. It
+uses the backend's `/health` endpoint (which reports the current match
+phase) to decide. On startup after a deploy, commit subjects since the
+last deployed version are posted to the support Slack channel.
+
+### Systemd Service
+
+```service
+[Unit]
+Description=Practice Field Management System Backend
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/pfms/environment
+WorkingDirectory=/path/to/practice-field-configurator
+ExecStart=/usr/bin/node dist
+# Graceful reload: preserve network rules across restarts
+ExecReload=/bin/sh -c 'touch /run/pfms-keep-network && kill -HUP $MAINPID'
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Environment variables live in `/etc/pfms/environment` (one `KEY=value`
+per line — see the [configuration reference](configuration.md)). Changes
+take effect on service restart without `systemctl daemon-reload`.
+
+`systemctl reload` preserves iptables rules, route tables, and route
+preferences across restarts — robots stay connected and laptops keep
+their routing preferences. `systemctl restart` performs a full cleanup.
+See [Graceful Reload](internals.md#graceful-reload).
+
+### Reverse Proxy
+
+The frontend is a multi-page Vite build: each page is its own HTML file
+(`admin.html`, `scores.html`, …), so the proxy maps clean URLs with
+`try_files {path} {path}.html`, and team-number URLs (`/1234`,
+`/1234-Bot`) rewrite to `control.html` (the team control page). `/ws` and
+`/api/*` proxy to the backend port (`WEBSOCKET_PORT`, `9005` in the
+examples below).
+
+#### Caddy
+
+```Caddyfile
+practice.example.com {
+    @teamNumber path_regexp ^/\d
+
+    route {
+        rewrite @teamNumber /control.html
+
+        reverse_proxy /ws localhost:9005
+        reverse_proxy /ws/scores localhost:9005
+        reverse_proxy /api/* localhost:9005
+        reverse_proxy /admin/auth/* localhost:9005
+
+        root * /path/to/frontend/dist
+        try_files {path} {path}.html
+        file_server
+    }
+
+    handle_errors {
+        @404 expression `{err.status_code} == 404`
+        rewrite @404 /404.html
+        root * /path/to/frontend/dist
+        file_server
+    }
+}
+```
+
+The reference deployment additionally splits internal and external
+audiences — external visitors get a public-only page unless they carry a
+valid access cookie (checked via `forward_auth` against
+`/api/auth/check`), with `/scores` and `/admin` always reachable. See
+[External Access](#external-access).
+
+#### Nginx
+
+```conf
+server {
+    listen 80;
+    server_name practice.example.com;
+    root /path/to/frontend/dist;
+
+    # Clean URLs: /admin → /admin.html, /scores → /scores.html, etc.
+    location / {
+        try_files $uri $uri.html $uri/ =404;
+    }
+
+    # Team control pages: /1234, /1234-Bot → /control.html
+    location ~ ^/\d {
+        rewrite ^ /control.html break;
+    }
+
+    location /api/ {
+        proxy_pass http://localhost:9005;
+        proxy_set_header Host $host;
+        client_max_body_size 100m;  # firmware uploads
+    }
+
+    location /ws {
+        proxy_pass http://localhost:9005;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Set [`TRUSTED_PROXIES`](configuration.md#trusted-proxies) so the backend
+logs real client IPs instead of the proxy's.
+
+## External Access
+
+External access tokens grant trusted users the full internal UI from
+outside the local network. Tokens are managed from the admin page —
+create, view, and revoke as needed.
+
+When an admin logs in, a token is automatically created and the browser
+cookie is set. Tokens can also be created manually and shared as URLs
+(`/admin/auth/<token>`). Visiting the URL sets an `HttpOnly` cookie
+(365 days, refreshed on every page load). On subsequent requests from
+external IPs, the reverse proxy uses `forward_auth` to ask the backend
+whether the cookie is valid — the backend returns `200` (serve internal
+UI) or `401` (serve public page). Revoking a token in the admin UI
+invalidates it immediately.

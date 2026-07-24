@@ -16,7 +16,14 @@ The interface should **not** be managed by NetworkManager or have any existing I
 ### Dedicated NIC vs VLAN
 
 - **Dedicated NIC** — a separate physical port. Plug the robot's radio directly into it via Ethernet cable. The tester monitors carrier state to detect when a robot is plugged in/unplugged.
-- **VLAN sub-interface** — useful when the robot is connected through the field AP. The VLAN ID must match the station (10=red1, 20=red2, ..., 60=blue3). Link detection is skipped (VLAN link state mirrors the parent and is meaningless), so the tester treats the link as always up and relies on DHCP timeouts and device reachability to detect connections.
+- **VLAN sub-interface** — useful when the robot is connected through the field AP. The VLAN ID must match the station (10 = slot 1 … 60 = slot 6). Link detection is skipped (VLAN link state mirrors the parent and is meaningless), so the tester treats the link as always up and relies on DHCP timeouts and device reachability to detect connections. To create one on the trunk — e.g. for a robot on slot 1 (VLAN 10):
+
+  ```sh
+  ip link add link eno1 name eno1.10 type vlan id 10
+  ip link set eno1.10 up
+  ```
+
+  Then set `TEST_INTERFACE=eno1.10`.
 
 ## State Machine
 

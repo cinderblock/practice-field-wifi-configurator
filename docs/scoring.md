@@ -1,0 +1,99 @@
+# Scoring System
+
+An HTTP API for tracking scores from external goal-watching devices
+(sensors, cameras, referee tablets, ESP32s, etc.). Scoring detection is
+the responsibility of the devices — they send events, and the server
+translates them into points.
+
+## Modes
+
+- **Free play (default):** a 30-second sliding window shows a rolling
+  count of recent scores. Events age out automatically. Recent scoring
+  batches are also tracked for display.
+- **Match mode:** scores accumulate from zero with per-phase breakdowns.
+  Automatically activates when a match starts and returns to free play
+  when the match clears.
+
+## Key Concepts
+
+- **Elements** — configurable scoring types (e.g. "speaker", "amp",
+  "foul") with point values, optional phase restrictions, and
+  deduplication windows.
+- **Sources** — each device identifies itself; the server tracks health
+  and event counts per source.
+- **Deduplication** — when multiple sensors watch the same goal, events
+  for the same element and alliance within a configurable window merge
+  into one.
+- **Fouls** — elements with `awardToOpponent: true` give points to the
+  opposing alliance.
+- **Phase restrictions** — elements can be limited to specific match
+  phases (e.g. auto-only bonuses). A grace window (default 5 s,
+  configurable as `phaseGraceSeconds`) attributes events arriving just
+  after a phase change to the previous phase.
+- **Auto-registration** — unknown element names in incoming events are
+  auto-created (1 point each) up to `SCORING_AUTO_REGISTER_LIMIT`
+  (default 1); beyond the limit they're rejected as `unknown_element`.
+  Set the limit to `0` to require explicit configuration.
+- **Goal-active shift scoring (REBUILT)** — in match mode, events scored
+  while the alliance's goal is inactive during teleop shifts don't count
+  toward the match total (with a 3 s grace around shift boundaries).
+  Match scores break down by period: auto, transition, shifts 1–4, and
+  endgame.
+
+## Quick Start for a Scoring Device
+
+```
+POST /api/score?key=YOUR_KEY HTTP/1.1
+Host: pfms.local:3000
+Content-Type: application/json
+
+{"source":"goal-1","alliance":"red","element":"speaker"}
+```
+
+Multiple events can be submitted in one request; a batch that partially
+succeeds returns HTTP 207 with per-event results.
+
+### Authentication
+
+Via `X-API-Key` header or `?key=` query parameter. API keys are managed
+through the admin panel at `/admin`. When no keys have been created, the
+scoring API is open to all devices on the network. Once a key is created,
+authentication is required for write endpoints. Unrecognized devices
+appear as "pending" in the admin panel for one-click approval.
+
+## Endpoints
+
+| Endpoint             | Method | Auth     | Description                                                                                    |
+| -------------------- | ------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `/api/score`         | POST   | Required | Submit score event(s); 207 on partial batch success                                            |
+| `/api/score`         | GET    | None     | Get current score state                                                                        |
+| `/api/score/reset`   | POST   | Required | Reset all scores                                                                               |
+| `/api/score/config`  | GET    | None     | Get element configuration                                                                      |
+| `/api/score/config`  | PUT    | Required | Replace element configuration                                                                  |
+| `/api/score/mode`    | PUT    | Required | Set mode, sliding window size, `autoRegisterLimit`, `phaseGraceSeconds`, `batchTimeoutSeconds` |
+| `/api/score/sources` | GET    | None     | List scoring sources and their status                                                          |
+| `/api/score/schema`  | GET    | None     | Machine-readable API schema                                                                    |
+
+Full API documentation is served at `GET /api/score/schema` as an
+[OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0) spec in JSON. Point
+any OpenAPI-compatible tool (Swagger UI, Redoc, code generators) at it, or
+read it directly from tiny devices.
+
+Score state is also broadcast in real time to all WebSocket clients as
+`scoreState` messages, and read-only to scoreboard clients on the
+`/ws/scores` WebSocket path (no auth — it backs the public `/scores`
+page).
+
+## Match Review
+
+Recorded matches (see [match history](match-system.md#match-history)) can
+be re-scored after the fact — e.g. from a video review station:
+
+| Endpoint                      | Method | Auth     | Description                                       |
+| ----------------------------- | ------ | -------- | ------------------------------------------------- |
+| `/api/match-review`           | POST   | Required | Submit reviewed scores for a match (per alliance) |
+| `/api/match-review/recording` | POST   | Required | Register a review-page URL for a match            |
+| `/api/match-review/matches`   | GET    | None     | List recorded matches for reconciliation          |
+
+Reviewed values override the live sensor counts in match history, and the
+`/match` page highlights disagreements between the two.

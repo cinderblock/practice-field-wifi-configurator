@@ -343,9 +343,9 @@ All paths relative to repo root:
 - `src/radioManager.ts` — Station assignment, `findAvailableStation()`
 - `src/index.ts` — Startup wiring, network initialization
 - `src/node-ip/backend.ts` — Low-level Linux network operations (`ip link`, `ip addr`, `iptables`)
-- `README.md` — Network architecture documentation
-- `TECHNICAL.md` — Startup sequence and network flow
-- `ROBOT-TESTER.md` — VLAN sub-interface documentation
+- `docs/network.md` — Network architecture documentation
+- `docs/internals.md` — Startup sequence and network flow
+- `docs/robot-tester.md` — VLAN sub-interface documentation
 
 **For context on existing decoupling (Layer 3):**
 

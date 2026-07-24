@@ -1,54 +1,41 @@
-# React + TypeScript + Vite
+# pFMS Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite **multi-page app**: each page is its own HTML
+entry (`index.html`, `admin.html`, `scores.html`, …) built separately, so
+the production reverse proxy serves clean URLs with
+`try_files {path} {path}.html` and rewrites team-number URLs (`/1234`) to
+`control.html`. See the [pages table](../README.md#pages) and
+[reverse proxy setup](../docs/setup.md#reverse-proxy).
 
-Currently, two official plugins are available:
+## Layout
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `src/roots/` — one entry module per page, referenced by the matching
+  HTML file at the repo's `frontend/` root. `wrap.tsx` is the shared
+  app wrapper (theme, status bar, support widget), not a page.
+- `src/components/` — page components and shared UI
+- `src/hooks/` — `useBackend.ts` holds the WebSocket connection and the
+  per-message-type state hooks; also `useConnectivity`, `useMatchAudio`
+  (must stay in sync with the server's countdown-variant selection),
+  `useSavedWiFiSettings`
+- `src/utils/` — shared helpers
+- `src/public.html` — the standalone public-only page served to
+  unauthenticated external visitors (copied by `update.sh`, not part of
+  the Vite build)
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+From the repo root:
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-});
+```bash
+bun run dev                    # backend on :3000
+cd frontend && bun run dev     # Vite dev server on :5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The dev server proxies `/ws`, `/health`, `/api/team-avatar`, and
+`/api/video-proxy` to the backend on `localhost:3000`, and mirrors the
+production URL rewrites (team numbers → `control.html`, clean page URLs,
+legacy redirects) — see `vite.config.ts`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-});
-```
+Adding a page means: an HTML file in `frontend/`, a root module in
+`src/roots/`, a build input in `vite.config.ts`, and a dev rewrite in the
+same file's `stationRoutes` list.
