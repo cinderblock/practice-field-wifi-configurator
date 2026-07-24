@@ -346,6 +346,13 @@ function isRadioMessage(entry: unknown): entry is RadioMessage {
 
 function handleErrorEntry(detail: { error: string; details: string }) {
   console.error('Error returned from radio:', detail);
+  // Show it to the user too — a failed radio commit that only hits the console
+  // looks like the button did nothing (field incident 2026-07-24, team 8048).
+  events.dispatchEvent(
+    new CustomEvent('serverResponse', {
+      detail: { severity: 'error', message: detail.details ? `${detail.error}: ${detail.details}` : detail.error },
+    }),
+  );
 }
 
 function handleStatusEntry(detail: StatusEntry) {
