@@ -181,25 +181,44 @@ class RadioManager {
   /** Number of commits queued or executing on commitQueue — used to skip redundant reconcile commits. */
   private queuedCommits = 0;
 
+  /** When the radio's station config first disagreed with activeConfig (null = in sync). */
+  private mismatchSince: number | null = null;
+  private readonly reconcileDebounceMs = Number(process.env.RADIO_RECONCILE_DEBOUNCE_MS) || 15000;
+
   /**
-   * When the radio (re)connects, verify its station config matches activeConfig.
-   * A commit that runs while the radio is unreachable skips the radio push
-   * (configureRadio bails when not connected), and a radio that rebooted or was
-   * cleared comes back empty — either way the divergence would otherwise persist
-   * silently until the next user-triggered commit (2026-07-24 incident: kernel
-   * network configured for team 8048 but the radio never got the SSID).
+   * Verify the radio's reported station config matches activeConfig, and
+   * re-commit if they stay divergent. Runs on every successful status poll.
+   * Divergence happens silently: a commit that runs while the radio is
+   * unreachable skips the radio push (configureRadio bails when not
+   * connected), a radio reboot or factory clear comes back empty, and a
+   * syslog-only configuration POST used to wipe every station (2026-07-24
+   * incident: kernel network configured for team 8048 but the radio empty).
+   * The debounce rides out normal lag around reconfigures; the guards reset
+   * it whenever a commit is queued or in flight.
    */
-  private reconcileAfterConnect(update: RadioUpdate): void {
-    if (update.status !== 'ACTIVE') return; // BOOTING/CONFIGURING/ERROR — status not settled yet
-    if (this.configuring || this.queuedCommits > 0) return; // an in-flight commit will push fresh config
+  private checkRadioConfigSync(update: RadioUpdate): void {
+    if (update.status !== 'ACTIVE' || this.configuring || this.queuedCommits > 0) {
+      this.mismatchSince = null; // status unsettled or a commit will push fresh config
+      return;
+    }
     const mismatched = StationNameList.filter(
       station => (this.activeConfig[station]?.ssid ?? null) !== (update.stationStatuses[station]?.ssid ?? null),
     );
-    if (mismatched.length === 0) return;
-    console.log(`Radio config out of sync after (re)connect (${mismatched.join(', ')}) — re-applying active config`);
+    if (mismatched.length === 0) {
+      this.mismatchSince = null;
+      return;
+    }
+    if (this.mismatchSince === null) {
+      this.mismatchSince = Date.now();
+      return;
+    }
+    if (Date.now() - this.mismatchSince < this.reconcileDebounceMs) return;
+    this.mismatchSince = null;
+    console.log(`Radio station config out of sync with active config (${mismatched.join(', ')}) — re-applying`);
     this.commitConfiguration().catch(err => {
       appError(
-        'Error re-applying configuration after radio reconnect: ' + (err instanceof Error ? err.message : String(err)),
+        'Error re-applying configuration after radio config mismatch: ' +
+          (err instanceof Error ? err.message : String(err)),
       );
     });
   }
@@ -268,7 +287,6 @@ class RadioManager {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const wasConnected = this.connected;
       this.connected = true;
 
       const rawUpdate = await response.json();
@@ -303,7 +321,7 @@ class RadioManager {
       }
       if (linkTransition) this.notifyLastLinkedListeners();
 
-      if (!wasConnected) this.reconcileAfterConnect(radioUpdate);
+      this.checkRadioConfigSync(radioUpdate);
 
       submit(radioUpdate);
     } catch (error) {
@@ -591,16 +609,22 @@ class RadioManager {
     }
   }
 
-  private async doCommitConfiguration(): Promise<void> {
-    // Translate internal slot names (slot1-slot6) to radio-native names (red1-blue3)
-    // before sending to the radio's HTTP API
+  /** activeConfig translated from internal slot names (slot1-slot6) to radio-native names (red1-blue3). */
+  private buildRadioStationConfig(): Record<
+    RadioStationName,
+    { ssid: string; wpaKey: string; internetAccess?: boolean }
+  > {
     const radioConfig = {} as Record<RadioStationName, { ssid: string; wpaKey: string; internetAccess?: boolean }>;
     for (const slot of StationNameList) {
       if (this.activeConfig[slot]) {
         radioConfig[defaultSlotToRadio[slot]] = this.activeConfig[slot];
       }
     }
-    const config = { stationConfigurations: radioConfig };
+    return radioConfig;
+  }
+
+  private async doCommitConfiguration(): Promise<void> {
+    const config = { stationConfigurations: this.buildRadioStationConfig() };
 
     // Log the configuration to be sent for debugging
     const sanitizedConfig = JSON.parse(JSON.stringify(config)).stationConfigurations;
@@ -648,7 +672,7 @@ class RadioManager {
     this.notifyCommitComplete();
   }
 
-  private async configureRadio(config: any) {
+  private async configureRadio(config: any): Promise<void> {
     if (!this.connected) {
       console.log('Radio not connected, skipping configuration');
       return;
@@ -664,7 +688,10 @@ class RadioManager {
       Object.keys(config.stationConfigurations).length === 0
     ) {
       console.log('No configurations are active, tricking radio to clear all configurations');
-      return this.setSyslogIP(this.entries[this.entries.length - 1]?.radioUpdate?.syslogIpAddress ?? '10.0.100.40');
+      // Direct syslog-only POST (not setSyslogIP, which refuses to wipe stations)
+      return this.configureRadio({
+        syslogIpAddress: this.entries[this.entries.length - 1]?.radioUpdate?.syslogIpAddress ?? '10.0.100.40',
+      });
     }
 
     if (this.configuring) {
@@ -925,7 +952,27 @@ class RadioManager {
   }
 
   async setSyslogIP(ip: string): Promise<void> {
-    return this.configureRadio({ syslogIpAddress: ip });
+    // The radio applies every /configuration POST as a FULL replacement, so a
+    // syslog-only body wipes all station configs (2026-07-24: the startup
+    // setSyslogIP call kicked configured teams off the radio on every deploy).
+    // Wait briefly for the first status poll, skip when the IP is already set
+    // (the normal case — no radio reconfigure at all), and include the active
+    // stations when a push is actually needed.
+    const deadline = Date.now() + 10_000;
+    while (this.entries.length === 0 && Date.now() < deadline) await delay(200);
+    const current = this.entries[this.entries.length - 1]?.radioUpdate?.syslogIpAddress;
+    if (current === ip) {
+      console.log(`Radio syslog IP already ${ip} — skipping configuration push`);
+      return;
+    }
+    const stationConfigurations = this.buildRadioStationConfig();
+    const config: { syslogIpAddress: string; stationConfigurations?: typeof stationConfigurations } = {
+      syslogIpAddress: ip,
+    };
+    // Omit stationConfigurations entirely when empty — the radio rejects an
+    // empty map, and the bare-syslog form is the sanctioned "clear" shape.
+    if (Object.keys(stationConfigurations).length > 0) config.stationConfigurations = stationConfigurations;
+    return this.configureRadio(config);
   }
 
   private static parseShorthand(shorthand: string): string {

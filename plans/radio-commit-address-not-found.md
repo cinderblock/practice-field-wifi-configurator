@@ -52,7 +52,32 @@ practice-field-management-system && ./update.sh"`.
   restarts the service, which rebuilds `previousStations` from active config,
   clearing the stale 3049 entry).
 
-## Follow-up round (user: "do it") — radio-push race fixed
+## Follow-up round 2 — the REAL radio-wipe root cause (setSyslogIP)
+
+Deploying the reconnect-reconcile fix at 14:15 kicked team 8048 off the radio
+again, which exposed the actual mechanism: **`setSyslogIP()` POSTed a
+syslog-only /configuration body, and the radio applies every POST as a full
+replacement — wiping all station configs. It runs on EVERY service start**
+(index.ts runSyslogServer callback). So each deploy cleared the radio; the
+14:02 all-null radio was this wipe from the 13:59 deploy, not (only) the
+connected-flag race. Corrected timeline: 13:36 enableSavedRobot DID push
+8048 to the radio (configureRadio ran in Promise.all despite the
+configureNetwork failure); 13:59 deploy wiped it; 14:02 manual applyConfig
+restored; 14:15 deploy wiped again; 14:19 manual restore; 14:2x fixes below.
+
+- [x] `setSyslogIP` now: waits for first status poll, **skips entirely when
+      the radio already reports that syslog IP** (the every-deploy case →
+      no radio reconfigure at all on normal restarts), and includes
+      activeConfig stations when it does push. The PatchBug clear-all path
+      in configureRadio posts syslog-only directly, bypassing the guard.
+- [x] Reconcile hardened: transition-only check replaced by a continuous
+      debounced check on every successful poll (`checkRadioConfigSync`,
+      `RADIO_RECONCILE_DEBOUNCE_MS` default 15s) — catches ANY divergence
+      (wipe mid-session, reboot, race), guarded by configuring/queuedCommits.
+- [x] Harness extended to 8 checks incl. syslog no-op, syslog+stations POST,
+      and mid-session wipe auto-repair. All green.
+
+## Follow-up round 1 (user: "do it") — radio-push race fixed
 
 - [x] `reconcileAfterConnect()` in radioManager: on the poller's
       connected false→true transition (radio ACTIVE, no commit in flight),
