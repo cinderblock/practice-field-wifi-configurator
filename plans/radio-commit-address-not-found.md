@@ -52,17 +52,35 @@ practice-field-management-system && ./update.sh"`.
   restarts the service, which rebuilds `previousStations` from active config,
   clearing the stale 3049 entry).
 
-## Plan / steps
+## Plan / steps — ALL DONE 2026-07-24 ~14:05
 
 - [x] Diagnose (logs on steamboat; traced code path)
-- [ ] Fix 1: `removeAddress` tolerates `Address not found` (src/node-ip/linux.ts)
-- [ ] Fix 2: surface `{error, details}` messages in the snackbar (useBackend.ts)
-- [ ] Fix 3: rename "Enable"→"Stage and Apply" + related wording (ControlPage.tsx)
-- [ ] typecheck, commit, deploy via deploy skill
-- [ ] Verify live: journalctl shows clean "Network configuration applied";
-      8048 radio actually configured (or have team re-click)
+- [x] Fix 1: `removeAddress` tolerates `Address not found` (f3c3921)
+- [x] Fix 2: surface `{error, details}` messages in the snackbar (af86b4e)
+- [x] Fix 3: rename "Enable"→"Stage and Apply" + related wording (e37892a)
+- [x] typecheck, commit, deploy via deploy skill (pushed cc7a659..e37892a)
+- [x] Verify live: startup re-applied kernel config ("Network configuration
+      applied", br-slot1 has 10.80.48.254/24); radio needed a manual nudge
+      (below) — after which red1 = 8048-COMP, isLinked:true, -50dBm,
+      quality "excellent". Team 8048 unblocked.
 
 ## Findings / gotchas
+
+- **Third bug found during verification (now in ISSUES.md):** after the deploy
+  restart, the kernel network was rebuilt but the radio push was silently
+  skipped — startup's re-apply runs after `waitForRadio()`, but
+  `configureRadio()` gates on `radioManager.connected`, which only the 100ms
+  status poller sets; the commit beat the first poll. Nothing reconciles on
+  the connected transition. Radio showed all-null `stationStatuses` while
+  active-config had 8048. Manual fix: sent `{"type":"applyConfig"}` over the
+  local websocket (script left at `/tmp/apply-config.js` on steamboat; run
+  with `~/.bun/bin/bun`), radio went CONFIGURING→ACTIVE with red1=8048-COMP.
+- Deploy hiccup: steamboat had an untracked `scripts/fake-six-teams.ts`
+  (written server-side before it was committed) blocking `git pull`; verified
+  byte-identical to the committed version, removed it, redeployed.
+- Radio status oracle: `curl -s http://10.0.100.2/status` from steamboat —
+  shows per-station config + link state. `stationStatuses.red1 = null` means
+  NOT configured on the radio, regardless of what active-config.json says.
 
 - `fake-six-teams.ts` cleanup ran/failed partway: slot2's address got deleted
   but a later step failed, so `previousStations` kept 3049 → poisoned state.

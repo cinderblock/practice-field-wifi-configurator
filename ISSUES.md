@@ -59,3 +59,24 @@ connected DS IPs. Two accepted gaps (user decision 2026-07-24: fine for now):
   messages from DS-identified clients; only the UI is blocked. Hardening path:
   compute a per-connection DS flag server-side and reject operator/staff
   commands from flagged connections.
+
+## Radio config push silently skipped when radioManager hasn't marked the radio connected
+
+`configureRadio()` (`src/radioManager.ts`) no-ops with a console log when
+`this.connected` is false — and `connected` is only set by the 100ms status
+poller, not by callers that independently verified the radio is up. Seen
+2026-07-24: the startup re-apply path in `src/index.ts` waits on
+`waitForRadio()` and then commits, but the first poll hadn't completed, so the
+kernel network was rebuilt while the radio push was skipped — team 8048's SSID
+existed in `active-config.json` and on the bridges but not on the radio, with
+no error anywhere. Nothing reconciles radio config on the connected→true
+transition, so the divergence persisted until a manual `applyConfig` websocket
+message forced a re-commit.
+
+**Fix directions:** re-commit `activeConfig` (radio job only) when `connected`
+transitions false→true and the radio's reported `stationStatuses` disagree with
+`activeConfig`; or make `configureRadio` wait briefly for connection instead of
+skipping. Same "silent skip" family as the `configure()` early-return when
+`this.configuring` is set and the silent defer in `commitConfiguration()` —
+none of these surface to the user (see 2026-07-24 incident,
+`plans/radio-commit-address-not-found.md`).
