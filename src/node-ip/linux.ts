@@ -131,6 +131,8 @@ export function createLinuxBackend(): NetworkBackend {
       } catch (err: unknown) {
         if (isExecError(err) && err.stderr.includes('Cannot assign requested address')) return;
         if (isExecError(err) && err.stderr.includes('does not exist')) return;
+        // Newer iproute2 reports a missing address as "Error: ipv4: Address not found."
+        if (isExecError(err) && err.stderr.includes('Address not found')) return;
         throw err;
       }
     },
