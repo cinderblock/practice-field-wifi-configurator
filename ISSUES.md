@@ -43,3 +43,19 @@ To add detailed progress UI to the inline view, we'd need:
 1. A per-station progress message type (e.g., `StationFirmwareUpdateProgress`) or embed progress in `StationTestState`
 2. Corresponding frontend hooks and UI components
 3. Care to avoid conflating with the global test monitor's progress handlers
+
+## DS-client operator guard is IP-based and UI-only
+
+The guard that blocks `/match` and `/staff` on Driver Station devices
+(`frontend/src/components/DsClientGuard.tsx`) compares the browser's IP to
+connected DS IPs. Two accepted gaps (user decision 2026-07-24: fine for now):
+
+- **Multi-interface laptops slip through** — a machine wired to the field for
+  the DS but browsing over guest Wi-Fi has different IPs per interface and
+  won't match. Hardening path: join on device hostname via `hostnameResolver`
+  (same hostname on both interfaces), soft-block on hostname match to tolerate
+  hostname collisions.
+- **No backend enforcement** — the websocket still honors operator/staff
+  messages from DS-identified clients; only the UI is blocked. Hardening path:
+  compute a per-connection DS flag server-side and reject operator/staff
+  commands from flagged connections.
