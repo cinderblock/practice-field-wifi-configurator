@@ -323,7 +323,7 @@ export function ControlPage({ teamNumber, selectedSsid }: { teamNumber: number; 
       {/* All active robots' station experiences — selected robot first, full details only for selected */}
       {activeStations.size === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
-          No active robots. Enable a robot above to see its status.
+          No active robots. Stage and apply a robot above to see its status.
         </Typography>
       ) : (
         Array.from(activeStations.entries())
@@ -663,7 +663,7 @@ function RobotRow({
                 Stage
               </Button>
               <Button size="small" variant="contained" disabled={configCooldown} onClick={e => handleEnable(false, e)}>
-                Enable
+                Stage and Apply
               </Button>
             </>
           ) : canTakeover ? (
@@ -682,7 +682,7 @@ function RobotRow({
             <Tooltip title="All slots in use and connected">
               <span>
                 <Button size="small" variant="outlined" disabled>
-                  Enable
+                  Stage and Apply
                 </Button>
               </span>
             </Tooltip>
@@ -701,7 +701,7 @@ function RobotRow({
 
       {showEnableHint && !isActive && (
         <Alert severity="info" sx={{ mx: 2, mb: 0.5 }} onClose={() => setShowEnableHint(false)}>
-          Enable this robot first to view its status.
+          Stage and apply this robot first to view its status.
         </Alert>
       )}
     </>
@@ -759,7 +759,7 @@ function TakeoverPicker({
                 Stage
               </Button>
               <Button size="small" variant="contained" disabled={disabled} onClick={() => onSelect(station, false)}>
-                Apply Now
+                Stage and Apply
               </Button>
             </Box>
           </Box>
