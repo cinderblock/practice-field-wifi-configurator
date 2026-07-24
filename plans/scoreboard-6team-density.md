@@ -93,9 +93,36 @@ size` on the grid did not give a usable resolved height in that state, so
       inline-size container queries. Replaces the earlier count-based dense-width
       attempt (which could still wrap).
 - [x] `bun run typecheck` clean; prettier clean.
-- [ ] Live verify on the wall display (couldn't drive 6 robots here). Watch: six
-      batteries stay on one row reading red→blue left-to-right; the hero number
-      shrinks to clear them; period labels stop clipping at the edges.
+- [x] Battery card text restructured (follow-up regression from narrow fill
+      cards: team number overflowed its flex box and drew over the voltage).
+      Team+avatar now above the chart, voltages below — two full-width rows,
+      nothing can collide. Commit `1f2837d`.
+- [x] **Live-verified on the wall TV** with six simulated teams
+      (`scripts/fake-six-teams.ts` run on steamboat): idle freeplay 0–0 renders,
+      six cards on one row, no overlap, no clipped text. User: "looking great."
+- [x] Cleanup done: stations cleared, DNAT rules removed, leftover
+      `10.69.62.254/24` on br-slot1 removed by hand (see gotcha below).
+
+## Simulating teams (for future layout testing)
+
+`scripts/fake-six-teams.ts` — run on steamboat from the repo checkout
+(`export PATH=$HOME/.bun/bin:$PATH && bun x tsx scripts/fake-six-teams.ts`).
+Configures teams into all six slots via the backend WS like the control page,
+then streams fake DS UDP telemetry (port 1160) so battery cards appear; no
+match, no sounds. `cleanup` arg clears the slots. Refuses to touch slots
+holding teams other than its own six. Gotchas learned:
+
+- Radio WPA keys must be **alphanumeric** (no hyphens) or the radio 400s.
+- Every commit pushes the whole activeConfig to the radio, so one bad slot
+  fails every push (the script is strict only on the final slot for this).
+- active-config.json is written even when the radio push fails — disk state
+  alone doesn't confirm a clean radio commit.
+- **Pre-existing pFMS bug seen during cleanup:** clearing stations runs
+  `ip addr del` for gateway addresses that may already be gone; the teardown
+  errors ("Address not found") and aborts before removing the remaining
+  addresses (br-slot1's was left behind and needed a manual
+  `ip addr del 10.69.62.254/24 dev br-slot1`). Worth an ISSUES.md entry /
+  idempotent teardown fix some day.
 
 ## Things not to do
 
