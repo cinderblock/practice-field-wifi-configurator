@@ -1210,8 +1210,13 @@ export class MatchEngine {
   }
 
   private sendJoinedHeartbeat() {
-    // Only send when no match is active; the tick handles match phases
-    if (this.isMatchActive()) return;
+    // The 250ms match tick is the transmitter while it runs. This heartbeat
+    // covers every state where the tick is stopped — including a paused match
+    // and an autoPause frozen awaiting a winner. The stream must never go
+    // silent mid-match: a pause used to send a single disable packet and stop,
+    // so if that one datagram was lost the DS kept the pre-pause enabled state
+    // and the robot could still drive "while paused" (2026-07-23 incident).
+    if (this.tickTimer) return;
     for (const station of StationNameList) {
       if (this.stationStates.get(station)!.joined) {
         this.sendDSPacket(station);
