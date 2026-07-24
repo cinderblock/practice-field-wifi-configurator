@@ -66,6 +66,13 @@ Field staff ready up from their own pages: `/staff?role=…` for the
 - Staff presence is tracked with a heartbeat; a role whose page disconnects
   for more than ~6 seconds loses its ready mark.
 
+A device that is currently a **Driver Station** (its IP matches a connected
+DS) cannot act as the match controller or field staff: `/match` and
+`/staff` show a full-page notice with a QR code of the current URL so the
+page can be reopened on a phone or spare device in one scan. The check is
+live — plugging a DS in (or unplugging it) flips the pages without a
+reload, and a blocked staff page also stops sending presence heartbeats.
+
 ## Stops, Disables, and Recovery
 
 E-Stop and A-Stop are latched **backend-only** states — the FMS never

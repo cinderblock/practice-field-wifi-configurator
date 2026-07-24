@@ -992,7 +992,10 @@ export function sendStaffReady(role: StaffRole, ready: boolean) {
 }
 
 export function sendStaffHeartbeat(role: StaffRole) {
-  ws?.send(JSON.stringify({ type: 'staffHeartbeat', role }));
+  // Fired on a timer from page mount, so unlike user-action sends it can race
+  // the socket still CONNECTING — send() then throws and crashes the page.
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'staffHeartbeat', role }));
 }
 
 export function sendStationSelfDisable(station: StationName) {

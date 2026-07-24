@@ -44,6 +44,7 @@ import {
   sendClearMatchHistory,
 } from '../hooks/useBackend';
 import { MatchTimeline } from './MatchTimeline';
+import { useDsClientStation, DsClientBlock } from './DsClientGuard';
 import { MatchTimer, PHASE_HEX, getActiveColor } from './MatchTimer';
 import { getAllianceShiftState } from '../utils/shiftState';
 
@@ -230,12 +231,15 @@ function HoldToStartButton({ canStart, holdDisabledReason }: { canStart: boolean
 export function MatchControlPage() {
   const matchState = useMatchState();
   const matchHistory = useMatchHistory();
+  const dsStation = useDsClientStation();
 
   // Keep the module-level hold watcher's view of the phase current so a release
   // mid-countdown makes the right call even after the button unmounts.
   useEffect(() => {
     if (matchState) setHoldLatestPhase(matchState.phase);
   }, [matchState?.phase]);
+
+  if (dsStation) return <DsClientBlock station={dsStation} roleNoun="the match operator" />;
 
   if (!matchState) {
     return (

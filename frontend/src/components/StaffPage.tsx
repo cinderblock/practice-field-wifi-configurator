@@ -8,6 +8,7 @@ import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import { StaffRole, StaffRoleList, StaffRoleLabels, isStaffRole } from '../../../src/types';
 import { useMatchState, sendStaffReady, sendStaffHeartbeat } from '../hooks/useBackend';
+import { useDsClientStation, DsClientBlock } from './DsClientGuard';
 
 /** Read the staff role from ?role=… (bookmarkable per device). */
 function roleFromUrl(): StaffRole | null {
@@ -24,15 +25,20 @@ function roleFromUrl(): StaffRole | null {
  *  check, then a big Ready toggle. */
 export function StaffPage() {
   const role = roleFromUrl();
+  const dsStation = useDsClientStation();
 
   // Presence heartbeat so the host sees this role as connected. Runs whenever a
   // valid role is selected; the effect's cleanup stops it if the role changes.
+  // A DS device must not register as staff, so the beat waits until the DS
+  // check has an answer (null = confirmed not a DS) rather than assuming.
   useEffect(() => {
-    if (!role) return;
+    if (!role || dsStation !== null) return;
     sendStaffHeartbeat(role);
     const iv = setInterval(() => sendStaffHeartbeat(role), 2000);
     return () => clearInterval(iv);
-  }, [role]);
+  }, [role, dsStation]);
+
+  if (dsStation) return <DsClientBlock station={dsStation} roleNoun="field staff" />;
 
   if (!role) return <RolePicker />;
 
