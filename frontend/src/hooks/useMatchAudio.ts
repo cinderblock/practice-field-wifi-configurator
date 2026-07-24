@@ -71,6 +71,11 @@ function getSoundForTransition(
   matchId?: string,
 ): SoundName | null {
   switch (phase) {
+    case 'created':
+      // countdown → created is an abandoned start (hold released, un-ready, or
+      // abort): robots never enabled, so play the fault buzzer.
+      return prevPhase === 'countdown' ? 'abort' : null;
+
     case 'countdown':
       // Single pre-timed "3… 2… 1… <horn>" clip: numbers at 0/1/2s, charge
       // horn baked in at the 3s mark. Voice varies per match.
@@ -117,12 +122,25 @@ function getSoundForTransition(
  * control page the operator will have clicked before any sound fires. On
  * passive displays (scoreboard TVs) the first sound may be silently blocked.
  */
-export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEndReason, matchId?: string): void {
+export function useMatchAudio(
+  phase: MatchPhase | undefined,
+  endReason?: MatchEndReason,
+  matchId?: string,
+  enabled = true,
+): void {
   const prevPhaseRef = useRef<MatchPhase>('idle');
+  // Read the latest `enabled` from within stable subscriptions/effects.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   // Server-broadcast "get ready" attention sound. Subscribed only while this
   // hook is mounted, so a muted display (bridge unmounted) stays silent.
-  useEffect(() => onPlayGetReady(() => play('getready')), []);
+  useEffect(() => onPlayGetReady(() => enabledRef.current && play('getready')), []);
+
+  // Cut any in-flight sound the moment audio is disabled (muted mid-clip).
+  useEffect(() => {
+    if (!enabled) stopAllSounds();
+  }, [enabled]);
 
   useEffect(() => {
     if (phase === undefined) return;
@@ -141,7 +159,7 @@ export function useMatchAudio(phase: MatchPhase | undefined, endReason?: MatchEn
     }
 
     const sound = getSoundForTransition(phase, prev, endReason, matchId);
-    if (sound) play(sound);
+    if (sound && enabledRef.current) play(sound);
   }, [phase, endReason, matchId]);
 }
 

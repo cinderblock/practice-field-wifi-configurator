@@ -11,6 +11,7 @@ import {
   sendStationSelfEStop,
   sendStationSelfUndisable,
 } from '../hooks/useBackend';
+import { useMatchAudio } from '../hooks/useMatchAudio';
 
 /**
  * The match pop-out window. One named browser window that follows the match:
@@ -37,6 +38,7 @@ import {
 type PopupMode = 'setup' | 'match';
 
 const CLOSE_AT_START_KEY = 'pfms-match-popup-close-at-start';
+const MUTED_KEY = 'pfms-match-popup-muted';
 
 function closeAtStartPref(): boolean {
   try {
@@ -54,6 +56,32 @@ function setCloseAtStartPref(v: boolean) {
   }
 }
 
+/** Pop-up match audio — default muted (the pop-up is often next to the field
+ *  speaker). Module-level so the hand-built window and the React audio hook
+ *  agree; subscribers re-render when the toggle flips. */
+function mutedPref(): boolean {
+  try {
+    // Default muted: anything other than an explicit '0' is muted.
+    return localStorage.getItem(MUTED_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+let popupMuted = mutedPref();
+const mutedSubs = new Set<() => void>();
+
+function togglePopupMuted() {
+  popupMuted = !popupMuted;
+  try {
+    localStorage.setItem(MUTED_KEY, popupMuted ? '1' : '0');
+  } catch {
+    // Ignore — the toggle just won't persist.
+  }
+  mutedSubs.forEach(f => f());
+  refreshConsole();
+}
+
 type ConsoleRobot = {
   team: number | null;
   alliance: 'red' | 'blue' | null;
@@ -66,6 +94,7 @@ type ConsoleState = {
   phase: MatchPhase;
   pausedFrom?: MatchPhase;
   remainingTime: number;
+  readyRequested: boolean;
   ready: boolean;
   aStop: boolean;
   eStop: boolean;
@@ -84,6 +113,7 @@ let timerEl: HTMLElement | null = null;
 let robotsEl: HTMLElement | null = null;
 let hintEl: HTMLElement | null = null;
 let readyBtn: HTMLButtonElement | null = null;
+let muteBtn: HTMLButtonElement | null = null;
 let astopBtn: HTMLButtonElement | null = null;
 let reenableBtn: HTMLButtonElement | null = null;
 let estopBtn: HTMLButtonElement | null = null;
@@ -160,13 +190,19 @@ function buildConsole(w: Window) {
     'display:flex;flex-direction:column;height:100vh;overflow:hidden;';
 
   const header = doc.createElement('div');
-  header.style.cssText = 'text-align:center;padding:10px 12px 2px;';
+  header.style.cssText = 'position:relative;text-align:center;padding:10px 12px 2px;';
   phaseEl = doc.createElement('div');
   phaseEl.style.cssText = 'font-size:15px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;';
   timerEl = doc.createElement('div');
   timerEl.style.cssText =
     'font-family:ui-monospace,SFMono-Regular,monospace;font-size:46px;font-weight:700;line-height:1.1;';
-  header.append(phaseEl, timerEl);
+  // Sound toggle — tap to mute/unmute this window's match audio.
+  muteBtn = doc.createElement('button');
+  muteBtn.style.cssText =
+    'position:absolute;top:8px;right:10px;border:none;background:transparent;cursor:pointer;' +
+    'font-size:20px;line-height:1;padding:4px 6px;border-radius:8px;';
+  muteBtn.addEventListener('click', () => togglePopupMuted());
+  header.append(phaseEl, timerEl, muteBtn);
 
   robotsEl = doc.createElement('div');
   robotsEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:6px 10px;';
@@ -175,7 +211,10 @@ function buildConsole(w: Window) {
   main.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:8px;padding:2px 10px;min-height:0;';
 
   readyBtn = mkBtn(doc, () => {
-    if (lastState) sendStationReady(lastState.station, !lastState.ready);
+    if (!lastState) return;
+    // Can't ready up until the host opens the ready check.
+    if (!lastState.ready && !lastState.readyRequested) return;
+    sendStationReady(lastState.station, !lastState.ready);
   });
   readyBtn.style.flex = '1';
   readyBtn.style.fontSize = '26px';
@@ -264,7 +303,7 @@ function updateConsole(state: ConsoleState) {
   if (!popupIsOpen() || !phaseEl || !timerEl || !robotsEl || !readyBtn || !astopBtn || !reenableBtn || !estopBtn)
     return;
   const doc = popupWin!.document;
-  const { phase, pausedFrom, ready, aStop, eStop, enabled, disabledBy, robots } = state;
+  const { phase, pausedFrom, readyRequested, ready, aStop, eStop, enabled, disabledBy, robots } = state;
 
   const setup = phase === 'created';
   // The giant A-Stop is live during countdown/auto and a pause taken during auto
@@ -299,13 +338,23 @@ function updateConsole(state: ConsoleState) {
     }
   }
 
-  // Ready toggle — setup only
+  // Ready toggle — setup only. Locked until the host opens the ready check.
   readyBtn.style.display = setup && !eStop ? 'block' : 'none';
   if (setup) {
-    readyBtn.textContent = ready ? '✓ READY — tap to un-ready' : 'READY UP';
-    readyBtn.style.background = ready ? 'transparent' : '#2e7d32';
-    readyBtn.style.border = ready ? '2px solid #66bb6a' : '0';
-    readyBtn.style.color = ready ? '#66bb6a' : '#fff';
+    const locked = !ready && !readyRequested;
+    readyBtn.disabled = locked;
+    readyBtn.style.cursor = locked ? 'default' : 'pointer';
+    if (locked) {
+      readyBtn.textContent = 'WAITING FOR HOST TO OPEN READY';
+      readyBtn.style.background = '#333';
+      readyBtn.style.border = '2px solid #555';
+      readyBtn.style.color = '#999';
+    } else {
+      readyBtn.textContent = ready ? '✓ READY — tap to un-ready' : 'READY UP';
+      readyBtn.style.background = ready ? 'transparent' : '#2e7d32';
+      readyBtn.style.border = ready ? '2px solid #66bb6a' : '0';
+      readyBtn.style.color = ready ? '#66bb6a' : '#fff';
+    }
   }
 
   // A-Stop — pre-arm during setup, giant during countdown/auto, gone after auto
@@ -402,6 +451,10 @@ function updateConsole(state: ConsoleState) {
   if (hintEl) hintEl.style.display = setup ? 'block' : 'none';
   if (footerEl) footerEl.style.display = setup ? 'flex' : 'none';
   if (closeBox) closeBox.checked = closeAtStartPref();
+  if (muteBtn) {
+    muteBtn.textContent = popupMuted ? '🔇' : '🔊';
+    muteBtn.style.opacity = popupMuted ? '0.55' : '1';
+  }
 }
 
 function consoleStateFrom(match: MatchState, station: StationName): ConsoleState {
@@ -419,6 +472,7 @@ function consoleStateFrom(match: MatchState, station: StationName): ConsoleState
     phase: match.phase,
     pausedFrom: match.pausedFrom,
     remainingTime: match.remainingTime,
+    readyRequested: match.readyRequested,
     ready: my?.ready ?? false,
     aStop: my?.aStop ?? false,
     eStop: my?.eStop ?? false,
@@ -445,9 +499,26 @@ export function AStopPopout({ station }: { station: StationName }) {
   const matchState = useMatchState();
   const [isOpen, setIsOpen] = useState(popupIsOpen);
   const [blocked, setBlocked] = useState(false);
+  const [muted, setMuted] = useState(popupMuted);
+
+  // Track the module-level mute toggle (flipped from the pop-out window's DOM).
+  useEffect(() => {
+    const update = () => setMuted(popupMuted);
+    mutedSubs.add(update);
+    return () => {
+      mutedSubs.delete(update);
+    };
+  }, []);
 
   const phase = matchState?.phase ?? 'idle';
   const joined = matchState?.stationStates[station]?.joined ?? false;
+
+  // Play match audio for the driver, unless muted. Scoped to the open pop-out
+  // window serving THIS station so it's the station's only audio source
+  // (station pages don't mount MatchAudioBridge) and never echoes on overview
+  // pages that render an AStopPopout per station.
+  const audioEnabled = isOpen && !muted && lastState?.station === station;
+  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.matchId, audioEnabled);
 
   // Window lives from join (setup) through the match; closes at post-match,
   // on leave, and — if the box is ticked — at the countdown.

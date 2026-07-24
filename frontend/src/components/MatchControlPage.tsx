@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -14,6 +14,9 @@ import {
   MatchHistoryEntry,
   StationName,
   StationControlState,
+  StaffRole,
+  StaffRoleList,
+  StaffRoleLabels,
 } from '../../../src/types';
 import {
   useMatchState,
@@ -25,6 +28,8 @@ import {
   sendMatchSwapStation,
   sendMatchKickStation,
   sendMatchSetAutoWinner,
+  sendMatchRequestReady,
+  sendMatchStaffIgnore,
   sendPlayGetReady,
   onPlayGetReady,
   sendStationStartMatch,
@@ -123,9 +128,114 @@ function computeBarProgress(
  * Manages the full match lifecycle: create → setup → start → control → post-match.
  * Only this page has access to start/pause/resume/abandon/e-stop/disable controls.
  */
+// ── Hold-to-start ───────────────────────────────────────────────────
+// The start button must be held for the whole 3-2-1 countdown. Releasing
+// before the robots enable (still in `countdown`) aborts the start with a
+// fault; releasing during/after the start horn (auto onward) does nothing.
+//
+// The countdown replaces CreatedView with the active view, so the button
+// unmounts mid-hold. Release is therefore watched at the window level from a
+// module-scoped handler that outlives the button — and we defeat the implicit
+// pointer capture on press so the pointerup still reaches the window on touch
+// (iOS) after the button is gone.
+let holdArmed = false;
+/** Set when the pointer is released before robots enabled — cancels the start
+ *  even if it's still in flight (a quick tap releases while the phase is still
+ *  locally `created`, so we also abort the moment `countdown` shows up). */
+let holdAbortWanted = false;
+let holdLatestPhase: MatchPhase = 'idle';
+
+/** Robots are enabled from auto onward — once there, releasing is a no-op. */
+function robotsEnabled(phase: MatchPhase): boolean {
+  return phase !== 'idle' && phase !== 'created' && phase !== 'countdown';
+}
+
+function setHoldLatestPhase(phase: MatchPhase) {
+  holdLatestPhase = phase;
+  if (!holdAbortWanted) return;
+  // A start we let go of early has now reached the countdown — abort it.
+  if (phase === 'countdown') sendMatchAbortCountdown();
+  // Abort took effect (back to setup) or the start slipped through to enabled —
+  // either way stop chasing it.
+  if (phase === 'created' || robotsEnabled(phase)) holdAbortWanted = false;
+}
+
+function endHold() {
+  if (!holdArmed) return;
+  holdArmed = false;
+  window.removeEventListener('pointerup', endHold);
+  window.removeEventListener('pointercancel', endHold);
+  // Released before robots enabled → abandon the start. Abort now if we're
+  // already counting down; if the start is still in flight (phase 'created'),
+  // arm the abort so setHoldLatestPhase fires it the instant countdown begins.
+  if (!robotsEnabled(holdLatestPhase)) {
+    holdAbortWanted = true;
+    if (holdLatestPhase === 'countdown') sendMatchAbortCountdown();
+  }
+}
+
+function beginHold() {
+  if (holdArmed) return;
+  holdArmed = true;
+  holdAbortWanted = false;
+  window.addEventListener('pointerup', endHold);
+  window.addEventListener('pointercancel', endHold);
+  sendStationStartMatch();
+}
+
+/** Press-and-hold start control. Fires the countdown on press; a release before
+ *  the robots enable aborts it. */
+function HoldToStartButton({ canStart, holdDisabledReason }: { canStart: boolean; holdDisabledReason?: string }) {
+  const [pressed, setPressed] = useState(false);
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!canStart) return;
+    // Defeat implicit pointer capture so the window pointerup still fires after
+    // this button unmounts at the countdown (crucial on touch / iOS).
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // No capture to release — fine.
+    }
+    setPressed(true);
+    beginHold();
+  };
+
+  // Local visual reset only — the authoritative release/abort is the module
+  // window handler (this button may already be unmounted by then).
+  const onRelease = () => setPressed(false);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+      <Button
+        variant="contained"
+        color={pressed ? 'warning' : 'success'}
+        size="large"
+        disabled={!canStart}
+        onPointerDown={onPointerDown}
+        onPointerUp={onRelease}
+        onPointerCancel={onRelease}
+        onPointerLeave={onRelease}
+        sx={{ px: 6, py: 1.5, fontWeight: 'bold', touchAction: 'none', userSelect: 'none' }}
+      >
+        {pressed ? 'Hold… release aborts' : 'Hold to Start'}
+      </Button>
+      <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+        {canStart ? 'Hold through the 3-2-1 — let go before the horn to abort.' : holdDisabledReason}
+      </Typography>
+    </Box>
+  );
+}
+
 export function MatchControlPage() {
   const matchState = useMatchState();
   const matchHistory = useMatchHistory();
+
+  // Keep the module-level hold watcher's view of the phase current so a release
+  // mid-countdown makes the right call even after the button unmounts.
+  useEffect(() => {
+    if (matchState) setHoldLatestPhase(matchState.phase);
+  }, [matchState?.phase]);
 
   if (!matchState) {
     return (
@@ -201,7 +311,7 @@ function IdleView() {
 // ── Created view — pre-match setup ──────────────────────────────────
 
 function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof useMatchState>> }) {
-  const { config, stationStates } = matchState;
+  const { config, stationStates, readyRequested, staffStates } = matchState;
 
   const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
     .filter(([, s]) => s?.joined)
@@ -209,7 +319,24 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
 
   const redStations = joinedStations.filter(s => stationStates[s]?.alliance === 'red');
   const blueStations = joinedStations.filter(s => stationStates[s]?.alliance === 'blue');
-  const allReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
+
+  // Start gate: ready check opened, ≥1 team joined and all joined teams ready,
+  // and every non-ignored staff role ready.
+  const requiredStaff = StaffRoleList.filter(r => !staffStates[r].ignored);
+  const staffAllReady = requiredStaff.every(r => staffStates[r].ready);
+  const stationsAllReady = joinedStations.length > 0 && joinedStations.every(s => stationStates[s]?.ready);
+  const allReady = readyRequested && stationsAllReady && staffAllReady;
+
+  const notReadyStaff = requiredStaff.filter(r => !staffStates[r].ready).map(r => StaffRoleLabels[r]);
+  const holdDisabledReason = !readyRequested
+    ? 'Open the ready check first.'
+    : joinedStations.length === 0
+      ? 'At least one team must join and ready up.'
+      : !stationsAllReady
+        ? 'Waiting for all teams to ready up…'
+        : !staffAllReady
+          ? `Waiting for staff: ${notReadyStaff.join(', ')}`
+          : undefined;
 
   // While the get-ready announcement plays, hold off starting: a countdown
   // started mid-announcement loses its 3-2-1 audio to the busy field speaker.
@@ -295,6 +422,9 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
         </CardContent>
       </Card>
 
+      {/* Staff ready-up */}
+      <StaffPanel staffStates={staffStates} readyRequested={readyRequested} />
+
       {/* Match Config */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
@@ -305,45 +435,125 @@ function CreatedView({ matchState }: { matchState: NonNullable<ReturnType<typeof
         </CardContent>
       </Card>
 
-      {/* Start / Cancel controls */}
+      {/* Ready check + start controls */}
       <Card>
         <CardContent>
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center' }}>
             <Button variant="outlined" color="info" disabled={getReadyHold} onClick={sendPlayGetReady}>
               📢 Get Ready
             </Button>
-            <Button
-              variant="contained"
-              color="success"
-              size="large"
-              disabled={!allReady || getReadyHold}
-              onClick={sendStationStartMatch}
-              sx={{ px: 6, fontWeight: 'bold' }}
-            >
-              Start Countdown
-            </Button>
+            {!readyRequested ? (
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={() => sendMatchRequestReady(true)}
+                sx={{ px: 4, fontWeight: 'bold' }}
+              >
+                Ask for Ready
+              </Button>
+            ) : (
+              <>
+                <Button variant="outlined" color="warning" onClick={() => sendMatchRequestReady(false)}>
+                  Retract Ready Check
+                </Button>
+                <HoldToStartButton canStart={allReady && !getReadyHold} holdDisabledReason={holdDisabledReason} />
+              </>
+            )}
             <Button variant="outlined" color="error" onClick={sendMatchCancel}>
               Cancel Match
             </Button>
           </Box>
+          {!readyRequested && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center' }}>
+              Teams and staff can&rsquo;t ready up until you open the ready check.
+              {joinedStations.length === 0 && ' Waiting for teams to join…'}
+            </Typography>
+          )}
           {getReadyHold && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
               Get-ready announcement playing — starting is enabled again in a moment...
             </Typography>
           )}
-          {!allReady && joinedStations.length > 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
-              Waiting for all teams to ready up...
-            </Typography>
-          )}
-          {joinedStations.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
-              At least one team must join and &lsquo;Ready Up&rsquo; before starting.
-            </Typography>
-          )}
         </CardContent>
       </Card>
     </>
+  );
+}
+
+/** Non-team staff ready-up panel — each role can be readied from its /staff
+ *  page; the host toggles roles not present this match to "not required". */
+function StaffPanel({
+  staffStates,
+  readyRequested,
+}: {
+  staffStates: MatchState['staffStates'];
+  readyRequested: boolean;
+}) {
+  return (
+    <Card sx={{ mb: 2 }}>
+      <CardContent>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>
+          Field Staff
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          {StaffRoleList.map(role => {
+            const s = staffStates[role];
+            const statusLabel = s.ignored
+              ? 'Not required'
+              : s.ready
+                ? 'Ready'
+                : s.connected
+                  ? readyRequested
+                    ? 'Waiting to ready'
+                    : 'Connected'
+                  : 'Not connected';
+            const statusColor: 'success' | 'default' | 'warning' = s.ignored
+              ? 'default'
+              : s.ready
+                ? 'success'
+                : 'warning';
+            return (
+              <Box
+                key={role}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  px: 1.5,
+                  py: 0.75,
+                  borderRadius: 1,
+                  border: 1,
+                  borderColor: 'divider',
+                  opacity: s.ignored ? 0.55 : 1,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {StaffRoleLabels[role]}
+                  </Typography>
+                  <Chip
+                    label={statusLabel}
+                    color={statusColor}
+                    size="small"
+                    variant={s.ready ? 'filled' : 'outlined'}
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                </Box>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color={s.ignored ? 'primary' : 'inherit'}
+                  onClick={() => sendMatchStaffIgnore(role, !s.ignored)}
+                >
+                  {s.ignored ? 'Require' : 'Ignore'}
+                </Button>
+              </Box>
+            );
+          })}
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -574,11 +784,17 @@ function ActiveMatchView({
             Match Controls
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {/* Abort countdown — returns to created/setup phase */}
+            {/* Abort countdown — returns to created/setup phase. The start
+                button is hold-to-start, so simply letting go also aborts. */}
             {phase === 'countdown' && (
-              <Button variant="outlined" color="warning" onClick={sendMatchAbortCountdown}>
-                Abort Countdown
-              </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                <Button variant="outlined" color="warning" onClick={sendMatchAbortCountdown}>
+                  Abort Countdown
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Keep holding the start button — let go before the horn to abort.
+                </Typography>
+              </Box>
             )}
 
             {/* Pause (not during countdown, autoPause, or already paused) */}

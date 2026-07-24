@@ -12,6 +12,9 @@ import {
   StationNameList,
   StationNumber,
   StationControlState,
+  StaffRole,
+  StaffRoleList,
+  StaffRoleState,
   defaultSlotToRadio,
 } from './types.js';
 import { appWarn, appError } from './appLogger.js';
@@ -27,6 +30,9 @@ const DS_ATTACHED_TIMEOUT_MS = 5_000;
  *  stale packet still carrying the pre-enable state can arrive — without the
  *  grace it would instantly re-latch the disable that was just cleared. */
 const FMS_ENABLE_GRACE_MS = 2_000;
+/** A staff role counts as connected if its page sent a heartbeat this recently.
+ *  Staff pages heartbeat every ~2s, so this tolerates a couple of missed beats. */
+const STAFF_CONNECTED_TIMEOUT_MS = 6_000;
 /** Post-match scoring delay for balls in flight (up to 3s per rules) */
 const POST_MATCH_COUNT_SECONDS = 3;
 /** How long a finished match lingers in postMatch before auto-clearing to idle.
@@ -59,6 +65,12 @@ export class MatchEngine {
   private autoClearTimer: NodeJS.Timeout | null = null;
   private lastTickTime = 0;
   private prePausePhase: MatchPhase | null = null;
+  /** True once the host opens the ready check — no station/staff may ready before it. */
+  private readyRequested = false;
+  /** Per-role staff readiness (ready + host "ignore" flag) for the current match. */
+  private staffReady = new Map<StaffRole, { ready: boolean; ignored: boolean }>();
+  /** Last presence heartbeat per staff role — drives the connected flag. */
+  private lastStaffHeartbeat = new Map<StaffRole, number>();
   /** Match starts are rejected until this time (see holdStart) */
   private startHoldUntil = 0;
   private sequenceNumbers = new Map<StationName, number>();
@@ -101,7 +113,31 @@ export class MatchEngine {
       });
       this.sequenceNumbers.set(station, 0);
     }
+    for (const role of StaffRoleList) {
+      this.staffReady.set(role, { ready: false, ignored: false });
+    }
     setInterval(() => this.sendJoinedHeartbeat(), HEARTBEAT_INTERVAL_MS);
+
+    // Sweep stale staff presence — a role whose page closed drops to
+    // disconnected, and if it was required-but-ready its stale ready is cleared.
+    setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      for (const role of StaffRoleList) {
+        const last = this.lastStaffHeartbeat.get(role);
+        const connected = last !== undefined && now - last < STAFF_CONNECTED_TIMEOUT_MS;
+        if (!connected && this.lastStaffHeartbeat.has(role)) {
+          this.lastStaffHeartbeat.delete(role);
+          const s = this.staffReady.get(role)!;
+          if (s.ready) {
+            s.ready = false;
+            console.log(`Staff ${role} disconnected — ready cleared`);
+          }
+          changed = true;
+        }
+      }
+      if (changed) this.broadcast();
+    }, 2_000);
 
     // Sweep stale DS connections — if no packet in 20s (~3 missed heartbeats), clear
     setInterval(() => {
@@ -196,6 +232,7 @@ export class MatchEngine {
     this.portToSlot.clear();
     this.autoWinnerAlliance = null;
     this.endReason = undefined;
+    this.resetReadyCheckAndStaff();
     this.phase = 'created';
     console.log('Match created — waiting for stations to join');
     this.broadcast();
@@ -214,6 +251,7 @@ export class MatchEngine {
       state.matchSlot = null;
       state.aStop = false;
     }
+    this.resetReadyCheckAndStaff();
     this.phase = 'idle';
     console.log('Match cancelled');
     this.broadcast();
@@ -239,6 +277,7 @@ export class MatchEngine {
     }
     state.alliance = newAlliance;
     state.ready = false;
+    this.closeReadyCheck();
     console.log(`Station ${station} swapped to ${newAlliance} alliance`);
     this.broadcast();
   }
@@ -259,6 +298,7 @@ export class MatchEngine {
     state.alliance = null;
     state.matchSlot = null;
     state.aStop = false;
+    this.closeReadyCheck();
     console.log(`Station ${station} kicked from match`);
     this.broadcast();
   }
@@ -307,6 +347,7 @@ export class MatchEngine {
         state.alliance = alliance;
         state.ready = false;
         state.matchSlot = null;
+        this.closeReadyCheck();
         console.log(`Station ${station} switched to ${alliance} alliance`);
         this.broadcast();
       }
@@ -316,6 +357,7 @@ export class MatchEngine {
     state.ready = false;
     state.alliance = alliance;
     state.matchSlot = null;
+    this.closeReadyCheck();
     console.log(`Station ${station} joined ${alliance} alliance`);
     this.broadcast();
   }
@@ -347,6 +389,8 @@ export class MatchEngine {
       return; // endMatchEmpty broadcasts
     }
 
+    // A pre-match departure changes the roster — re-close the ready check.
+    if (this.phase === 'created') this.closeReadyCheck();
     this.broadcast();
   }
 
@@ -375,6 +419,11 @@ export class MatchEngine {
       appWarn(`Station ${station} is not joined, cannot set ready`);
       return;
     }
+    // Teams can't ready up until the host opens the ready check.
+    if (ready && !this.readyRequested) {
+      appWarn(`Station ${station} cannot ready: the host has not opened the ready check`);
+      return;
+    }
     // NOTE: Ready is intentionally NOT gated on isDsAttached(). The
     // dsAttached signal proved unreliable in the field (2026-07-18: it stayed
     // false for DSes that were heartbeating fine, because it only stamps when
@@ -398,12 +447,95 @@ export class MatchEngine {
       skipAuto: config.skipAuto ?? false,
       autoWinner: config.autoWinner ?? 'scores',
     };
-    // Changing config invalidates all ready states
-    for (const state of this.stationStates.values()) {
-      state.ready = false;
-    }
+    // Changing config invalidates the whole ready check
+    this.closeReadyCheck();
     console.log('Match config updated:', this.pendingConfig);
     this.broadcast();
+  }
+
+  /** Close the ready check: no one is "ready" and the host must re-open it.
+   *  Called whenever the roster changes (join/leave/swap/kick/config) so a match
+   *  can't start against a stale readiness snapshot. Keeps staff "ignore"
+   *  choices — those are the host's per-match intent, not readiness. */
+  private closeReadyCheck() {
+    this.readyRequested = false;
+    for (const state of this.stationStates.values()) state.ready = false;
+    for (const s of this.staffReady.values()) s.ready = false;
+  }
+
+  /** Reset the ready check + staff readiness for a brand-new (or torn-down)
+   *  match. The host's "ignore" choices intentionally PERSIST across matches so
+   *  a self-service field (no staff) is configured once, not re-ignored every
+   *  match; a staffed event likewise stays "required". They reset only on a
+   *  server restart. */
+  private resetReadyCheckAndStaff() {
+    this.readyRequested = false;
+    for (const s of this.staffReady.values()) s.ready = false;
+  }
+
+  /** Host opens (or retracts) the ready check. Only meaningful during setup. */
+  setReadyRequested(requested: boolean) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot change ready check in phase ${this.phase}`);
+      return;
+    }
+    if (this.readyRequested === requested) return;
+    this.readyRequested = requested;
+    if (!requested) {
+      // Retracting clears everyone's ready so re-opening starts clean.
+      for (const state of this.stationStates.values()) state.ready = false;
+      for (const s of this.staffReady.values()) s.ready = false;
+    }
+    console.log(requested ? 'Ready check opened' : 'Ready check retracted');
+    this.broadcast();
+  }
+
+  /** A staff role readies / un-readies. Gated exactly like station ready. */
+  setStaffReady(role: StaffRole, ready: boolean) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot change staff ready for ${role} in phase ${this.phase}`);
+      return;
+    }
+    const s = this.staffReady.get(role)!;
+    if (ready && !this.readyRequested) {
+      appWarn(`Staff ${role} cannot ready: the host has not opened the ready check`);
+      return;
+    }
+    if (ready && s.ignored) {
+      appWarn(`Staff ${role} cannot ready: role is marked not required for this match`);
+      return;
+    }
+    if (s.ready === ready) return;
+    s.ready = ready;
+    console.log(`Staff ${role} ready: ${ready}`);
+    this.broadcast();
+  }
+
+  /** Host marks a staff role required / not required for this match. Ignoring a
+   *  role clears its ready so it drops out of the start gate immediately. */
+  setStaffIgnored(role: StaffRole, ignored: boolean) {
+    if (this.phase !== 'created') {
+      appWarn(`Cannot change staff requirement for ${role} in phase ${this.phase}`);
+      return;
+    }
+    const s = this.staffReady.get(role)!;
+    if (s.ignored === ignored) return;
+    s.ignored = ignored;
+    if (ignored) s.ready = false;
+    console.log(`Staff ${role} ${ignored ? 'ignored (not required)' : 'required'} for this match`);
+    this.broadcast();
+  }
+
+  /** Presence heartbeat from an open staff page — drives the connected flag. */
+  staffHeartbeat(role: StaffRole) {
+    const wasConnected = this.isStaffConnected(role);
+    this.lastStaffHeartbeat.set(role, Date.now());
+    if (!wasConnected) this.broadcast();
+  }
+
+  private isStaffConnected(role: StaffRole): boolean {
+    const last = this.lastStaffHeartbeat.get(role);
+    return last !== undefined && Date.now() - last < STAFF_CONNECTED_TIMEOUT_MS;
   }
 
   /** Briefly block match starts, e.g. while the get-ready announcement plays —
@@ -423,6 +555,10 @@ export class MatchEngine {
       return;
     }
 
+    if (!this.readyRequested) {
+      appWarn('Cannot start match: the host has not opened the ready check');
+      return;
+    }
     const joinedStations = StationNameList.filter(s => this.stationStates.get(s)!.joined);
     if (joinedStations.length === 0) {
       appWarn('No stations have joined, cannot start match');
@@ -430,6 +566,14 @@ export class MatchEngine {
     }
     if (!joinedStations.every(s => this.stationStates.get(s)!.ready)) {
       appWarn('Not all joined stations are ready, cannot start match');
+      return;
+    }
+    const staffBlocking = StaffRoleList.filter(r => {
+      const s = this.staffReady.get(r)!;
+      return !s.ignored && !s.ready;
+    });
+    if (staffBlocking.length > 0) {
+      appWarn(`Cannot start match: staff not ready (${staffBlocking.join(', ')})`);
       return;
     }
 
@@ -582,6 +726,7 @@ export class MatchEngine {
     this.phase = 'idle';
     this.portToSlot.clear();
     this.autoWinnerAlliance = null;
+    this.resetReadyCheckAndStaff();
     for (const state of this.stationStates.values()) {
       state.joined = false;
       state.ready = false;
@@ -795,6 +940,12 @@ export class MatchEngine {
     const awaitingAutoWinner =
       this.phase === 'autoPause' && this.config?.autoWinner === 'pause' && !this.autoWinnerAlliance;
 
+    const staffStates = {} as Record<StaffRole, StaffRoleState>;
+    for (const role of StaffRoleList) {
+      const s = this.staffReady.get(role)!;
+      staffStates[role] = { ready: s.ready, ignored: s.ignored, connected: this.isStaffConnected(role) };
+    }
+
     // Shift scoring state — computed from the game phase, which survives
     // pauses (a paused match stays in its pre-pause sub-period)
     const effectivePhase = this.phase === 'paused' ? (this.prePausePhase ?? undefined) : this.phase;
@@ -830,6 +981,8 @@ export class MatchEngine {
       autoWinnerAlliance: this.autoWinnerAlliance,
       awaitingAutoWinner: awaitingAutoWinner || undefined,
       pausedFrom: this.phase === 'paused' ? (this.prePausePhase ?? undefined) : undefined,
+      readyRequested: this.readyRequested,
+      staffStates,
     };
   }
 
@@ -1045,6 +1198,7 @@ export class MatchEngine {
     this.portToSlot.clear();
     this.autoWinnerAlliance = null;
     this.endReason = undefined;
+    this.resetReadyCheckAndStaff();
     for (const state of this.stationStates.values()) {
       state.joined = false;
       state.ready = false;

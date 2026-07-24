@@ -275,6 +275,11 @@ export class MatchAudio {
         } catch {
           // already exited
         }
+        // Abandoned start (host let go of the hold, a team un-readied, or the
+        // operator aborted) — the robots never enabled, so play the fault
+        // buzzer. E-stop/stop during countdown lands in postMatch instead and
+        // is handled below.
+        if (state.phase === 'created') this.play('abort');
       }
       if (state.phase !== 'countdown') countdownChild = null;
 

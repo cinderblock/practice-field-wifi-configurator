@@ -82,6 +82,11 @@ function stationRoutes(): Plugin {
         if (url === '/match') {
           req.url = '/match.html';
         }
+        // Staff ready-up page: /staff (role rides in ?role=…, so match on the
+        // path only) → staff.html
+        if (url?.split('?')[0] === '/staff') {
+          req.url = '/staff.html';
+        }
         if (url === '/scores') {
           req.url = '/scores.html';
         }
@@ -166,6 +171,7 @@ export default defineConfig({
         test: 'test.html',
         scores: 'scores.html',
         match: 'match.html',
+        staff: 'staff.html',
         overview: 'overview.html',
         usage: 'usage.html',
         notfound: '404.html',

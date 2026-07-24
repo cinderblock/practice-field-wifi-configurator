@@ -470,6 +470,30 @@ export type StationControlState = {
 
 export type MatchEndReason = 'normal' | 'stopped' | 'estop' | 'abandoned';
 
+/** Non-team field staff who ready up digitally alongside the driver stations
+ *  before a match starts. A fixed, easily-edited set — add a role here and it
+ *  flows through the engine, the /staff pages, and the host ready panel. */
+export type StaffRole = 'headRef' | 'scorekeeper' | 'safety';
+export const StaffRoleList: StaffRole[] = ['headRef', 'scorekeeper', 'safety'];
+export function isStaffRole(v: unknown): v is StaffRole {
+  return typeof v === 'string' && (StaffRoleList as string[]).includes(v);
+}
+/** Human labels for staff roles (shown in the host panel and staff pages). */
+export const StaffRoleLabels: Record<StaffRole, string> = {
+  headRef: 'Head Referee',
+  scorekeeper: 'Scorekeeper',
+  safety: 'Safety Monitor',
+};
+
+export type StaffRoleState = {
+  /** This role has readied up for the current match. */
+  ready: boolean;
+  /** The match starter has marked this role not required for this match. */
+  ignored: boolean;
+  /** Someone is currently on this role's page (recent heartbeat). */
+  connected: boolean;
+};
+
 export type DSConnectionInfo = {
   ip: string;
   /** Server timestamp (Date.now()) of the last packet received from this DS */
@@ -532,6 +556,11 @@ export type MatchState = {
   awaitingAutoWinner?: boolean;
   /** When phase is 'paused', the phase the match was in before pausing (A-Stop is only meaningful for a pause taken during auto) */
   pausedFrom?: MatchPhase;
+  /** True once the host has opened the ready check. Until then, no station or
+   *  staff role may ready up. Reset whenever the roster changes. */
+  readyRequested: boolean;
+  /** Per-role readiness for non-team field staff. */
+  staffStates: Record<StaffRole, StaffRoleState>;
 };
 
 export function isMatchState(msg: unknown): msg is MatchState {
@@ -719,6 +748,40 @@ export function isMatchSetAutoWinner(msg: unknown): msg is MatchSetAutoWinner {
   if (typeof msg !== 'object' || !msg) return false;
   const m = msg as MatchSetAutoWinner;
   return m.type === 'matchSetAutoWinner' && (m.winner === 'red' || m.winner === 'blue');
+}
+
+/** Host opens or retracts the ready check (from the /match page). */
+export type MatchRequestReady = { type: 'matchRequestReady'; requested: boolean };
+export function isMatchRequestReady(msg: unknown): msg is MatchRequestReady {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchRequestReady;
+  return m.type === 'matchRequestReady' && typeof m.requested === 'boolean';
+}
+
+/** Host marks a staff role required / not required for this match. */
+export type MatchStaffIgnore = { type: 'matchStaffIgnore'; role: StaffRole; ignored: boolean };
+export function isMatchStaffIgnore(msg: unknown): msg is MatchStaffIgnore {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as MatchStaffIgnore;
+  return m.type === 'matchStaffIgnore' && isStaffRole(m.role) && typeof m.ignored === 'boolean';
+}
+
+// ── Staff-driven match messages (from /staff pages) ──────────────────
+
+/** A staff role readies / un-readies. */
+export type StaffReady = { type: 'staffReady'; role: StaffRole; ready: boolean };
+export function isStaffReady(msg: unknown): msg is StaffReady {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StaffReady;
+  return m.type === 'staffReady' && isStaffRole(m.role) && typeof m.ready === 'boolean';
+}
+
+/** Presence heartbeat from an open staff page (drives the role's connected flag). */
+export type StaffHeartbeat = { type: 'staffHeartbeat'; role: StaffRole };
+export function isStaffHeartbeat(msg: unknown): msg is StaffHeartbeat {
+  if (typeof msg !== 'object' || !msg) return false;
+  const m = msg as StaffHeartbeat;
+  return m.type === 'staffHeartbeat' && isStaffRole(m.role);
 }
 
 // ── Station self-service during match ────────────────────────────────

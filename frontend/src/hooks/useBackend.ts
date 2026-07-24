@@ -78,6 +78,7 @@ import {
   RoutePreferenceMsg,
   DriveAction,
   RunTeamChecks,
+  StaffRole,
   StationName,
   StationUpdate,
   StatusEntry,
@@ -972,6 +973,26 @@ export function sendMatchKickStation(station: StationName) {
 
 export function sendMatchSetAutoWinner(winner: Alliance) {
   ws?.send(JSON.stringify({ type: 'matchSetAutoWinner', winner }));
+}
+
+/** Host opens or retracts the ready check. */
+export function sendMatchRequestReady(requested: boolean) {
+  ws?.send(JSON.stringify({ type: 'matchRequestReady', requested }));
+}
+
+/** Host marks a staff role required / not required for this match. */
+export function sendMatchStaffIgnore(role: StaffRole, ignored: boolean) {
+  ws?.send(JSON.stringify({ type: 'matchStaffIgnore', role, ignored }));
+}
+
+// ── Staff Commands (from /staff pages) ───────────────────────────────
+
+export function sendStaffReady(role: StaffRole, ready: boolean) {
+  ws?.send(JSON.stringify({ type: 'staffReady', role, ready }));
+}
+
+export function sendStaffHeartbeat(role: StaffRole) {
+  ws?.send(JSON.stringify({ type: 'staffHeartbeat', role }));
 }
 
 export function sendStationSelfDisable(station: StationName) {

@@ -224,7 +224,7 @@ export function MatchPanel({ station }: { station?: StationName }) {
   const matchState = useMatchState();
   if (!matchState) return null;
 
-  const { phase, remainingTime, totalMatchTime, config, stationStates } = matchState;
+  const { phase, remainingTime, totalMatchTime, config, stationStates, readyRequested } = matchState;
 
   const isActive = phase !== 'idle' && phase !== 'postMatch' && phase !== 'created';
   const isPostMatch = phase === 'postMatch';
@@ -350,9 +350,10 @@ export function MatchPanel({ station }: { station?: StationName }) {
                   <Button
                     variant={ready ? 'outlined' : 'contained'}
                     color={ready ? 'warning' : 'success'}
+                    disabled={!ready && !readyRequested}
                     onClick={() => sendStationReady(station, !ready)}
                   >
-                    {ready ? 'Not Ready' : 'Ready'}
+                    {ready ? 'Not Ready' : readyRequested ? 'Ready' : 'Waiting for host…'}
                   </Button>
                   <Button variant="outlined" color="error" onClick={() => sendStationLeave(station)} disabled={ready}>
                     Leave
@@ -441,7 +442,7 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
   const matchState = useMatchState();
   if (!matchState) return null;
 
-  const { phase, remainingTime, totalMatchTime, config, stationStates } = matchState;
+  const { phase, remainingTime, totalMatchTime, config, stationStates, readyRequested } = matchState;
 
   const isActive = phase !== 'idle' && phase !== 'postMatch' && phase !== 'created';
   const isPostMatch = phase === 'postMatch';
@@ -629,9 +630,10 @@ export function MatchPanelForControl({ station }: { station: StationName; ssid: 
               <Button
                 variant={ready ? 'outlined' : 'contained'}
                 color={ready ? 'warning' : 'success'}
+                disabled={!ready && !readyRequested}
                 onClick={() => sendStationReady(station, !ready)}
               >
-                {ready ? 'Not Ready' : 'Ready'}
+                {ready ? 'Not Ready' : readyRequested ? 'Ready' : 'Waiting for host…'}
               </Button>
               {!ready && myAlliance && (
                 <Button

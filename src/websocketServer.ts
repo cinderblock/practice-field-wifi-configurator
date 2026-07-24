@@ -48,6 +48,10 @@ import {
   isMatchSwapStation,
   isMatchKickStation,
   isMatchSetAutoWinner,
+  isMatchRequestReady,
+  isMatchStaffIgnore,
+  isStaffReady,
+  isStaffHeartbeat,
   isStationSelfDisable,
   isStationSelfUndisable,
   isStationSelfEStop,
@@ -698,6 +702,14 @@ export function setupWebSocket(
         matchEngine.kickStation(data.station);
       } else if (isMatchSetAutoWinner(data)) {
         matchEngine.setAutoWinner(data.winner);
+      } else if (isMatchRequestReady(data)) {
+        matchEngine.setReadyRequested(data.requested);
+      } else if (isMatchStaffIgnore(data)) {
+        matchEngine.setStaffIgnored(data.role, data.ignored);
+      } else if (isStaffReady(data)) {
+        matchEngine.setStaffReady(data.role, data.ready);
+      } else if (isStaffHeartbeat(data)) {
+        matchEngine.staffHeartbeat(data.role);
       } else if (isPlayGetReady(data)) {
         // "Get ready" attention sound: field speaker + every un-muted display.
         // Hold match starts until the clip clears the exclusive audio device,
