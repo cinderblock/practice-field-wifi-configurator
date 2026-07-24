@@ -1164,36 +1164,67 @@ function BatteryCard({
         overflow: 'hidden',
       }}
     >
-      {/* Team, current V, min V — above the chart so the trace stays readable */}
+      {/* Team above, voltages below the chart — two full-width rows so a long
+          team number can never collide with the voltage figures on a narrow card */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0.5,
+          px: 0.75,
+          pt: 0.25,
+          minWidth: 0,
+        }}
+      >
+        <TeamAvatar teamNumber={robot.teamNumber} size={16} />
+        <Typography
+          noWrap
+          sx={{
+            fontSize: compact ? '0.8rem' : '0.9rem',
+            fontWeight: 700,
+            color: 'rgba(255,255,255,0.7)',
+            minWidth: 0,
+            '@container (max-width: 150px)': { fontSize: '0.8rem' },
+          }}
+        >
+          {robot.teamNumber ?? robot.station}
+          {isDuplicate && (
+            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
+              {' '}
+              ({robot.station.replace('slot', '#')})
+            </span>
+          )}
+        </Typography>
+      </Box>
+      <Box sx={{ '& canvas': { display: 'block', height: `${chartHeight}px !important` } }}>
+        <SmoothieComponent
+          responsive
+          height={chartHeight}
+          streamDelay={-1000}
+          millisPerPixel={200}
+          minValue={5}
+          maxValue={14}
+          limitFPS={15}
+          grid={BATTERY_CHART_GRID}
+          labels={BATTERY_CHART_LABELS}
+          title={BATTERY_CHART_TITLE}
+          yMinFormatter={emptyChartLabel}
+          yMaxFormatter={emptyChartLabel}
+          yIntermediateFormatter={emptyChartLabel}
+          series={series}
+        />
+      </Box>
       <Box
         sx={{
           display: 'flex',
           alignItems: 'baseline',
+          justifyContent: 'center',
           gap: 1,
           px: 0.75,
-          pt: 0.25,
+          pb: 0.25,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, flex: 1, minWidth: 0 }}>
-          <TeamAvatar teamNumber={robot.teamNumber} size={16} />
-          <Typography
-            sx={{
-              fontSize: compact ? '0.8rem' : '0.9rem',
-              fontWeight: 700,
-              color: 'rgba(255,255,255,0.7)',
-              whiteSpace: 'nowrap',
-              '@container (max-width: 150px)': { fontSize: '0.8rem' },
-            }}
-          >
-            {robot.teamNumber ?? robot.station}
-            {isDuplicate && (
-              <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, fontSize: '0.7rem' }}>
-                {' '}
-                ({robot.station.replace('slot', '#')})
-              </span>
-            )}
-          </Typography>
-        </Box>
         <Typography
           sx={{
             fontFamily: 'monospace',
@@ -1214,31 +1245,13 @@ function BatteryCard({
               color: 'rgba(244, 67, 54, 0.8)',
               whiteSpace: 'nowrap',
               // Least-critical figure — drop it before the card gets so tight it
-              // would clip the team number or current voltage.
-              '@container (max-width: 132px)': { display: 'none' },
+              // would clip the current voltage.
+              '@container (max-width: 110px)': { display: 'none' },
             }}
           >
             ↓{minFloor.toFixed(1)}V
           </Typography>
         )}
-      </Box>
-      <Box sx={{ '& canvas': { display: 'block', height: `${chartHeight}px !important` } }}>
-        <SmoothieComponent
-          responsive
-          height={chartHeight}
-          streamDelay={-1000}
-          millisPerPixel={200}
-          minValue={5}
-          maxValue={14}
-          limitFPS={15}
-          grid={BATTERY_CHART_GRID}
-          labels={BATTERY_CHART_LABELS}
-          title={BATTERY_CHART_TITLE}
-          yMinFormatter={emptyChartLabel}
-          yMaxFormatter={emptyChartLabel}
-          yIntermediateFormatter={emptyChartLabel}
-          series={series}
-        />
       </Box>
     </Box>
   );
