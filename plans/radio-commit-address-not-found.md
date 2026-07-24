@@ -52,6 +52,25 @@ practice-field-management-system && ./update.sh"`.
   restarts the service, which rebuilds `previousStations` from active config,
   clearing the stale 3049 entry).
 
+## Follow-up round (user: "do it") — radio-push race fixed
+
+- [x] `reconcileAfterConnect()` in radioManager: on the poller's
+      connected false→true transition (radio ACTIVE, no commit in flight),
+      compare radio `stationStatuses` SSIDs to activeConfig; re-commit on
+      mismatch. Covers both the startup race and a radio that
+      rebooted/cleared while the service ran.
+- [x] Commit-queue poisoning fix (found while implementing): commitQueue
+      chained with bare `.then()`, so ONE rejected commit made every
+      subsequent commit re-reject instantly with the stale error without
+      executing — this is why every retry at 13:36–13:40 replayed the
+      identical `ip addr del` error. Now chains `.catch(() => {}).then(...)`;
+      `queuedCommits` counter lets reconcile skip redundant commits.
+- [x] `retryDeferredCommit()` no longer drops commit rejections on the floor.
+- [x] Harness: `scripts/test-radio-reconcile.ts` (fake radio HTTP API +
+      real RadioManager, `DRY_RUN=1 bun scripts/test-radio-reconcile.ts`
+      on Windows). Replays the incident (empty radio on connect → auto
+      re-push) and the poisoned-queue regression. All green.
+
 ## Plan / steps — ALL DONE 2026-07-24 ~14:05
 
 - [x] Diagnose (logs on steamboat; traced code path)

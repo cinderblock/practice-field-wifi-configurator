@@ -60,23 +60,21 @@ connected DS IPs. Two accepted gaps (user decision 2026-07-24: fine for now):
   compute a per-connection DS flag server-side and reject operator/staff
   commands from flagged connections.
 
-## Radio config push silently skipped when radioManager hasn't marked the radio connected
+## Remaining silent-skip paths in RadioManager
 
-`configureRadio()` (`src/radioManager.ts`) no-ops with a console log when
-`this.connected` is false — and `connected` is only set by the 100ms status
-poller, not by callers that independently verified the radio is up. Seen
-2026-07-24: the startup re-apply path in `src/index.ts` waits on
-`waitForRadio()` and then commits, but the first poll hadn't completed, so the
-kernel network was rebuilt while the radio push was skipped — team 8048's SSID
-existed in `active-config.json` and on the bridges but not on the radio, with
-no error anywhere. Nothing reconciles radio config on the connected→true
-transition, so the divergence persisted until a manual `applyConfig` websocket
-message forced a re-commit.
+Two members of the 2026-07-24 incident's "silent skip" family were fixed
+(reconcile-on-reconnect in `reconcileAfterConnect()`, and commit-queue
+poisoning where one rejected commit made every later commit re-reject without
+executing — both covered by `scripts/test-radio-reconcile.ts`). Two remain,
+neither surfaced to the user:
 
-**Fix directions:** re-commit `activeConfig` (radio job only) when `connected`
-transitions false→true and the radio's reported `stationStatuses` disagree with
-`activeConfig`; or make `configureRadio` wait briefly for connection instead of
-skipping. Same "silent skip" family as the `configure()` early-return when
-`this.configuring` is set and the silent defer in `commitConfiguration()` —
-none of these surface to the user (see 2026-07-24 incident,
-`plans/radio-commit-address-not-found.md`).
+- `configure()` early-returns with only a console log when `this.configuring`
+  is set — a user's config request during a ~30s radio reconfigure is
+  silently dropped instead of queued or rejected with a visible error.
+- `commitConfiguration()` silently defers when `shouldDefer()` is true
+  (match active or any robot enabled), and `TelemetryManager.enabledStations`
+  entries are never aged out — a DS that was enabled and then unplugged
+  (never sending a disabled packet) leaves a stale `true` entry that defers
+  all commits until some other DS event clears it.
+
+Context and diagnosis oracles in `plans/radio-commit-address-not-found.md`.

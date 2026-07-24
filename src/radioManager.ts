@@ -178,6 +178,32 @@ class RadioManager {
 
   private updateBusy: boolean = false;
 
+  /** Number of commits queued or executing on commitQueue — used to skip redundant reconcile commits. */
+  private queuedCommits = 0;
+
+  /**
+   * When the radio (re)connects, verify its station config matches activeConfig.
+   * A commit that runs while the radio is unreachable skips the radio push
+   * (configureRadio bails when not connected), and a radio that rebooted or was
+   * cleared comes back empty — either way the divergence would otherwise persist
+   * silently until the next user-triggered commit (2026-07-24 incident: kernel
+   * network configured for team 8048 but the radio never got the SSID).
+   */
+  private reconcileAfterConnect(update: RadioUpdate): void {
+    if (update.status !== 'ACTIVE') return; // BOOTING/CONFIGURING/ERROR — status not settled yet
+    if (this.configuring || this.queuedCommits > 0) return; // an in-flight commit will push fresh config
+    const mismatched = StationNameList.filter(
+      station => (this.activeConfig[station]?.ssid ?? null) !== (update.stationStatuses[station]?.ssid ?? null),
+    );
+    if (mismatched.length === 0) return;
+    console.log(`Radio config out of sync after (re)connect (${mismatched.join(', ')}) — re-applying active config`);
+    this.commitConfiguration().catch(err => {
+      appError(
+        'Error re-applying configuration after radio reconnect: ' + (err instanceof Error ? err.message : String(err)),
+      );
+    });
+  }
+
   private deepEqual(a: any, b: any): boolean {
     // Use JSON stringification for deep equality comparison
     // This works well for plain data objects without functions/symbols
@@ -242,6 +268,7 @@ class RadioManager {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      const wasConnected = this.connected;
       this.connected = true;
 
       const rawUpdate = await response.json();
@@ -275,6 +302,8 @@ class RadioManager {
         }
       }
       if (linkTransition) this.notifyLastLinkedListeners();
+
+      if (!wasConnected) this.reconcileAfterConnect(radioUpdate);
 
       submit(radioUpdate);
     } catch (error) {
@@ -487,7 +516,9 @@ class RadioManager {
     // Clear deferred flag immediately so subsequent calls don't queue duplicates
     // while the commit is in progress (radio config takes ~30s).
     this._deferredCommit = false;
-    this.commitConfiguration();
+    this.commitConfiguration().catch(err => {
+      appError('Error committing deferred configuration: ' + (err instanceof Error ? err.message : String(err)));
+    });
   }
 
   /**
@@ -519,8 +550,17 @@ class RadioManager {
       this.setPendingCommit(false);
     }
     // Serialize concurrent calls — each queues after the previous one so
-    // previousStations in networkManager is never read mid-update.
-    this.commitQueue = this.commitQueue.then(() => this.doCommitConfiguration());
+    // previousStations in networkManager is never read mid-update. The
+    // leading catch isolates each commit from its predecessors: without it,
+    // one rejected commit poisons the queue and every later commit re-rejects
+    // with the stale error without ever executing (2026-07-24 incident).
+    this.queuedCommits++;
+    this.commitQueue = this.commitQueue
+      .catch(() => {})
+      .then(() => this.doCommitConfiguration())
+      .finally(() => {
+        this.queuedCommits--;
+      });
     return this.commitQueue;
   }
 
