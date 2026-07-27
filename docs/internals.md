@@ -7,11 +7,16 @@ the network model see [network.md](network.md).
 ## Startup Sequence
 
 1. **Check system tools** — if `VLAN_INTERFACE` is set, verifies
-   `iptables`, `arping`, `fping`, and `dnsmasq` are available. `arping`
-   and `dnsmasq` checks are skipped in PRACTICE firmware mode.
+   `iptables`, `arping`, `fping`, `dnsmasq`, `conntrack`, and `tcpdump`
+   are on the PATH. **All six are required regardless of firmware mode**
+   (the check runs before the radio is reached, so firmware mode isn't
+   known yet); any missing tool prints `Missing required tools: …` with an
+   `apt install` hint and exits with code 78.
 2. **Check interface IPs** — if `VLAN_INTERFACE` is set, verify the
-   physical interface has the expected IPs (`10.0.100.5` for FMS and
-   syslog). Log OK or MISSING for each.
+   physical interface carries `10.0.100.5` (the FMS address) and **adds
+   it if missing**. Note this is added to the bare parent interface, so
+   field control must be the native/untagged VLAN on the trunk. If the
+   interface doesn't exist at all, this logs an error and continues.
 3. **Flush or preserve network rules** — on a fresh start, flush stale
    iptables rules and per-station route tables from a previous run. On a
    graceful reload, skip the flush to preserve existing rules (see

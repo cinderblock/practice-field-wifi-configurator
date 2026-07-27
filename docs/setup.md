@@ -16,19 +16,40 @@ on any OS works with [`DRY_RUN`](internals.md#dry-run-mode).)
 1. System dependencies (Linux, for VLAN/routing):
 
    ```bash
-   sudo apt install fping iptables iputils-arping
+   sudo apt install iptables iputils-arping fping dnsmasq-base conntrack tcpdump
    ```
 
+   **All six are required whenever `VLAN_INTERFACE` is set** — the backend
+   checks for them at startup and exits with code 78
+   (`Missing required tools: …`) if any is absent, regardless of which AP
+   firmware you run. See `checkRequiredTools` in `src/index.ts`.
+   - `iptables` — MASQUERADE rules for site network ↔ robot routing
+   - `iputils-arping` — duplicate address detection (used in OFFSEASON
+     firmware mode)
    - `fping` — fast parallel pinging for the subnet scanner (device
      discovery on team VLANs)
-   - `iptables` — MASQUERADE rules for site network ↔ robot routing
-   - `iputils-arping` — duplicate address detection (OFFSEASON firmware
-     mode only)
+   - `dnsmasq-base` — per-VLAN DHCP serving (used in OFFSEASON mode)
+   - `conntrack` — connection-tracking cleanup for DS↔RIO NAT
+   - `tcpdump` — robot telemetry packet capture on UDP 1150
 
-   > **OFFSEASON firmware only:** also install `dnsmasq-base` for per-VLAN
-   > DHCP serving.
+   Also useful, but not startup-checked (they degrade silently if
+   missing):
 
-2. JavaScript dependencies (the project uses [bun](https://bun.sh)):
+   ```bash
+   sudo apt install alsa-utils dhcpcd5
+   ```
+
+   - `alsa-utils` — provides `aplay` for field match audio. Without an
+     audio player (`aplay`, `paplay`, `ffplay`, `mpv`, `play`), the field
+     speaker stays silent. You also need a real sound device.
+   - `dhcpcd5` — required by the [robot tester](robot-tester.md) to lease
+     an address on `TEST_INTERFACE`.
+
+2. Both **bun** and a system **node** are needed: bun builds and runs the
+   dev servers, while the systemd unit runs `/usr/bin/node dist` and
+   `update.sh` uses `node` to parse the health endpoint.
+
+3. JavaScript dependencies (the project uses [bun](https://bun.sh)):
 
    ```bash
    bun install

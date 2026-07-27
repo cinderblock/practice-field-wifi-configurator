@@ -2,8 +2,15 @@
 
 All configuration is via environment variables. In production they live in
 `/etc/pfms/environment` (one `KEY=value` per line) and take effect on
-service restart — no `systemctl daemon-reload` needed. For local secrets
-(the FIRST API credentials), a `.env` file in the repo root also works.
+service restart — no `systemctl daemon-reload` needed.
+
+> **`.env` is development-only.** A `.env` file in the repo root is picked
+> up by `bun run dev`/`bun run start` because bun loads it automatically.
+> The production systemd unit runs `/usr/bin/node dist`, which does **not**
+> read `.env` — the app has no dotenv dependency. Anything you need in
+> production (including `FIRST_API_USERNAME` / `FIRST_API_AUTH_TOKEN`)
+> must go in `/etc/pfms/environment`, or team avatars will silently be
+> disabled.
 
 ## Core
 
