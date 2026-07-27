@@ -190,6 +190,54 @@ export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
   return isValidRawRadioUpdate(update);
 }
 
+// ── Setup wizard probe ──────────────────────────────────────────────
+
+/** Ordered setup stages — each one only makes sense once the prior one passes. */
+export type SetupStepId = 'host' | 'interfaces' | 'fieldControl' | 'radio' | 'teamVlans';
+
+export type SetupCheckStatus = 'pass' | 'warn' | 'fail';
+
+/** One observation about the host, with the command that would fix it. */
+export interface SetupCheck {
+  id: string;
+  label: string;
+  status: SetupCheckStatus;
+  detail: string;
+  /** Exact command or action that resolves a warn/fail, shown verbatim in the UI. */
+  fix?: string;
+}
+
+export interface SetupStep {
+  id: SetupStepId;
+  label: string;
+  blurb: string;
+  status: SetupCheckStatus;
+  checks: SetupCheck[];
+}
+
+/** Broadcast to clients watching the setup wizard. Purely observational. */
+export interface SetupProbeState {
+  type: 'setupProbeState';
+  checkedAt: number;
+  vlanInterface?: string;
+  radioUrl: string;
+  dryRun: boolean;
+  steps: SetupStep[];
+}
+
+export function isSetupProbeState(msg: unknown): msg is SetupProbeState {
+  return (msg as SetupProbeState)?.type === 'setupProbeState';
+}
+
+/** Client asks for an immediate re-probe (the "Re-check" button). */
+export interface RequestSetupProbe {
+  type: 'requestSetupProbe';
+}
+
+export function isRequestSetupProbe(msg: unknown): msg is RequestSetupProbe {
+  return (msg as RequestSetupProbe)?.type === 'requestSetupProbe';
+}
+
 function isRadioChannel(channel: unknown): channel is RadioChannel {
   return [
     // TODO: DRY
