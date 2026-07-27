@@ -8,10 +8,17 @@
  * paused". The fix keys the 200ms heartbeat on the tick being stopped, so a
  * paused match keeps streaming the disabled state.
  *
+ * Also covers the resume countdown (2026-07-27): resuming no longer enables
+ * instantly — robots stay disabled through a 3s "3… 2… 1…" warning, and
+ * pausing again during it cancels the resume.
+ *
  * Verifies, with a fake DS listening on 127.0.0.1:1121:
  *   - packets stream during teleop with the enabled bit set
  *   - packets KEEP streaming after pauseMatch(), all with enabled bit clear
- *   - packets stream again after resumeMatch(), enabled bit set again
+ *   - resumeMatch() starts a countdown without leaving 'paused'
+ *   - pausing during the countdown cancels it, still disabled
+ *   - the enabled bit stays clear for the whole countdown (no early enable)
+ *   - after the countdown the match is in teleop with the enabled bit set
  */
 import dgram from 'dgram';
 import { MatchEngine } from '../src/matchEngine.js';
@@ -78,9 +85,41 @@ check(
   pausedPackets.length > 0 && pausedPackets.every(b => (b & ENABLED_BIT) === 0),
 );
 
-// ── Resume: back to an enabled stream ───────────────────────────────
+// ── Resume countdown cancelled: stays paused and disabled ───────────
 engine.resumeMatch();
-check('resumed to teleop', engine.getState().phase === 'teleop');
+check('resume countdown started', engine.getState().resumeAt !== undefined);
+check('resume countdown: still paused', engine.getState().phase === 'paused');
+
+engine.pauseMatch(); // pausing during the countdown cancels the resume
+check('resume cancelled: resumeAt cleared', engine.getState().resumeAt === undefined);
+check('resume cancelled: still paused', engine.getState().phase === 'paused');
+
+const cancelledPackets = await sample(500);
+check(
+  'resume cancelled: enabled bit still clear',
+  cancelledPackets.length > 0 && cancelledPackets.every(b => (b & ENABLED_BIT) === 0),
+);
+
+// ── Resume: robots stay disabled for the whole 3s countdown ─────────
+engine.resumeMatch();
+check('resume countdown restarted', engine.getState().resumeAt !== undefined);
+
+// Sample most of the countdown — robots must NOT enable early
+const countdownPackets = await sample(2_000);
+check(
+  'resume countdown: packets still streaming (got ' + countdownPackets.length + ' in 2s)',
+  countdownPackets.length >= 5,
+);
+check(
+  'resume countdown: enabled bit clear for the whole countdown',
+  countdownPackets.length > 0 && countdownPackets.every(b => (b & ENABLED_BIT) === 0),
+);
+check('resume countdown: still paused mid-count', engine.getState().phase === 'paused');
+
+// Let the countdown finish
+await sleep(1_500);
+check('resumed to teleop after countdown', engine.getState().phase === 'teleop');
+check('resumed: resumeAt cleared', engine.getState().resumeAt === undefined);
 
 const resumedPackets = await sample(1_000);
 check('resumed: packets streaming (got ' + resumedPackets.length + ' in 1s)', resumedPackets.length >= 3);

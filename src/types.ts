@@ -556,6 +556,10 @@ export type MatchState = {
   awaitingAutoWinner?: boolean;
   /** When phase is 'paused', the phase the match was in before pausing (A-Stop is only meaningful for a pause taken during auto) */
   pausedFrom?: MatchPhase;
+  /** Epoch ms when a pending resume re-enables robots, while a paused match is
+   *  counting down. Undefined when paused and holding. Robots stay disabled
+   *  for the whole countdown; pausing again cancels it. */
+  resumeAt?: number;
   /** True once the host has opened the ready check. Until then, no station or
    *  staff role may ready up. Reset whenever the roster changes. */
   readyRequested: boolean;

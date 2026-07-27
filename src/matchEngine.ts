@@ -35,6 +35,10 @@ const FMS_ENABLE_GRACE_MS = 2_000;
 const STAFF_CONNECTED_TIMEOUT_MS = 6_000;
 /** Post-match scoring delay for balls in flight (up to 3s per rules) */
 const POST_MATCH_COUNT_SECONDS = 3;
+/** Warning countdown before a paused match re-enables robots. Must match the
+ *  cue timing baked into sounds/resume321.wav (tones at 0/1/2s, "live" tone
+ *  at 3s) and the browser mirror in frontend/src/hooks/useMatchAudio.ts. */
+const RESUME_COUNTDOWN_SECONDS = 3;
 /** How long a finished match lingers in postMatch before auto-clearing to idle.
  *  Self-service practice matches are often started and abandoned; without this,
  *  the field (and scoring, which follows the postMatch→idle transition) stays
@@ -65,6 +69,9 @@ export class MatchEngine {
   private autoClearTimer: NodeJS.Timeout | null = null;
   private lastTickTime = 0;
   private prePausePhase: MatchPhase | null = null;
+  /** Epoch ms when a pending resume completes, or null when not resuming. */
+  private resumeAt: number | null = null;
+  private resumeTimer: NodeJS.Timeout | null = null;
   /** True once the host opens the ready check — no station/staff may ready before it. */
   private readyRequested = false;
   /** Per-role staff readiness (ready + host "ignore" flag) for the current match. */
@@ -674,6 +681,7 @@ export class MatchEngine {
 
   stopMatch() {
     if (!this.isMatchActive()) return;
+    this.cancelResumeCountdown();
     this.disableAll();
     this.endReason = 'stopped';
     this.phase = 'postMatch';
@@ -686,6 +694,14 @@ export class MatchEngine {
   }
 
   pauseMatch() {
+    // Pausing during a resume countdown cancels the resume instead — the
+    // robots are still disabled, so this just puts the field back on hold.
+    if (this.phase === 'paused' && this.resumeAt !== null) {
+      this.cancelResumeCountdown();
+      console.log(`Match ${this.matchNumber} resume cancelled — still paused`);
+      this.broadcast();
+      return;
+    }
     if (this.phase !== 'auto' && this.phase !== 'teleop' && this.phase !== 'endgame') {
       appWarn(`Cannot pause match in phase ${this.phase}`);
       return;
@@ -699,11 +715,42 @@ export class MatchEngine {
     this.broadcast();
   }
 
+  /**
+   * Begin resuming: robots stay disabled for a 3-second "3… 2… 1…" countdown
+   * so drive teams get warning before their robot comes back alive, matching
+   * the pre-start countdown. The clip's final tone lands exactly when
+   * `completeResume()` re-enables. Pausing again during the countdown cancels
+   * it; a stop/abandon/e-stop cancels it implicitly.
+   */
   resumeMatch() {
     if (this.phase !== 'paused') {
       appWarn('Cannot resume: match is not paused');
       return;
     }
+    if (this.resumeAt !== null) return; // already counting down
+
+    this.resumeAt = Date.now() + RESUME_COUNTDOWN_SECONDS * 1000;
+    this.resumeTimer = setTimeout(() => this.completeResume(), RESUME_COUNTDOWN_SECONDS * 1000);
+    console.log(`Match ${this.matchNumber} resuming in ${RESUME_COUNTDOWN_SECONDS}s`);
+    // The 200ms joined-heartbeat keeps streaming disable packets while the
+    // tick is stopped, so the field stays actively held during the countdown.
+    this.broadcast();
+  }
+
+  /** Drop a pending resume, leaving the match paused. */
+  private cancelResumeCountdown() {
+    if (this.resumeTimer) {
+      clearTimeout(this.resumeTimer);
+      this.resumeTimer = null;
+    }
+    this.resumeAt = null;
+  }
+
+  /** Countdown finished — actually re-enable and restart the match clock. */
+  private completeResume() {
+    this.cancelResumeCountdown();
+    if (this.phase !== 'paused') return; // stopped/abandoned mid-countdown
+
     this.phase = this.prePausePhase ?? 'teleop';
     this.prePausePhase = null;
     this.enableParticipating(this.phase === 'auto' ? 'auto' : 'teleOp');
@@ -719,6 +766,7 @@ export class MatchEngine {
       appWarn('Cannot abandon: match is not paused');
       return;
     }
+    this.cancelResumeCountdown();
     this.disableAll();
     this.endReason = 'abandoned';
     this.prePausePhase = null;
@@ -738,6 +786,7 @@ export class MatchEngine {
   }
 
   globalEStop() {
+    this.cancelResumeCountdown();
     for (const station of StationNameList) {
       const state = this.stationStates.get(station)!;
       state.eStop = true;
@@ -981,6 +1030,7 @@ export class MatchEngine {
       autoWinnerAlliance: this.autoWinnerAlliance,
       awaitingAutoWinner: awaitingAutoWinner || undefined,
       pausedFrom: this.phase === 'paused' ? (this.prePausePhase ?? undefined) : undefined,
+      resumeAt: this.resumeAt ?? undefined,
       readyRequested: this.readyRequested,
       staffStates,
     };
@@ -998,6 +1048,7 @@ export class MatchEngine {
 
   /** End match because all stations left. */
   private endMatchEmpty() {
+    this.cancelResumeCountdown();
     this.disableAll();
     this.endReason = 'abandoned';
     this.phase = 'postMatch';

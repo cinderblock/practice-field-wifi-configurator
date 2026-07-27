@@ -518,7 +518,7 @@ export function AStopPopout({ station }: { station: StationName }) {
   // (station pages don't mount MatchAudioBridge) and never echoes on overview
   // pages that render an AStopPopout per station.
   const audioEnabled = isOpen && !muted && lastState?.station === station;
-  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.matchId, audioEnabled);
+  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.matchId, audioEnabled, matchState?.resumeAt);
 
   // Window lives from join (setup) through the match; closes at post-match,
   // on leave, and — if the box is ticked — at the countdown.

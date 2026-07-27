@@ -606,6 +606,32 @@ function ParticipantRow({
 
 // ── Active match view ───────────────────────────────────────────────
 
+/**
+ * Live "resuming in N…" readout. The server sends the wall-clock instant the
+ * resume lands rather than ticking seconds at us, so this counts down locally
+ * and stays smooth without a broadcast per second.
+ */
+function ResumeCountdown({ resumeAt }: { resumeAt: number }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, resumeAt - Date.now()));
+
+  useEffect(() => {
+    setRemaining(Math.max(0, resumeAt - Date.now()));
+    const id = setInterval(() => setRemaining(Math.max(0, resumeAt - Date.now())), 100);
+    return () => clearInterval(id);
+  }, [resumeAt]);
+
+  return (
+    <Box sx={{ textAlign: 'center' }}>
+      <Typography variant="h4" sx={{ fontWeight: 'bold', color: 'success.main', lineHeight: 1 }}>
+        Resuming in {Math.ceil(remaining / 1000)}…
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        Robots stay disabled until the countdown ends
+      </Typography>
+    </Box>
+  );
+}
+
 function ActiveMatchView({
   matchState,
   activeColor,
@@ -613,9 +639,10 @@ function ActiveMatchView({
   matchState: NonNullable<ReturnType<typeof useMatchState>>;
   activeColor: string;
 }) {
-  const { phase, remainingTime, totalMatchTime, config, stationStates, awaitingAutoWinner } = matchState;
+  const { phase, remainingTime, totalMatchTime, config, stationStates, awaitingAutoWinner, resumeAt } = matchState;
 
   const isPaused = phase === 'paused';
+  const isResuming = isPaused && resumeAt !== undefined;
 
   const joinedStations = (Object.entries(stationStates) as [StationName, StationControlState | undefined][])
     .filter(([, s]) => s?.joined)
@@ -809,7 +836,7 @@ function ActiveMatchView({
             )}
 
             {/* Paused: resume / abandon */}
-            {isPaused && (
+            {isPaused && !isResuming && (
               <>
                 <Button variant="contained" color="success" onClick={sendStationResumeMatch}>
                   Resume
@@ -818,6 +845,16 @@ function ActiveMatchView({
                   Abandon Match
                 </Button>
               </>
+            )}
+
+            {/* Resume countdown running — robots are still disabled until it ends */}
+            {isResuming && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                <ResumeCountdown resumeAt={resumeAt} />
+                <Button variant="outlined" color="warning" onClick={sendStationPauseMatch}>
+                  Cancel Resume
+                </Button>
+              </Box>
             )}
 
             {/* Global E-Stop — always available during active match */}

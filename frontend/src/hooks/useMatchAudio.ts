@@ -6,8 +6,10 @@ type SoundName =
   | 'start'
   | 'end'
   | 'resume'
+  | 'resume321'
   | 'warning'
   | 'abort'
+  | 'pause'
   | 'countdown1'
   | 'countdown2'
   | 'countdown3'
@@ -30,7 +32,17 @@ function countdownVariant(matchId: string | undefined): SoundName {
  * Returns null for sounds that fail to load (e.g. missing files).
  */
 const sounds: Record<SoundName, HTMLAudioElement> = (() => {
-  const names: SoundName[] = ['start', 'end', 'resume', 'warning', 'abort', 'getready', ...COUNTDOWN_NAMES];
+  const names: SoundName[] = [
+    'start',
+    'end',
+    'resume',
+    'resume321',
+    'warning',
+    'abort',
+    'pause',
+    'getready',
+    ...COUNTDOWN_NAMES,
+  ];
   const map = {} as Record<SoundName, HTMLAudioElement>;
   for (const name of names) {
     const el = new Audio(`/sounds/${name}.wav`);
@@ -69,6 +81,7 @@ function getSoundForTransition(
   prevPhase: MatchPhase,
   endReason?: MatchEndReason,
   matchId?: string,
+  resumeEnded = false,
 ): SoundName | null {
   switch (phase) {
     case 'created':
@@ -84,21 +97,26 @@ function getSoundForTransition(
     case 'auto':
       // countdown → auto is silent — the horn already played from countdown.wav
       if (prevPhase === 'countdown') return null;
-      return prevPhase === 'paused' ? 'resume' : 'start';
+      // A completed resume countdown is silent too: resume321.wav has the
+      // "live" tone baked in at the 3s mark, which is when robots enable.
+      if (prevPhase === 'paused') return resumeEnded ? null : 'resume';
+      return 'start';
 
     case 'autoPause':
       return 'end';
 
     case 'teleop':
       // countdown → teleop (skipAuto) is silent — horn baked into countdown.wav
-      return prevPhase === 'countdown' ? null : 'resume';
+      if (prevPhase === 'countdown') return null;
+      if (prevPhase === 'paused' && resumeEnded) return null;
+      return 'resume';
 
     case 'endgame':
-      return prevPhase === 'paused' ? 'resume' : 'warning';
+      if (prevPhase === 'paused') return resumeEnded ? null : 'resume';
+      return 'warning';
 
     case 'paused':
-      // Server has a 'pause' sound but no pause.wav exists — skip
-      return null;
+      return 'pause';
 
     case 'postMatch':
       if (endReason === 'stopped' || endReason === 'estop' || endReason === 'abandoned') {
@@ -127,8 +145,10 @@ export function useMatchAudio(
   endReason?: MatchEndReason,
   matchId?: string,
   enabled = true,
+  resumeAt?: number,
 ): void {
   const prevPhaseRef = useRef<MatchPhase>('idle');
+  const prevResumeAtRef = useRef<number | undefined>(undefined);
   // Read the latest `enabled` from within stable subscriptions/effects.
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
@@ -142,8 +162,25 @@ export function useMatchAudio(
     if (!enabled) stopAllSounds();
   }, [enabled]);
 
+  // Phase transitions and the resume countdown are handled in one effect:
+  // completing a resume changes `phase` and clears `resumeAt` in the same
+  // state update, and the transition sound depends on knowing that happened.
   useEffect(() => {
     if (phase === undefined) return;
+
+    const resumeStarted = resumeAt !== undefined && prevResumeAtRef.current === undefined;
+    const resumeEnded = resumeAt === undefined && prevResumeAtRef.current !== undefined;
+    prevResumeAtRef.current = resumeAt;
+
+    if (resumeStarted && enabledRef.current) play('resume321');
+    if (resumeEnded && phase === 'paused') {
+      // Resume cancelled — cut the countdown, drop back to the hold tone
+      const el = sounds.resume321;
+      el.pause();
+      el.currentTime = 0;
+      if (enabledRef.current) play('pause');
+    }
+
     if (phase === prevPhaseRef.current) return;
 
     const prev = prevPhaseRef.current;
@@ -158,9 +195,9 @@ export function useMatchAudio(
       }
     }
 
-    const sound = getSoundForTransition(phase, prev, endReason, matchId);
+    const sound = getSoundForTransition(phase, prev, endReason, matchId, resumeEnded);
     if (sound && enabledRef.current) play(sound);
-  }, [phase, endReason, matchId]);
+  }, [phase, endReason, matchId, resumeAt]);
 }
 
 /**
@@ -169,6 +206,6 @@ export function useMatchAudio(
  */
 export function MatchAudioBridge(): null {
   const matchState = useMatchState();
-  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.matchId);
+  useMatchAudio(matchState?.phase, matchState?.endReason, matchState?.matchId, true, matchState?.resumeAt);
   return null;
 }

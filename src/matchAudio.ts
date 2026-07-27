@@ -14,6 +14,7 @@ type SoundName =
   | 'start'
   | 'end'
   | 'resume'
+  | 'resume321'
   | 'warning'
   | 'abort'
   | 'pause'
@@ -99,6 +100,7 @@ export class MatchAudio {
       'start',
       'end',
       'resume',
+      'resume321',
       'warning',
       'abort',
       'pause',
@@ -262,8 +264,34 @@ export class MatchAudio {
     // rather than separate clips: aplay holds the ALSA device exclusively, so
     // back-to-back clips race it and drop sounds.
     let countdownChild: ChildProcess | null = null;
+    // Same idea for the resume countdown, which runs while the phase stays
+    // 'paused' — so it has to be tracked separately from phase transitions.
+    let resumeChild: ChildProcess | null = null;
+    let lastResumeAt: number | undefined;
 
     engine.addStateListener(state => {
+      const resumeStarted = state.resumeAt !== undefined && lastResumeAt === undefined;
+      const resumeEnded = state.resumeAt === undefined && lastResumeAt !== undefined;
+      lastResumeAt = state.resumeAt;
+
+      if (resumeStarted) {
+        // "3… 2… 1… <live tone>" — the final tone lands exactly when the
+        // engine re-enables, so the phase change below stays silent.
+        resumeChild = this.play('resume321');
+      }
+      if (resumeEnded) {
+        if (state.phase === 'paused') {
+          // Resume cancelled — cut the announcer and drop back to the hold tone
+          try {
+            resumeChild?.kill();
+          } catch {
+            // already exited
+          }
+          this.play('pause');
+        }
+        resumeChild = null;
+      }
+
       if (state.phase === lastPhase) return;
       const prevPhase = lastPhase;
       lastPhase = state.phase;
@@ -289,8 +317,9 @@ export class MatchAudio {
           break;
         case 'auto':
           if (prevPhase === 'paused') {
-            // user resumed during auto
-            this.play('resume');
+            // Resumed during auto. After a resume countdown the "live" tone is
+            // already baked into resume321.wav at the 3s mark, so stay quiet.
+            if (!resumeEnded) this.play('resume');
           } else if (prevPhase !== 'countdown') {
             // countdown → auto plays nothing here: the charge horn is baked
             // into countdown.wav at the 3s mark (a second aplay would find
@@ -306,15 +335,15 @@ export class MatchAudio {
 
         case 'teleop':
           // autoPause → teleop, or user resumed during teleop: resume horn.
-          // countdown → teleop (skipAuto) is silent here — the horn is baked
-          // into countdown.wav.
-          if (prevPhase !== 'countdown') this.play('resume');
+          // countdown → teleop (skipAuto) and a completed resume countdown are
+          // silent here — their tone is baked into the clip that just played.
+          if (prevPhase !== 'countdown' && !resumeEnded) this.play('resume');
           break;
 
         case 'endgame':
           if (prevPhase === 'paused') {
-            // user resumed during endgame
-            this.play('resume');
+            // Resumed during endgame — silent after a resume countdown
+            if (!resumeEnded) this.play('resume');
           } else {
             // teleop → endgame: warning
             this.play('warning');
