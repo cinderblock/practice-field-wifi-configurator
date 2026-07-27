@@ -157,7 +157,7 @@ files in `sounds/`:
 | `end`            | End of auto, and normal match end                         |
 | `resume`         | Resume from pause, autoPause → teleop                     |
 | `warning`        | Teleop → endgame                                          |
-| `pause`          | Match paused                                              |
+| `pause`          | Match paused — see note below                             |
 | `abort`          | Match stopped, e-stopped, abandoned, or countdown aborted |
 | `getready`       | Ready-check announcement                                  |
 
@@ -172,6 +172,14 @@ every open page agree.
 Each variant must remain a single clip: the server plays sounds through an
 exclusive ALSA device, so separate clips would race each other and drop
 sounds. The chosen ALSA device persists in `audio-config.json`.
+
+Sounds are optional individually — at startup the server scans `sounds/`
+and only registers the files that exist, so a missing clip means that
+transition is silent rather than an error. **No `pause.wav` currently
+ships**, so pausing a match plays nothing; drop one in if you want a pause
+cue. The same files must also reach the web root as `/sounds/*.wav` for
+browsers to play match audio (`update.sh` handles this; a hand-rolled
+deploy must copy them).
 
 ## Match History
 

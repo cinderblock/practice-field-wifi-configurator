@@ -12,9 +12,28 @@ forking. Two related asks from the user (2026-07-27):
 
 ## Status
 
-Research phase. Three Explore agents dispatched (portability blockers,
-admin UI + runtime config surface, new-deployment setup burden). Findings
-merged below as they land.
+Research complete (three Explore agents: portability blockers, admin UI +
+runtime config surface, new-deployment setup burden). Doc-accuracy fixes
+committed (`f4f0744`). **Now executing Stage 0.**
+
+## Decisions already made (don't re-ask)
+
+Answered by the user 2026-07-27:
+
+1. **Customization scope: full — branding + theme + feature toggles _and_
+   field-layout config.** Station count/labels, VLAN mapping, and port
+   names should eventually be configurable, not just cosmetics. This is
+   the deep option: it touches `networkManager.ts` (the hardcoded
+   `slot1..slot6` → VLAN `10..60` map, which already carries a
+   `// TODO: load this map from the radio config`), `types.ts`
+   (`StationNameList` is a fixed 6-tuple used as a type), and
+   `routePreferenceManager.ts` (VLAN ids double as route-table ids).
+   Sequence it **after** the Site Profile store exists, so layout config
+   has somewhere to live.
+2. **Build order: Stage 0 first** — getting-started guide + the cheap
+   unblocking fixes. Chosen over the UI-visibility and Site Profile work
+   because it unblocks adoption immediately and carries no risk to the
+   running field.
 
 ## Environment / context
 
@@ -277,6 +296,38 @@ move `utils.ts:40` out of the backend.
 REBUILT model is encoded in the type system and drives scoring
 attribution; that's a rewrite, not a config option, and it's the same work
 whether or not anyone else adopts pFMS.
+
+## Progress log
+
+- [x] Research: portability blockers, admin/runtime config surface, new
+      deployment burden (3 agents)
+- [x] Doc-accuracy fixes from the research (`f4f0744`) — missing apt
+      packages, `.env`-in-production myth, native-VLAN requirement
+- [x] **Stage 0 complete:**
+  - [x] `docs/getting-started.md` — linear hardware→first-match
+        walkthrough with per-step "how to tell it worked" checks, a
+        no-hardware `DRY_RUN` path, and a symptom→cause troubleshooting
+        table. Linked from README + docs index.
+  - [x] `LICENSE` (ISC, © Cameron Tacklind — matches `package.json`;
+        **change the holder if it should be the org**) + a License
+        section in the README.
+  - [x] `.env.example` documenting that `.env` is dev-only.
+  - [x] Sanitized `samples/scan/result/{sample,second}.raw` — org SSIDs
+        (`Tom Sawyer Labs`, `TwillTech Secure`) and BSSIDs replaced with
+        example values, fixed-width columns preserved. These files have
+        no code references (grep-verified), so they're inert fixtures.
+  - [x] Fixed stale GitHub URLs → `TomSawyerLabs/practice-field-management-system`
+        (`StatusBar.tsx:249`, `public.html:67`).
+  - [x] Documented the missing `pause.wav` in `docs/match-system.md`
+        rather than fabricating audio — the server `existsSync`-checks
+        each sound, so a missing file is silent, not an error. **User
+        should record/add a pause cue if wanted.**
+- [ ] Stage 1 — make misconfiguration visible (startup-check buffer +
+      `/admin` System Status panel)
+- [ ] Stage 2 — Site Profile store (branding, theme, feature toggles)
+- [ ] Stage 2b — field-layout config (station count/labels, VLAN map,
+      port names) per decision #1; **depends on Stage 2's store existing**
+- [ ] Stage 3 — installer + generalized `update.sh`
 
 ## Open questions for the user
 

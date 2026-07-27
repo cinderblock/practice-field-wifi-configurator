@@ -25,12 +25,22 @@ and provides:
 
 ## Quick Start
 
-Network management requires Linux and root (see
-[setup](docs/setup.md) — development works anywhere with
-[`DRY_RUN`](docs/internals.md#dry-run-mode)):
+> **Setting up a new practice field?** Follow
+> **[docs/getting-started.md](docs/getting-started.md)** — a linear
+> walkthrough from bare hardware to your first match.
+
+For local development (works on any OS — no root, no radio, no VLANs):
 
 ```bash
-sudo apt install fping iptables iputils-arping   # Linux system deps
+bun install
+cp .env.example .env   # DRY_RUN=1 is already set
+```
+
+On a real field host, network management requires Linux and root:
+
+```bash
+sudo apt install iptables iputils-arping fping dnsmasq-base conntrack tcpdump
+sudo apt install alsa-utils dhcpcd5   # match audio + robot tester
 bun install
 ```
 
@@ -72,6 +82,8 @@ bun run build       # Compile backend + build frontend
 
 The [`docs/`](docs/README.md) directory has the full documentation:
 
+- [Getting started](docs/getting-started.md) — **new field walkthrough**:
+  hardware, switch/VLAN planning, firmware, install, first match
 - [Setup & deployment](docs/setup.md) — install, systemd, update script,
   reverse proxy, external access
 - [Configuration reference](docs/configuration.md) — all environment
@@ -99,6 +111,11 @@ live in [`plans/`](plans/).
 - `scripts/` — development and test harness scripts
 - `firmware/` — cached radio firmware binaries
 - `dist/`, `frontend/dist/` — build output
+
+## License
+
+[ISC](LICENSE) — © Cameron Tacklind. Contributions and questions welcome
+via [issues](https://github.com/TomSawyerLabs/practice-field-management-system/issues).
 
 ## Resources
 

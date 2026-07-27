@@ -246,7 +246,7 @@ export function StatusBar() {
         <Tooltip title="View source on GitHub" arrow>
           <IconButton
             component="a"
-            href="https://github.com/cinderblock/practice-field-wifi-configurator"
+            href="https://github.com/TomSawyerLabs/practice-field-management-system"
             target="_blank"
             rel="noopener"
             size="small"
