@@ -55,11 +55,19 @@ import { UsageTracker } from './usageTracker.js';
 import { HostnameResolver } from './hostnameResolver.js';
 import { StationName, StationNameList, StationNameRegex, TeamCheckResults, DriveSessionState } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
+import { maybeRunCli } from './cli.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
+
+// CLI commands (--clear-config, --help) run instead of starting the field.
+// Detected synchronously here so module-level side effects below (notably
+// consuming the keep-network flag) don't fire for a command that never starts
+// the field. The command itself runs at the top of main().
+const CliArgs = process.argv.slice(2);
+const CliMode = CliArgs.some(arg => arg === '--clear-config' || arg === '--help' || arg === '-h');
 
 const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 
@@ -67,7 +75,7 @@ const IPTABLES_COMMENT_PREFIX = process.env.IPTABLES_COMMENT_PREFIX || 'pfms-';
 // Set automatically by a graceful reload (systemctl reload writes /run/pfms-keep-network before
 // sending SIGHUP). Can also be forced via KEEP_NETWORK=true env var for manual overrides.
 const KEEP_NETWORK_FLAG = '/run/pfms-keep-network';
-const keepNetworkFlagExists = existsSync(KEEP_NETWORK_FLAG);
+const keepNetworkFlagExists = !CliMode && existsSync(KEEP_NETWORK_FLAG);
 if (keepNetworkFlagExists) rmSync(KEEP_NETWORK_FLAG, { force: true });
 const KeepNetwork = keepNetworkFlagExists || process.env.KEEP_NETWORK === 'true';
 
@@ -102,6 +110,10 @@ const RadioClearSchedule = process.env.RADIO_CLEAR_SCHEDULE;
 const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
 (async () => {
+  if (CliMode) {
+    process.exit((await maybeRunCli(CliArgs)) ?? 0);
+  }
+
   // Verify expected IPs on the VLAN interface
   let net: NetworkBackend | undefined;
   if (VlanInterface) {

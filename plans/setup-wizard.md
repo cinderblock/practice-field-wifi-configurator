@@ -74,6 +74,45 @@ Open problems to solve when we get there:
 - Self-update: `update.sh` assumes a git checkout. A binary needs a
   different update story (download + replace + restart).
 
+## Added requirements (user, 2026-07-27)
+
+- The wizard must let you **test audio/sounds**, not just detect a player.
+- It should keep going past "the field works" into a **walkthrough of the
+  related features** — notably casting the scoreboard to a networked TV,
+  with an optional video stream.
+- **The web UI must set settings permanently.** Today almost everything is
+  env-only, which means editing a root-owned file and restarting.
+- **A `--clear-config` CLI option** that wipes existing config and exits,
+  after checking the backend isn't running.
+- **Setup must be resumable.** Start it, answer a couple of questions,
+  realise the hardware needs changing, kill it, come back — and either get
+  your previous answers as defaults or land straight on the next step.
+
+### Resulting design
+
+**Persistence + precedence.** `setup-config.json` (path overridable via
+`SETUP_CONFIG_FILE`) holds per-step progress and the settings the wizard
+manages. A value set in the UI **wins over its environment variable**;
+env remains the seed for a fresh install and still owns everything the
+wizard doesn't manage. So an existing deployment behaves identically until
+someone actually uses the wizard, and `resolveSetting()` reports which
+source won so the UI can show "set here" vs "from /etc/pfms/environment".
+
+**Resumability.** Each step records `pending | done | skipped`
+independently; `nextStep()` returns the first that isn't finished. Skipping
+counts as finished (fields are odd — a stuck wizard is worse than a
+warning), and re-opening any step re-opens the wizard as a whole.
+
+**Human-confirmed checks.** Some things no probe can prove: that the field
+speaker was audible, that casting actually worked on the TV. These are
+stored as explicit operator confirmations (`audioVerified`, `castVerified`)
+and surface as warnings until someone confirms them.
+
+**Secure-origin check belongs in the browser.** Google Cast needs a secure
+origin, which the server can't determine reliably. The wizard checks
+`window.isSecureContext` client-side; the probe covers the server-side half
+(video proxy reachability).
+
 ## Decisions
 
 1. **New `/setup` page, not a rewrite of `/admin`.** `/admin` is 54 KB of
@@ -102,8 +141,23 @@ Open problems to solve when we get there:
     only constructs a backend when it can use one.
   - **Not yet wired to the WebSocket** — no broadcast, no interval. That's
     the first task of increment B.
-- **B. `/setup` page** — renders A's output as live step cards. Read-only:
-  tells you what's wrong and the exact command to fix it.
+- **A2. Persistence, resumability, CLI** — ✅ `src/setupConfigStore.ts`,
+  `src/cli.ts`, `scripts/test-setup-config.ts`. Probe extended with the
+  `audio` and `scoreboard` steps. Verified: resume lands on the next
+  unfinished step with earlier answers intact, stored settings beat env,
+  skipping doesn't block completion, re-opening a step re-opens the wizard,
+  and `--clear-config` refuses (exit 1, file untouched) while a backend
+  answers `/health`, then clears cleanly (exit 0) once it's stopped.
+  - **Gotcha found while verifying:** `networkManager.ts:10` builds a
+    platform network backend at _module load_, so importing the app throws
+    outright on a non-Linux host — which meant `node dist --clear-config`
+    couldn't run on a dev machine. `src/cli.ts` is therefore directly
+    runnable (`node dist/cli.js --clear-config`) and imports almost
+    nothing. Making that backend lazy is a worthwhile follow-up: it would
+    also make the app importable for testing off-Linux.
+- **B. `/setup` page** — renders A's output as live step cards, with the
+  per-step actions: pick a NIC, play a test sound, confirm the cast worked.
+  Still needs the WS broadcast wiring from A.
 - **C. Mutations** — apply-from-UI for field-control IP, VLAN creation,
   radio config, env file write.
 - **D. Standalone binary** — embed assets, serve statics, `bun build

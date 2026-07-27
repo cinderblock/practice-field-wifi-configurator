@@ -93,6 +93,29 @@ State files are JSON, written to the working directory by default:
 Not configurable: `match-history.json`, `usage-data.json`,
 `audio-config.json` (fixed names in the working directory).
 
+## Setup Wizard
+
+| Variable            | Default             | Description                                                               |
+| ------------------- | ------------------- | ------------------------------------------------------------------------- |
+| `SETUP_CONFIG_FILE` | `setup-config.json` | Wizard progress and any settings saved from the web UI (see caveat below) |
+
+Settings saved through the setup UI are written to this file and **take
+precedence over the matching environment variable**. Environment variables
+remain the seed for a fresh install and still own everything the wizard
+doesn't manage, so an existing deployment is unaffected until someone uses
+the wizard. The UI shows which source a value came from.
+
+To start setup over:
+
+```bash
+sudo systemctl stop practice-field-management-system
+node dist/cli.js --clear-config          # add --all to also erase admin/API/Slack config
+```
+
+It refuses (exit code 1) if anything is still answering `/health`, so it
+can't pull config out from under a running field. `--force` overrides that
+check. Run `node dist/cli.js --help` for the full list.
+
 ## Misc / Debug
 
 | Variable                    | Default | Description                                |

@@ -10,19 +10,25 @@ const execFileAsync = promisify(execFile);
 const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
 const CONFIG_FILE = 'audio-config.json';
 
-type SoundName =
-  | 'start'
-  | 'end'
-  | 'resume'
-  | 'resume321'
-  | 'warning'
-  | 'abort'
-  | 'pause'
-  | 'countdown1'
-  | 'countdown2'
-  | 'countdown3'
-  | 'countdown4'
-  | 'getready';
+/** Every sound the engine can ask for. Files are `sounds/<name>.wav`; any that
+ *  are missing simply don't play. The setup probe reads this list to report
+ *  which clips a deployment is missing. */
+export const SOUND_NAMES = [
+  'start',
+  'end',
+  'resume',
+  'resume321',
+  'warning',
+  'abort',
+  'pause',
+  'countdown1',
+  'countdown2',
+  'countdown3',
+  'countdown4',
+  'getready',
+] as const;
+
+type SoundName = (typeof SOUND_NAMES)[number];
 
 const COUNTDOWN_VARIANTS = 4;
 
@@ -96,21 +102,7 @@ export class MatchAudio {
     }
 
     // Cache which sound files exist
-    const allSounds: SoundName[] = [
-      'start',
-      'end',
-      'resume',
-      'resume321',
-      'warning',
-      'abort',
-      'pause',
-      'countdown1',
-      'countdown2',
-      'countdown3',
-      'countdown4',
-      'getready',
-    ];
-    for (const sound of allSounds) {
+    for (const sound of SOUND_NAMES) {
       if (existsSync(resolve(SOUNDS_DIR, `${sound}.wav`))) {
         this.availableSounds.add(sound);
       }

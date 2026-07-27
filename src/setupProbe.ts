@@ -15,12 +15,18 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { platform } from 'node:os';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { SOUND_NAMES } from './matchAudio.js';
 import { isValidRawRadioUpdate, translateRadioUpdate } from './types.js';
 import { detectFirmwareMode } from './startupChecks.js';
 import { createBackend, createDryRunBackend, type NetworkBackend } from './node-ip/index.js';
 import type { SetupCheck, SetupProbeState, SetupStepId, SetupStep } from './types.js';
 
 const execFileAsync = promisify(execFile);
+
+const SOUNDS_DIR = resolve(__dirname, '..', 'sounds');
+const AUDIO_CONFIG_FILE = 'audio-config.json';
 
 /** Tools the backend hard-exits without (see checkRequiredTools in index.ts). */
 const REQUIRED_TOOLS = ['iptables', 'arping', 'fping', 'dnsmasq', 'conntrack', 'tcpdump'];
@@ -331,6 +337,113 @@ async function probeTeamVlans(net: NetworkBackend, vlanInterface: string | undef
   }
 }
 
+/** Audio readiness. The wizard pairs this with a "play a test sound" button —
+ *  a check can prove a player exists, but only a human can confirm the field
+ *  speaker actually made a noise. */
+async function probeAudio(audioVerified: boolean): Promise<SetupCheck[]> {
+  const checks: SetupCheck[] = [];
+
+  const players = ['aplay', 'paplay', 'ffplay', 'mpv', 'play'];
+  const found: string[] = [];
+  for (const player of players) {
+    if (await hasTool(player)) found.push(player);
+  }
+  checks.push(
+    found.length > 0
+      ? pass('player', 'Audio player', `Available: ${found.join(', ')}`)
+      : fail(
+          'player',
+          'Audio player',
+          'No audio player found, so the field speaker will stay silent for every match cue.',
+          'sudo apt install alsa-utils',
+        ),
+  );
+
+  const missingSounds = SOUND_NAMES.filter(name => !existsSync(resolve(SOUNDS_DIR, `${name}.wav`)));
+  checks.push(
+    missingSounds.length === 0
+      ? pass('files', 'Sound files', `All ${SOUND_NAMES.length} clips present`)
+      : warn(
+          'files',
+          'Sound files',
+          `Missing: ${missingSounds.join(', ')}. Those transitions are silent (everything else still plays).`,
+          'bun scripts/generate-sounds.ts',
+        ),
+  );
+
+  // The device picker writes this; without a selection the server plays nothing.
+  const deviceConfigured = existsSync(AUDIO_CONFIG_FILE);
+  checks.push(
+    deviceConfigured
+      ? pass('device', 'Output device', 'An output device has been selected')
+      : warn(
+          'device',
+          'Output device',
+          'No output device selected yet — sounds stay off until one is chosen.',
+          'Pick a device in this step, then play a test sound',
+        ),
+  );
+
+  checks.push(
+    audioVerified
+      ? pass('verified', 'Speaker check', 'Someone confirmed the test sound was audible at the field')
+      : warn(
+          'verified',
+          'Speaker check',
+          'Nobody has confirmed a test sound was actually heard. Volume, amp power, and wiring can all fail silently.',
+          'Play a test sound and confirm you heard it',
+        ),
+  );
+
+  return checks;
+}
+
+/** Scoreboard and casting. The secure-origin half can only be checked in the
+ *  browser (`window.isSecureContext`), so the wizard does that client-side and
+ *  this covers the server-side half. */
+async function probeScoreboard(videoProxyTarget: string | undefined, castVerified: boolean): Promise<SetupCheck[]> {
+  const checks: SetupCheck[] = [];
+
+  checks.push(
+    castVerified
+      ? pass('cast', 'Cast to a TV', 'Casting confirmed working on a real display')
+      : warn(
+          'cast',
+          'Cast to a TV',
+          'Google Cast needs the scoreboard served over HTTPS from a real hostname — casting silently will not offer the receiver otherwise.',
+          'Open /scores on the field network and cast it to your TV',
+        ),
+  );
+
+  if (!videoProxyTarget) {
+    checks.push(
+      warn(
+        'video',
+        'Video stream (optional)',
+        'No stream server configured. The scoreboard works fine without it; set one to overlay a live camera feed.',
+        'Set a WHEP server URL (e.g. MediaMTX at http://10.0.0.5:8889)',
+      ),
+    );
+    return checks;
+  }
+
+  try {
+    const response = await fetch(videoProxyTarget, { signal: AbortSignal.timeout(2500) });
+    checks.push(pass('video', 'Video stream (optional)', `${videoProxyTarget} answered (HTTP ${response.status})`));
+  } catch (err) {
+    checks.push(
+      fail(
+        'video',
+        'Video stream (optional)',
+        `${videoProxyTarget} did not answer (${err instanceof Error ? err.message : err}).`,
+        `curl -v ${videoProxyTarget}`,
+      ),
+    );
+  }
+
+  return checks;
+}
+
 // ── Assembly ────────────────────────────────────────────────────────
 
 const STEP_LABELS: Record<SetupStepId, { label: string; blurb: string }> = {
@@ -339,6 +452,8 @@ const STEP_LABELS: Record<SetupStepId, { label: string; blurb: string }> = {
   fieldControl: { label: 'Field control', blurb: 'Can we talk to the field-control network?' },
   radio: { label: 'Radio', blurb: 'Is the access point reachable and running supported firmware?' },
   teamVlans: { label: 'Team VLANs', blurb: 'Are the per-station networks in place?' },
+  audio: { label: 'Match audio', blurb: 'Will the field speaker actually make noise?' },
+  scoreboard: { label: 'Scoreboard', blurb: 'Casting scores to a TV, and an optional video feed.' },
 };
 
 /** Worst status wins, so a step reads as failed if anything in it failed. */
@@ -353,6 +468,10 @@ export interface SetupProbeOptions {
   radioUrl: string;
   fmsAddress: string;
   dryRun?: boolean;
+  videoProxyTarget?: string;
+  /** Human confirmations the wizard has recorded — checks can't prove these. */
+  audioVerified?: boolean;
+  castVerified?: boolean;
 }
 
 /** Run every probe once and return a full report. */
@@ -368,13 +487,15 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     warn(id, label, `Not available on ${os} — pFMS manages networking on Linux only`),
   ];
 
-  const [host, interfaces, fieldControl, radio, teamVlans] = await Promise.all([
+  const [host, interfaces, fieldControl, radio, teamVlans, audio, scoreboard] = await Promise.all([
     probeHost(),
     net ? probeInterfaces(net, opts.vlanInterface) : unavailable('selected', 'Trunk interface'),
     net ? probeFieldControl(net, opts.vlanInterface, opts.fmsAddress) : unavailable('address', 'Field control address'),
     // Reaching the radio is plain HTTP, so it's worth trying from anywhere.
     probeRadio(opts.radioUrl),
     net ? probeTeamVlans(net, opts.vlanInterface) : unavailable('vlans', 'Team VLANs'),
+    probeAudio(opts.audioVerified ?? false),
+    probeScoreboard(opts.videoProxyTarget, opts.castVerified ?? false),
   ]);
 
   const byId: [SetupStepId, SetupCheck[]][] = [
@@ -383,6 +504,8 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     ['fieldControl', fieldControl],
     ['radio', radio],
     ['teamVlans', teamVlans],
+    ['audio', audio],
+    ['scoreboard', scoreboard],
   ];
 
   const steps: SetupStep[] = byId.map(([id, checks]) => ({

@@ -192,8 +192,47 @@ export function isValidRadioUpdate(update: unknown): update is RadioUpdate {
 
 // ── Setup wizard probe ──────────────────────────────────────────────
 
-/** Ordered setup stages — each one only makes sense once the prior one passes. */
-export type SetupStepId = 'host' | 'interfaces' | 'fieldControl' | 'radio' | 'teamVlans';
+/** Ordered setup stages — each one only makes sense once the prior one passes.
+ *  The first five bring the field up; the rest walk through the features that
+ *  sit on top of it. */
+export const SetupStepOrder = [
+  'host',
+  'interfaces',
+  'fieldControl',
+  'radio',
+  'teamVlans',
+  'audio',
+  'scoreboard',
+] as const;
+
+export type SetupStepId = (typeof SetupStepOrder)[number];
+
+/** Per-step wizard progress, so setup can be abandoned and resumed. */
+export interface SetupStepProgress {
+  status: 'pending' | 'done' | 'skipped';
+  at?: number;
+}
+
+/** Settings the wizard persists. Each one overrides its env-var equivalent. */
+export interface SetupSettings {
+  vlanInterface?: string;
+  radioUrl?: string;
+  fmsAddress?: string;
+  /** Base URL of a WHEP server for the scoreboard's video view. */
+  videoProxyTarget?: string;
+  /** Operator confirmed casting works on a real TV. */
+  castVerified?: boolean;
+  /** Operator confirmed they heard the test sound on the field speaker. */
+  audioVerified?: boolean;
+}
+
+export interface SetupConfig {
+  version: 1;
+  steps: Partial<Record<SetupStepId, SetupStepProgress>>;
+  settings: SetupSettings;
+  /** Set once every step is done or skipped; cleared if a step re-opens. */
+  completedAt?: number;
+}
 
 export type SetupCheckStatus = 'pass' | 'warn' | 'fail';
 
