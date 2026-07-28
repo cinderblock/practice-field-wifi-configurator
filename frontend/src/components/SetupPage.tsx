@@ -23,7 +23,9 @@ import {
   sendMarkSetupStep,
   sendSaveAudioDeviceConfig,
   sendTestAudioDevice,
+  useServerVersion,
 } from '../hooks/useBackend';
+import { buildBugReportUrl } from '../utils/githubIssue';
 
 const statusColor: Record<SetupCheckStatus, 'success' | 'warning' | 'error'> = {
   pass: 'success',
@@ -315,6 +317,7 @@ function StepCard({ step, isCurrent }: { step: SetupStep; isCurrent: boolean }) 
 export function SetupPage() {
   const probe = useSetupProbe();
   const config = useSetupConfig();
+  const version = useServerVersion();
 
   if (!probe) {
     return (
@@ -362,6 +365,16 @@ export function SetupPage() {
       <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Button variant="outlined" size="small" onClick={sendRequestSetupProbe}>
           Re-check now
+        </Button>
+        <Button
+          variant="text"
+          size="small"
+          component="a"
+          href={buildBugReportUrl({ version, probe })}
+          target="_blank"
+          rel="noopener"
+        >
+          Report a pFMS bug
         </Button>
         {probe.dryRun && <Chip size="small" color="warning" label="DRY_RUN — no network changes are being made" />}
         <Chip

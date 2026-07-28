@@ -2,7 +2,25 @@ node_modules
 /dist/
 /release/
 /firmware/
-active-config.json
-debug.log
-bugs.md
 .env
+
+# Local notes and state written at runtime.
+# Both cases listed deliberately: git's ignore matching is case-sensitive on
+# Linux, so a lowercase-only rule silently stops protecting BUGS.md there.
+bugs.md
+BUGS.md
+debug.log
+active-config.json
+staged-config.json
+saved-teams.json
+admin-auth.json
+api-keys.json
+external-access.json
+slack-config.json
+support-issues.json
+support-chats.json
+setup-config.json
+audio-config.json
+match-history.json
+usage-data.json
+deploy-announced.json

@@ -1932,6 +1932,20 @@ export function useUsageState(): UsageState | null {
 
 // ── Server Info ──────────────────────────────────────────────────────
 
+/** Server build (git short SHA), for bug reports. */
+export function useServerVersion(): string | null {
+  const [version, setVersion] = useState<string | null>(currentServerInfo?.version ?? null);
+
+  useEffect(() => {
+    setVersion(currentServerInfo?.version ?? null);
+    const handler = (e: Event) => setVersion((e as CustomEvent<ServerInfo>).detail.version);
+    events.addEventListener('serverInfo', handler);
+    return () => events.removeEventListener('serverInfo', handler);
+  }, []);
+
+  return version;
+}
+
 export function useServerStartTime(): number | null {
   const [startTime, setStartTime] = useState<number | null>(currentServerInfo?.startTime ?? null);
 
