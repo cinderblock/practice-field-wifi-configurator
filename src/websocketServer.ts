@@ -383,6 +383,16 @@ export function setupWebSocket(
   const setupWatchers = new Set<WebSocket>();
   let setupProbeInFlight = false;
 
+  /**
+   * Setup is writable by anyone until the field is claimed with an admin
+   * passphrase; after that it's an admin surface like the rest of /admin.
+   * With no adminAuth wired at all, behave as before.
+   */
+  function setupWritesAllowed(ws: WebSocket): boolean {
+    if (!adminAuth?.isConfigured()) return true;
+    return adminConnections.has(ws);
+  }
+
   function setupConfigMessage(): SetupConfigState {
     const store = setup!.configStore;
     return { type: 'setupConfigState', config: store.get(), nextStep: store.nextStep() };
@@ -1136,9 +1146,11 @@ export function setupWebSocket(
         }
 
         // ── Setup wizard ────────────────────────────────────────────
-        // Deliberately not admin-gated: on a fresh install nobody has set a
-        // passphrase yet, and the wizard is how you get one. Same
-        // trust-on-first-use as the admin passphrase itself.
+        // Open only while no admin passphrase exists — the same
+        // trust-on-first-use window as claiming the passphrase itself. Once a
+        // field is claimed, setup writes need admin: `radioUrl` decides where
+        // station configs (containing every team's plaintext WPA key) get
+        // POSTed, so an unauthenticated write is credential exfiltration.
       } else if (isRequestSetupProbe(data)) {
         if (setup) {
           setupWatchers.add(ws);
@@ -1146,12 +1158,22 @@ export function setupWebSocket(
         }
       } else if (isUpdateSetupSettings(data)) {
         if (setup) {
-          setup.configStore.updateSettings(data.settings);
-          // Settings change what the probe reports, so re-run immediately.
-          void runAndBroadcastProbe();
+          if (!setupWritesAllowed(ws)) {
+            ws.send(JSON.stringify({ error: 'Admin authentication required to change setup settings' }));
+          } else {
+            setup.configStore.updateSettings(data.settings);
+            // Settings change what the probe reports, so re-run immediately.
+            void runAndBroadcastProbe();
+          }
         }
       } else if (isMarkSetupStep(data)) {
-        if (setup) setup.configStore.markStep(data.step, data.status);
+        if (setup) {
+          if (!setupWritesAllowed(ws)) {
+            ws.send(JSON.stringify({ error: 'Admin authentication required to change setup progress' }));
+          } else {
+            setup.configStore.markStep(data.step, data.status);
+          }
+        }
 
         // ── Slack Config ────────────────────────────────────────────
       } else if (isSaveSlackConfig(data)) {

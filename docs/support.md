@@ -48,6 +48,32 @@ git version, the backend posts the commit subjects since the last deploy
 (see `src/deployAnnouncer.ts` — this is why commit subjects are written as
 user-facing prose).
 
+## Security model — read this before opening a field
+
+pFMS assumes **everyone who can reach it on the network is trusted**. It is
+designed for a field LAN, not the public internet. Three specific things
+to know:
+
+**Claim the field first.** The admin passphrase is
+trust-on-first-use: the first person to reach `/admin` sets it, minimum 4
+characters. Until then, anyone on the network can claim it — and claiming
+it also mints an [external access token](setup.md#external-access). Set a
+passphrase before guest teams arrive.
+
+**Setup closes when you claim it.** `/setup` is writable by anyone while
+no passphrase exists (that's how a fresh install gets configured). Once
+one is set, changing setup settings requires admin. This matters because
+the radio URL decides where station configurations — which contain every
+team's plaintext WPA key — get sent. The wizard additionally refuses any
+address that isn't a private or loopback literal.
+
+**The scoring API is open until you create a key.** With no API keys
+configured, `POST /api/score` and the config/mode endpoints accept
+anything on the network. That's deliberate, so a sensor works out of the
+box — but it means anyone can inject or reset scores. Create a key from
+`/admin` for anything beyond a friendly practice field. See
+[scoring.md](scoring.md#authentication).
+
 ## Admin Authentication
 
 The `/admin` page is secured with a shared passphrase:

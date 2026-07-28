@@ -302,9 +302,76 @@ export interface UpdateSetupSettings {
   settings: Partial<SetupSettings>;
 }
 
+/**
+ * URLs the setup UI is allowed to point pFMS at.
+ *
+ * `radioUrl` becomes the address the radio manager POSTs station configs to —
+ * and those payloads contain every team's plaintext WPA key. An attacker who
+ * could set it to a host they control would be handed the field's
+ * credentials, so the wizard only accepts private/loopback literals. Hostnames
+ * are refused outright: DNS can point anywhere, and a field radio is always at
+ * a fixed private address.
+ *
+ * Values supplied through the environment are NOT filtered by this — those
+ * come from whoever runs the process, not from the network.
+ */
+export function isPrivateHostUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost') return true;
+
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const [a, b] = v4.slice(1).map(Number);
+    if (v4.slice(1).some(part => Number(part) > 255)) return false;
+    if (a === 10 || a === 127) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 169 && b === 254) return true; // link-local
+    return false;
+  }
+
+  // IPv6 loopback, unique-local (fc00::/7), link-local (fe80::/10)
+  if (host === '::1') return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true;
+
+  return false;
+}
+
+/** Per-key validation. Unknown keys are rejected rather than merged blindly. */
+const SETUP_SETTING_VALIDATORS: Record<keyof SetupSettings, (v: unknown) => boolean> = {
+  vlanInterface: v => typeof v === 'string' && /^[a-zA-Z0-9._-]{1,32}$/.test(v),
+  radioUrl: v => typeof v === 'string' && isPrivateHostUrl(v),
+  fmsAddress: v => typeof v === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(v),
+  videoProxyTarget: v => typeof v === 'string' && isPrivateHostUrl(v),
+  castVerified: v => typeof v === 'boolean',
+  audioVerified: v => typeof v === 'boolean',
+  deploymentMode: v => v === 'systemd' || v === 'docker',
+};
+
 export function isUpdateSetupSettings(msg: unknown): msg is UpdateSetupSettings {
   const m = msg as UpdateSetupSettings;
-  return m?.type === 'updateSetupSettings' && typeof m.settings === 'object' && m.settings !== null;
+  if (m?.type !== 'updateSetupSettings') return false;
+  if (typeof m.settings !== 'object' || m.settings === null) return false;
+
+  for (const [key, value] of Object.entries(m.settings)) {
+    const validate = SETUP_SETTING_VALIDATORS[key as keyof SetupSettings];
+    // Unknown key, or a value that fails its check — reject the whole message
+    // rather than silently applying the parts that happen to be valid.
+    if (!validate) return false;
+    if (value !== undefined && !validate(value)) return false;
+  }
+
+  return true;
 }
 
 /** Mark a wizard step done, skipped, or re-opened. */

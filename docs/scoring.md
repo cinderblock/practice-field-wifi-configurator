@@ -56,10 +56,16 @@ succeeds returns HTTP 207 with per-event results.
 ### Authentication
 
 Via `X-API-Key` header or `?key=` query parameter. API keys are managed
-through the admin panel at `/admin`. When no keys have been created, the
-scoring API is open to all devices on the network. Once a key is created,
-authentication is required for write endpoints. Unrecognized devices
-appear as "pending" in the admin panel for one-click approval.
+through the admin panel at `/admin`. Once a key is created, authentication
+is required for write endpoints. Unrecognized devices appear as "pending"
+in the admin panel for one-click approval.
+
+> **Fail-open by default.** Until you create your first key, the scoring
+> API accepts writes from **any device on the network** — submitting
+> scores, resetting them, and replacing the element configuration. That's
+> deliberate so a new sensor works without setup, but it means anyone on
+> the field LAN can tamper with scores. Create a key before you care about
+> the numbers. See the [security model](support.md#security-model--read-this-before-opening-a-field).
 
 ## Endpoints
 
