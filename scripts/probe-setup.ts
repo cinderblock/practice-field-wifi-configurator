@@ -13,6 +13,9 @@ const state = await runSetupProbe({
   radioUrl: process.env.RADIO_URL ?? 'http://10.0.100.2',
   fmsAddress: '10.0.100.5',
   dryRun: process.env.DRY_RUN !== undefined,
+  // This script has no API key store, so it can only reason from the env flag.
+  // The running server passes the real answer (keys present AND flag unset).
+  scoringOpen: process.env.SCORING_REQUIRE_KEY !== 'true',
 });
 
 const icon = { pass: '✅', warn: '⚠️ ', fail: '❌' } as const;

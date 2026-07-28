@@ -182,6 +182,25 @@ function StepActions({ step }: { step: SetupStepId }) {
             </Typography>
           </Box>
         </Box>
+        {/* Casting needs a receiver app registered against your own HTTPS URL.
+            Plenty of fields won't do that, so the always-works path — type the
+            URL into the TV's browser — is offered right here rather than
+            buried in docs. */}
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            No Chromecast? Open this on the TV instead
+          </Typography>
+          <Box
+            component="pre"
+            sx={{ mt: 0.5, mb: 0.5, px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover', fontSize: '0.85rem' }}
+          >
+            {typeof window !== 'undefined' ? `${window.location.origin}/scores` : '/scores'}
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            Any smart TV or browser on the field network can display the scoreboard from that address — no casting setup
+            required.
+          </Typography>
+        </Box>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" component="a" href="/scores" target="_blank" rel="noopener">
             Open scoreboard

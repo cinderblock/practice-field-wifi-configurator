@@ -59,10 +59,13 @@ service restart — no `systemctl daemon-reload` needed.
 
 ## Scoring & Scoreboard
 
-| Variable                      | Default  | Description                                                                                                                                                                                                                                            |
-| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SCORING_AUTO_REGISTER_LIMIT` | `1`      | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                                                                                                                                   |
-| `VIDEO_PROXY_TARGET`          | _(none)_ | Base URL of a WHEP/WebRTC stream server (e.g. MediaMTX, `http://10.255.0.20:8889`). Enables `/api/video-proxy/*` so the scoreboard's video view can play `whep:<stream>` sources over HTTPS. Only signaling is proxied; media flows directly over UDP. |
+| Variable                      | Default                             | Description                                                                                                                                                                                                                                            |
+| ----------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SCORING_AUTO_REGISTER_LIMIT` | `1`                                 | Max scoring elements auto-registered from incoming events. Set to `0` to require explicit configuration via the API.                                                                                                                                   |
+| `SCORING_REQUIRE_KEY`         | `false`                             | Set to `true` to refuse unauthenticated scoring writes even before any API key exists. Without it, the scoring API is open until you create your first key — see [scoring.md](scoring.md#authentication).                                              |
+| `CAST_RECEIVER_APP_ID`        | `260A23F5`                          | Google Cast receiver app ID for the scoreboard. The default is registered against **this project's** scoreboard URL, so casting won't work elsewhere until you register your own — see [scoreboard casting](#scoreboard-casting).                      |
+| `CAST_NAMESPACE`              | `urn:x-cast:com.tomsawyerlabs.pfms` | Cast custom-message namespace. Only change it if you also change it on your receiver.                                                                                                                                                                  |
+| `VIDEO_PROXY_TARGET`          | _(none)_                            | Base URL of a WHEP/WebRTC stream server (e.g. MediaMTX, `http://10.255.0.20:8889`). Enables `/api/video-proxy/*` so the scoreboard's video view can play `whep:<stream>` sources over HTTPS. Only signaling is proxied; media flows directly over UDP. |
 
 ## Integrations
 
@@ -93,6 +96,32 @@ State files are JSON, written to the working directory by default:
 
 Not configurable: `match-history.json`, `usage-data.json`,
 `audio-config.json` (fixed names in the working directory).
+
+## Scoreboard casting
+
+Two ways to get the scoreboard onto a TV.
+
+**Just open the URL on the TV.** Any smart TV, browser, or cheap HDMI
+stick on the field network can display `http://<host>:<port>/scores`.
+Nothing to register, no HTTPS required. The setup screen shows the exact
+address to type. This is the recommended path unless you specifically
+want the Cast button.
+
+**Google Cast.** Casting requires a Cast _receiver application_, which
+Google registers against one specific HTTPS URL. The built-in ID
+(`260A23F5`) is registered against this project's own scoreboard, so it
+will not serve yours — casting from another field silently does nothing
+useful until you register your own:
+
+1. Serve `/scores` over HTTPS on a real hostname (Cast refuses insecure
+   origins).
+2. Register a **Custom Receiver** at the
+   [Google Cast Developer Console](https://cast.google.com/publish),
+   pointing at `https://<your-host>/scores`.
+3. Set `CAST_RECEIVER_APP_ID` to the ID you're issued and restart.
+
+The backend serves these values at `/cast-config.js`, so no rebuild is
+needed.
 
 ## Setup Wizard
 

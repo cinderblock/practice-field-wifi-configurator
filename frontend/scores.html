@@ -5,6 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/tomsawyerlabs.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Scoreboard</title>
+    <!-- Per-field Cast receiver, served by the backend. Loaded before both SDKs
+         so the IDs below are already set. 404s harmlessly when the frontend is
+         served by something other than pFMS, falling back to the defaults. -->
+    <script src="/cast-config.js"></script>
     <!-- Cast Receiver SDK: only load on Chromecast (keeps session alive + listens for swap messages) -->
     <script>
       window.__isCastReceiver = navigator.userAgent.includes('CrKey');
@@ -13,7 +17,7 @@
         s.src = '//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
         s.onload = function () {
           var ctx = cast.framework.CastReceiverContext.getInstance();
-          var NAMESPACE = 'urn:x-cast:com.tomsawyerlabs.pfms';
+          var NAMESPACE = (window.__PFMS_CAST && window.__PFMS_CAST.namespace) || 'urn:x-cast:com.tomsawyerlabs.pfms';
           ctx.addCustomMessageListener(NAMESPACE, function (event) {
             try {
               var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
@@ -49,13 +53,15 @@
     </script>
     <!-- Cast Sender SDK: set callback BEFORE loading sender so timing works -->
     <script>
-      var CAST_NAMESPACE = 'urn:x-cast:com.tomsawyerlabs.pfms';
+      var CAST_NAMESPACE = (window.__PFMS_CAST && window.__PFMS_CAST.namespace) || 'urn:x-cast:com.tomsawyerlabs.pfms';
       window['__onGCastApiAvailable'] = function (isAvailable) {
         if (!isAvailable) return;
         try {
           var ctx = cast.framework.CastContext.getInstance();
           ctx.setOptions({
-            receiverApplicationId: '260A23F5',
+            // A Cast receiver app is registered against a specific HTTPS URL,
+            // so another field needs its own — see docs/scoreboard.md.
+            receiverApplicationId: (window.__PFMS_CAST && window.__PFMS_CAST.appId) || '260A23F5',
             autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
           });
           // When a Cast session starts, send the current swap + mute state to the receiver

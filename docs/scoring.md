@@ -60,12 +60,22 @@ through the admin panel at `/admin`. Once a key is created, authentication
 is required for write endpoints. Unrecognized devices appear as "pending"
 in the admin panel for one-click approval.
 
-> **Fail-open by default.** Until you create your first key, the scoring
+> **Open until the first key exists.** Until you create a key, the scoring
 > API accepts writes from **any device on the network** — submitting
 > scores, resetting them, and replacing the element configuration. That's
-> deliberate so a new sensor works without setup, but it means anyone on
-> the field LAN can tamper with scores. Create a key before you care about
-> the numbers. See the [security model](support.md#security-model--read-this-before-opening-a-field).
+> deliberate: a new sensor works with no setup at all.
+>
+> Two ways to close it:
+>
+> - **Create an API key** in `/admin`. From then on writes need a key, and
+>   unrecognized devices show up as pending for one-click approval.
+> - **Set `SCORING_REQUIRE_KEY=true`** to refuse unauthenticated writes
+>   outright, including before any key exists — so there's no open window
+>   at all on first boot.
+>
+> The setup screen reports which mode the field is in, so you can verify it
+> rather than assume. See the
+> [security model](support.md#security-model--read-this-before-opening-a-field).
 
 ## Endpoints
 

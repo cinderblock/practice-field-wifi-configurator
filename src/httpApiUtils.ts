@@ -55,13 +55,25 @@ export function extractKey(req: IncomingMessage): string | undefined {
 }
 
 /**
+ * Whether the scoring API refuses unauthenticated writes even with no keys
+ * configured. Read per-call rather than cached so it can be flipped without a
+ * rebuild, and so tests can exercise both modes.
+ */
+export function scoringRequiresKey(): boolean {
+  return process.env.SCORING_REQUIRE_KEY === 'true';
+}
+
+/**
  * Check authentication for an API request.
  * Returns true if the request is authorized.
  * On failure, records the device as pending for admin approval.
  */
 export function checkAuth(req: IncomingMessage, apiKeyStore: ApiKeyStore, trustedProxyMatcher?: CIDRMatcher): boolean {
-  // No active keys = open access (same as before when no env var was set)
-  if (!apiKeyStore.hasAnyActiveKeys()) return true;
+  // Open until the first key exists, so a new scoring device works without
+  // setup — that's deliberate. SCORING_REQUIRE_KEY=true closes the door for
+  // anyone who'd rather not run a field that accepts scores from anybody:
+  // with it set and no keys created, nothing can write at all.
+  if (!apiKeyStore.hasAnyActiveKeys() && !scoringRequiresKey()) return true;
 
   const presentedKey = extractKey(req);
   if (presentedKey) {

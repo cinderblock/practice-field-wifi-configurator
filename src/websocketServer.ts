@@ -234,6 +234,18 @@ export function setupWebSocket(
       return;
     }
 
+    // Per-field Cast identifiers. A Cast receiver app is registered against a
+    // specific HTTPS URL, so a field that wants casting registers its own and
+    // sets CAST_RECEIVER_APP_ID rather than inheriting one that points at
+    // somebody else's scoreboard.
+    if (req.url?.split('?')[0] === '/cast-config.js') {
+      const appId = process.env.CAST_RECEIVER_APP_ID ?? '260A23F5';
+      const namespace = process.env.CAST_NAMESPACE ?? 'urn:x-cast:com.tomsawyerlabs.pfms';
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(`window.__PFMS_CAST=${JSON.stringify({ appId, namespace })};`);
+      return;
+    }
+
     // Built frontend + sounds, so `node dist` alone serves a working field.
     // Last in the chain: API routes above always win, and in development
     // there's no build to serve so this is a no-op and Vite handles it.

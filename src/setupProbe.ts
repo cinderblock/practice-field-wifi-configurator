@@ -408,8 +408,25 @@ async function probeAudio(audioVerified: boolean): Promise<SetupCheck[]> {
 /** Scoreboard and casting. The secure-origin half can only be checked in the
  *  browser (`window.isSecureContext`), so the wizard does that client-side and
  *  this covers the server-side half. */
-async function probeScoreboard(videoProxyTarget: string | undefined, castVerified: boolean): Promise<SetupCheck[]> {
+async function probeScoreboard(
+  videoProxyTarget: string | undefined,
+  castVerified: boolean,
+  scoringOpen: boolean,
+): Promise<SetupCheck[]> {
   const checks: SetupCheck[] = [];
+
+  // Open-by-default is intentional — a new sensor works without setup — but
+  // an operator should know which mode their field is actually in.
+  checks.push(
+    scoringOpen
+      ? warn(
+          'scoring-auth',
+          'Scoring access',
+          'Open: any device on the network can submit or reset scores. Fine for a friendly practice field; create an API key from /admin when the numbers matter.',
+          'Create an API key in /admin, or set SCORING_REQUIRE_KEY=true to refuse unauthenticated writes outright',
+        )
+      : pass('scoring-auth', 'Scoring access', 'Locked: scoring writes require an API key'),
+  );
 
   checks.push(
     castVerified
@@ -611,6 +628,8 @@ export interface SetupProbeOptions {
   audioVerified?: boolean;
   castVerified?: boolean;
   deploymentMode?: DeploymentMode;
+  /** True when the scoring API currently accepts unauthenticated writes. */
+  scoringOpen?: boolean;
 }
 
 /** Run every probe once and return a full report. */
@@ -634,7 +653,7 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     probeRadio(opts.radioUrl),
     net ? probeTeamVlans(net, opts.vlanInterface) : unavailable('vlans', 'Team VLANs'),
     probeAudio(opts.audioVerified ?? false),
-    probeScoreboard(opts.videoProxyTarget, opts.castVerified ?? false),
+    probeScoreboard(opts.videoProxyTarget, opts.castVerified ?? false, opts.scoringOpen ?? false),
     probeDeployment(opts.deploymentMode),
   ]);
 

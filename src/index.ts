@@ -60,6 +60,7 @@ import { StationName, StationNameList, StationNameRegex, TeamCheckResults, Drive
 import type { IncomingMessage, ServerResponse } from 'http';
 import { maybeRunCli } from './cli.js';
 import { SetupConfigStore } from './setupConfigStore.js';
+import { scoringRequiresKey } from './httpApiUtils.js';
 import { runSetupProbe } from './setupProbe.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -377,6 +378,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
           audioVerified: settings.audioVerified,
           castVerified: settings.castVerified,
           deploymentMode: settings.deploymentMode,
+          scoringOpen: !apiKeyStore.hasAnyActiveKeys() && !scoringRequiresKey(),
         });
       },
     },
