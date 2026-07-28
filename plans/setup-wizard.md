@@ -197,9 +197,26 @@ letting someone discover it with robots on the field.
     The first real `docker compose up` should be treated as debugging.
   - Still worth doing: make `networkManager`'s backend lazy so the app is
     importable off-Linux for tests.
-- **B. `/setup` page** — renders A's output as live step cards, with the
-  per-step actions: pick a NIC, play a test sound, confirm the cast worked,
-  choose systemd vs Docker. Still needs the WS broadcast wiring from A.
+- **B. `/setup` page** — ✅ `frontend/src/components/SetupPage.tsx`,
+  `roots/setup.tsx`, `setup.html`, vite input + dev route, WS wiring in
+  `websocketServer.ts` + `useBackend.ts`, verified by
+  `scripts/test-setup-ws.ts` and by driving the real page in a browser.
+  - Live re-probe every 5s **only while a setup page is open** (clients
+    register as watchers via `requestSetupProbe`, dropped on socket
+    close), so the probe's `which` calls and radio fetches don't run
+    forever in the background.
+  - Per-step actions: trunk NIC, radio URL, audio device + **play test
+    sound** + "I heard it", cast confirmation + video stream URL,
+    systemd/Docker choice. Mark done / skip / re-open per step.
+  - Not admin-gated, matching the admin-passphrase TOFU — on a fresh
+    install nobody has a passphrase yet and this is how you get one.
+  - **Bug found by driving the page** (typecheck was clean): the mount-time
+    `requestSetupProbe` raced the WebSocket handshake and threw
+    `InvalidStateError: still in CONNECTING`, crashing the page into the
+    error boundary. Setup senders now queue until the socket opens.
+  - Verified end-to-end: config state on connect, probe on request,
+    settings and step marks round-trip and land on disk, and a browser
+    reload resumes at the next unfinished step with prior answers intact.
 - **C. Mutations** — apply-from-UI for field-control IP, VLAN creation,
   radio config, env file write.
 - **D. Standalone binary** — embed assets, serve statics, `bun build

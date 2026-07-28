@@ -96,6 +96,9 @@ function stationRoutes(): Plugin {
         if (url === '/usage') {
           req.url = '/usage.html';
         }
+        if (url === '/setup') {
+          req.url = '/setup.html';
+        }
         if (url === '/support') {
           // Redirect old /support URL to home — support is now a widget on every page
           res.writeHead(302, { Location: '/' });
@@ -174,6 +177,7 @@ export default defineConfig({
         staff: 'staff.html',
         overview: 'overview.html',
         usage: 'usage.html',
+        setup: 'setup.html',
         notfound: '404.html',
       },
     },

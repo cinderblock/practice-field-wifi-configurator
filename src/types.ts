@@ -274,13 +274,53 @@ export function isSetupProbeState(msg: unknown): msg is SetupProbeState {
   return (msg as SetupProbeState)?.type === 'setupProbeState';
 }
 
-/** Client asks for an immediate re-probe (the "Re-check" button). */
+/** Client asks for an immediate re-probe, and registers as a live watcher so
+ *  the server keeps re-probing while the setup page is open. */
 export interface RequestSetupProbe {
   type: 'requestSetupProbe';
 }
 
 export function isRequestSetupProbe(msg: unknown): msg is RequestSetupProbe {
   return (msg as RequestSetupProbe)?.type === 'requestSetupProbe';
+}
+
+/** Current persisted wizard state, pushed on connect and after every change. */
+export interface SetupConfigState {
+  type: 'setupConfigState';
+  config: SetupConfig;
+  /** First step that is neither done nor skipped; null once setup is finished. */
+  nextStep: SetupStepId | null;
+}
+
+export function isSetupConfigState(msg: unknown): msg is SetupConfigState {
+  return (msg as SetupConfigState)?.type === 'setupConfigState';
+}
+
+/** Persist one or more wizard settings. These override their env equivalents. */
+export interface UpdateSetupSettings {
+  type: 'updateSetupSettings';
+  settings: Partial<SetupSettings>;
+}
+
+export function isUpdateSetupSettings(msg: unknown): msg is UpdateSetupSettings {
+  const m = msg as UpdateSetupSettings;
+  return m?.type === 'updateSetupSettings' && typeof m.settings === 'object' && m.settings !== null;
+}
+
+/** Mark a wizard step done, skipped, or re-opened. */
+export interface MarkSetupStep {
+  type: 'markSetupStep';
+  step: SetupStepId;
+  status: SetupStepProgress['status'];
+}
+
+export function isMarkSetupStep(msg: unknown): msg is MarkSetupStep {
+  const m = msg as MarkSetupStep;
+  return (
+    m?.type === 'markSetupStep' &&
+    (SetupStepOrder as readonly string[]).includes(m.step) &&
+    ['pending', 'done', 'skipped'].includes(m.status)
+  );
 }
 
 function isRadioChannel(channel: unknown): channel is RadioChannel {

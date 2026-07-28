@@ -210,6 +210,14 @@ box.
 
 ## 8. First run
 
+> **There's a guided version of the rest of this.** Open **`/setup`** and
+> it walks the same ground with live checks — host, trunk NIC, field
+> control, radio, team VLANs, audio, scoreboard, and how to keep it
+> running. Checks re-run every few seconds, so a step turns green the
+> moment you fix it, and your answers are saved: stop partway, come back,
+> and it picks up at the next unfinished step. Everything below is the
+> manual equivalent.
+
 1. **Set the admin passphrase.** Visit `/admin`. The first visit prompts
    you to create one (minimum 4 characters). Anyone can claim it while
    none is set, so do this before opening the field up.

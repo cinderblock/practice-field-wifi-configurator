@@ -74,6 +74,7 @@ bun run build       # Compile backend + build frontend
 | `/logs`             | Logs page — live backend log stream                                                                                                 |
 | `/test`             | Robot tester — plug in a robot, diagnose network config (requires `TEST_INTERFACE`)                                                 |
 | `/scores`           | Scoreboard — full-screen TV-optimized score display for casting; 🎥 toggles a per-browser video stream view (wide or square layout) |
+| `/setup`            | Setup wizard — guided first-run checks for a new field, with live re-checking and saved progress                                    |
 | `/usage`            | Usage page — per-station link session history (which teams used the field, when)                                                    |
 | `/support`          | _(redirects to `/`)_ — support is a floating widget available on every page                                                         |
 | `/api/score/schema` | Scoring API schema — machine-readable API docs for building scoring clients                                                         |
@@ -86,6 +87,7 @@ The [`docs/`](docs/README.md) directory has the full documentation:
   hardware, switch/VLAN planning, firmware, install, first match
 - [Setup & deployment](docs/setup.md) — install, systemd, update script,
   reverse proxy, external access
+- [Deployment](docs/deployment.md) — keeping it running: systemd vs Docker
 - [Configuration reference](docs/configuration.md) — all environment
   variables
 - [Match system](docs/match-system.md) — lifecycle, ready check,

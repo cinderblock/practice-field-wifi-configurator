@@ -41,6 +41,8 @@ import {
   isSupportChatIncoming,
   isAdminAuthResult,
   isSlackConfigState,
+  isSetupProbeState,
+  isSetupConfigState,
   isAudioDeviceState,
   AudioDeviceState,
   isMatchHistoryState,
@@ -87,6 +89,10 @@ import {
   SupportMetadata,
   AdminAuthResult,
   SlackConfigState,
+  SetupProbeState,
+  SetupConfigState,
+  SetupSettings,
+  SetupStepId,
 } from '../../../src/types';
 import { Message as RadioMessage } from 'syslog-server';
 
@@ -447,6 +453,8 @@ let currentAudioDeviceState: AudioDeviceState | null = null;
 let currentMatchHistoryState: MatchHistoryState | null = null;
 let currentUsageState: UsageState | null = null;
 let currentAdminAuth: AdminAuthResult | null = null;
+let currentSetupProbeState: SetupProbeState | null = null;
+let currentSetupConfigState: SetupConfigState | null = null;
 
 function handleSupportState(state: SupportState) {
   currentSupportState = state;
@@ -475,6 +483,16 @@ function handleAdminAuthResult(result: AdminAuthResult) {
 function handleSlackConfigState(state: SlackConfigState) {
   currentSlackConfigState = state;
   events.dispatchEvent(new CustomEvent('slackConfigState', { detail: state }));
+}
+
+function handleSetupProbeState(state: SetupProbeState) {
+  currentSetupProbeState = state;
+  events.dispatchEvent(new CustomEvent('setupProbeState', { detail: state }));
+}
+
+function handleSetupConfigState(state: SetupConfigState) {
+  currentSetupConfigState = state;
+  events.dispatchEvent(new CustomEvent('setupConfigState', { detail: state }));
 }
 
 function handleAudioDeviceState(state: AudioDeviceState) {
@@ -691,6 +709,16 @@ function receiveMessage(detail: Message) {
 
   if (isSlackConfigState(detail)) {
     handleSlackConfigState(detail);
+    return;
+  }
+
+  if (isSetupProbeState(detail)) {
+    handleSetupProbeState(detail);
+    return;
+  }
+
+  if (isSetupConfigState(detail)) {
+    handleSetupConfigState(detail);
     return;
   }
 
@@ -1752,6 +1780,77 @@ export function useSlackConfigState(): SlackConfigState | null {
   }, []);
 
   return state;
+}
+
+// ── Setup wizard ────────────────────────────────────────────────────
+
+/**
+ * Live environment probe. Asking for it also registers this client as a
+ * watcher, so the server keeps re-probing every few seconds while the page is
+ * open — that's what makes a step go green as soon as it's fixed.
+ */
+export function useSetupProbe(): SetupProbeState | null {
+  const [state, setState] = useState<SetupProbeState | null>(currentSetupProbeState);
+
+  useEffect(() => {
+    setState(currentSetupProbeState);
+    const handler = (e: Event) => setState((e as CustomEvent<SetupProbeState>).detail);
+    events.addEventListener('setupProbeState', handler);
+    sendRequestSetupProbe();
+    // Re-register after a reconnect, which drops the server's watcher set.
+    const id = setInterval(sendRequestSetupProbe, 15_000);
+    return () => {
+      clearInterval(id);
+      events.removeEventListener('setupProbeState', handler);
+    };
+  }, []);
+
+  return state;
+}
+
+/** Persisted wizard progress and settings. */
+export function useSetupConfig(): SetupConfigState | null {
+  const [state, setState] = useState<SetupConfigState | null>(currentSetupConfigState);
+
+  useEffect(() => {
+    setState(currentSetupConfigState);
+    const handler = (e: Event) => setState((e as CustomEvent<SetupConfigState>).detail);
+    events.addEventListener('setupConfigState', handler);
+    return () => events.removeEventListener('setupConfigState', handler);
+  }, []);
+
+  return state;
+}
+
+/**
+ * Send once the socket is actually open.
+ *
+ * Most senders here are user-triggered, so the socket is long since open by
+ * the time they fire. The setup page asks for a probe on mount, which races
+ * the initial connection — and `send()` while CONNECTING throws
+ * InvalidStateError, which would take the whole page down.
+ */
+function sendWhenOpen(payload: unknown) {
+  const socket = ws;
+  if (!socket) return;
+  const data = JSON.stringify(payload);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(data);
+  } else if (socket.readyState === WebSocket.CONNECTING) {
+    socket.addEventListener('open', () => socket.send(data), { once: true });
+  }
+}
+
+export function sendRequestSetupProbe() {
+  sendWhenOpen({ type: 'requestSetupProbe' });
+}
+
+export function sendUpdateSetupSettings(settings: Partial<SetupSettings>) {
+  sendWhenOpen({ type: 'updateSetupSettings', settings });
+}
+
+export function sendMarkSetupStep(step: SetupStepId, status: 'pending' | 'done' | 'skipped') {
+  sendWhenOpen({ type: 'markSetupStep', step, status });
 }
 
 export function sendSaveSlackConfig(botToken: string, appToken: string, channelId: string) {

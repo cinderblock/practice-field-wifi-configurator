@@ -67,6 +67,11 @@ import {
   isAdminCheckAuth,
   isAdminSetPassphrase,
   isSaveSlackConfig,
+  isRequestSetupProbe,
+  isUpdateSetupSettings,
+  isMarkSetupStep,
+  type SetupConfigState,
+  type SetupProbeState,
   isTestSlackConnection,
   isCreateExternalAccessToken,
   isRevokeExternalAccessToken,
@@ -103,6 +108,7 @@ import type { MatchAudio } from './matchAudio.js';
 import type { MatchHistoryStore } from './matchHistoryStore.js';
 import type { UsageTracker } from './usageTracker.js';
 import type { HostnameResolver } from './hostnameResolver.js';
+import type { SetupConfigStore } from './setupConfigStore.js';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -185,6 +191,12 @@ export function setupWebSocket(
   matchHistoryStore?: MatchHistoryStore,
   usageTracker?: UsageTracker,
   hostnameResolver?: HostnameResolver,
+  // Grouped rather than appended as two more positional params — this
+  // signature is already 25 long (see ISSUES.md) and shouldn't grow further.
+  setup?: {
+    configStore: SetupConfigStore;
+    runProbe: () => Promise<SetupProbeState>;
+  },
 ): WebSocketContext {
   let serverVersion = 'unknown';
   try {
@@ -351,6 +363,38 @@ export function setupWebSocket(
     broadcast(portBridgeManager.getState());
   });
 
+  // ── Setup wizard ──────────────────────────────────────────────────
+  // The probe shells out and talks to the radio, so it only runs while a
+  // setup page is actually open. Clients register by asking for a probe and
+  // are dropped when their socket closes.
+  const setupWatchers = new Set<WebSocket>();
+  let setupProbeInFlight = false;
+
+  function setupConfigMessage(): SetupConfigState {
+    const store = setup!.configStore;
+    return { type: 'setupConfigState', config: store.get(), nextStep: store.nextStep() };
+  }
+
+  async function runAndBroadcastProbe(): Promise<void> {
+    if (!setup || setupProbeInFlight) return;
+    setupProbeInFlight = true;
+    try {
+      broadcast(await setup.runProbe());
+    } catch (err) {
+      appWarn(`Setup probe failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setupProbeInFlight = false;
+    }
+  }
+
+  if (setup) {
+    setup.configStore.addListener(() => broadcast(setupConfigMessage()));
+    // Live re-check, so a step goes green the moment the operator fixes it.
+    setInterval(() => {
+      if (setupWatchers.size > 0) void runAndBroadcastProbe();
+    }, 5000).unref();
+  }
+
   // Broadcast support state changes to all clients
   supportStore?.addListener(broadcast);
 
@@ -516,6 +560,11 @@ export function setupWebSocket(
       ws.send(JSON.stringify(externalAccessStore.getState()));
     }
 
+    // Send persisted setup state so the wizard can resume where it left off
+    if (setup) {
+      ws.send(JSON.stringify(setupConfigMessage()));
+    }
+
     // Send audio device state
     if (matchAudio) {
       ws.send(JSON.stringify(matchAudio.getState()));
@@ -535,6 +584,7 @@ export function setupWebSocket(
       wsToIp.delete(ws);
       adminConnections.delete(ws);
       wsToChatSession.delete(ws);
+      setupWatchers.delete(ws);
       if (castReceivers.delete(ws)) {
         broadcastReceiverList();
       }
@@ -1071,6 +1121,24 @@ export function setupWebSocket(
             ws.send(JSON.stringify({ error: 'Not authorized to change passphrase' }));
           }
         }
+
+        // ── Setup wizard ────────────────────────────────────────────
+        // Deliberately not admin-gated: on a fresh install nobody has set a
+        // passphrase yet, and the wizard is how you get one. Same
+        // trust-on-first-use as the admin passphrase itself.
+      } else if (isRequestSetupProbe(data)) {
+        if (setup) {
+          setupWatchers.add(ws);
+          void runAndBroadcastProbe();
+        }
+      } else if (isUpdateSetupSettings(data)) {
+        if (setup) {
+          setup.configStore.updateSettings(data.settings);
+          // Settings change what the probe reports, so re-run immediately.
+          void runAndBroadcastProbe();
+        }
+      } else if (isMarkSetupStep(data)) {
+        if (setup) setup.configStore.markStep(data.step, data.status);
 
         // ── Slack Config ────────────────────────────────────────────
       } else if (isSaveSlackConfig(data)) {

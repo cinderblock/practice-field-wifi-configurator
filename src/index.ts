@@ -59,6 +59,8 @@ import { HostnameResolver } from './hostnameResolver.js';
 import { StationName, StationNameList, StationNameRegex, TeamCheckResults, DriveSessionState } from './types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { maybeRunCli } from './cli.js';
+import { SetupConfigStore } from './setupConfigStore.js';
+import { runSetupProbe } from './setupProbe.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -238,6 +240,7 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize saved team store (server-side WiFi credential persistence)
   const savedTeamStore = new SavedTeamStore();
+  const setupConfigStore = new SetupConfigStore();
 
   // Initialize scoring engine and API key store
   const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;
@@ -351,6 +354,25 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
     matchHistoryStore,
     usageTracker,
     hostnameResolver,
+    {
+      configStore: setupConfigStore,
+      // Settings saved in the wizard win over the env vars this process
+      // started with, so the probe reflects what the operator just chose
+      // rather than what was on the command line.
+      runProbe: () => {
+        const settings = setupConfigStore.get().settings;
+        return runSetupProbe({
+          vlanInterface: settings.vlanInterface ?? VlanInterface,
+          radioUrl: settings.radioUrl ?? RadioUrl,
+          fmsAddress: settings.fmsAddress ?? '10.0.100.5',
+          dryRun: process.env.DRY_RUN !== undefined,
+          videoProxyTarget: settings.videoProxyTarget ?? process.env.VIDEO_PROXY_TARGET,
+          audioVerified: settings.audioVerified,
+          castVerified: settings.castVerified,
+          deploymentMode: settings.deploymentMode,
+        });
+      },
+    },
   );
   setBroadcast(broadcast);
 
