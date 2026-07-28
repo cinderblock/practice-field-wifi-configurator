@@ -109,8 +109,8 @@ import type { MatchHistoryStore } from './matchHistoryStore.js';
 import type { UsageTracker } from './usageTracker.js';
 import type { HostnameResolver } from './hostnameResolver.js';
 import type { SetupConfigStore } from './setupConfigStore.js';
-import { createStaticHandler } from './staticServer.js';
-import { resolve } from 'node:path';
+import { createStaticHandler, findAssetDir } from './staticServer.js';
+import { join } from 'node:path';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -209,13 +209,11 @@ export function setupWebSocket(
 
   const serverStartTime = Date.now();
 
-  // Resolved relative to the compiled backend (dist/), so it works the same
-  // from a checkout, a deploy tree, or inside the container image.
-  const staticHandler = createStaticHandler({
-    webRoot: process.env.WEB_ROOT ?? resolve(__dirname, '..', 'frontend', 'dist'),
-    soundsDir: resolve(__dirname, '..', 'sounds'),
-  });
-  if (staticHandler) console.log('Serving the built frontend — no separate web server required');
+  // Looks beside the executable first, then in the repo/deploy layout, so a
+  // checkout, a container image and an unzipped binary all behave the same.
+  const webRoot = findAssetDir(['web', join('frontend', 'dist')], process.env.WEB_ROOT);
+  const staticHandler = webRoot ? createStaticHandler({ webRoot, soundsDir: findAssetDir(['sounds']) }) : null;
+  if (staticHandler) console.log(`Serving the built frontend from ${webRoot} — no separate web server required`);
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // Try registered HTTP handlers first (e.g. scoring API)

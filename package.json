@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend",
     "build": "tsc && cd frontend && bun run build",
+    "package": "bun run build && bun scripts/package-binary.ts",
     "dev": "tsx --watch src/index.ts",
     "once": "tsx src/index.ts",
     "start": "node dist"

@@ -1,5 +1,6 @@
 node_modules
 /dist/
+/release/
 /firmware/
 active-config.json
 debug.log

@@ -9,6 +9,51 @@ routing tables. There is no useful "isolated" deployment: an isolated
 network namespace just gives pFMS a private sandbox to configure while
 robots stay unreachable.
 
+## Standalone binary (no dependencies)
+
+`bun run package` produces `release/pfms-<platform>/` containing a single
+executable plus the two directories it needs beside it:
+
+```
+pfms      the binary — no node, no bun, no npm install
+web/      the built frontend
+sounds/   match audio
+```
+
+Zip that directory, copy it to the field host, unzip, and run it:
+
+```bash
+sudo ./pfms          # then open http://<host>:3000/setup
+```
+
+The binary still needs the **system packages** (`iptables`, `arping`,
+`fping`, `dnsmasq`, `conntrack`, `tcpdump`) — it bundles the JavaScript
+runtime, not the networking tools. The setup wizard tells you which are
+missing.
+
+Cross-compile with a bun target triple, e.g.:
+
+```bash
+bun scripts/package-binary.ts bun-linux-x64
+bun scripts/package-binary.ts bun-linux-arm64      # Raspberry Pi
+```
+
+Notes:
+
+- **Keep the three items together.** The binary looks for `web/` and
+  `sounds/` next to itself. `bun build --compile` keeps each bundled
+  module's build-time paths, so assets are deliberately kept outside the
+  executable — a binary that read them from inside would appear to work on
+  the build machine and fail everywhere else.
+- **It's large** (~116 MB) — that's the embedded JavaScript runtime.
+- **No auto-update.** `update.sh` assumes a git checkout; re-package and
+  replace the directory instead.
+- Only the Windows build has actually been run. Linux targets compile the
+  same way but haven't been exercised on a field host.
+
+For a permanent install, still use systemd or Docker below — point
+`ExecStart` at the binary instead of `/usr/bin/node dist`.
+
 ## Which one?
 
 |                                        | systemd                                   | Docker                                                |

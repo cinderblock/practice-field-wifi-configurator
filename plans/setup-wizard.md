@@ -217,10 +217,28 @@ letting someone discover it with robots on the field.
   - Verified end-to-end: config state on connect, probe on request,
     settings and step marks round-trip and land on disk, and a browser
     reload resumes at the next unfinished step with prior answers intact.
+- **D. Standalone binary + self-served frontend** — ✅
+  `src/staticServer.ts`, `scripts/package-binary.ts`, `bun run package`.
+  - The backend now serves `frontend/dist` and `sounds/` itself, applying
+    the same URL rules as the proxy configs. This removes the biggest
+    documented footgun (proxy pointed at a stale directory; `sounds/`
+    missing so browsers are silent while the field speaker works) and is
+    what makes a dependency-free binary possible. Verified against a real
+    build, including path-traversal attempts (`..`, `%2e%2e`, escapes via
+    the sounds route) — all refused.
+  - **Trap found by testing the binary off the build machine:**
+    `bun build --compile` keeps each bundled module's _build-time_
+    `__dirname`, so the first binary happily served this repo's checkout
+    from a temp directory — it would have failed on any other computer
+    while looking fine here. `findAssetDir()` now looks beside the
+    executable first. Verified by running the packaged release from an
+    unrelated directory.
+  - Assets ship _beside_ the binary rather than embedded, for the same
+    reason. ~116 MB, Windows target actually run; Linux targets compile
+    but are unexercised.
 - **C. Mutations** — apply-from-UI for field-control IP, VLAN creation,
-  radio config, env file write.
-- **D. Standalone binary** — embed assets, serve statics, `bun build
---compile`, update story.
+  radio config, env file write. Still outstanding: the wizard currently
+  tells you the command, it doesn't run it.
 
 ## Things not to do
 

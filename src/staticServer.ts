@@ -16,8 +16,30 @@
  * control page.
  */
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { normalize, resolve, sep, extname, join } from 'node:path';
+import { normalize, resolve, sep, extname, join, dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+
+/**
+ * Find a bundled asset directory, whichever way pFMS was packaged.
+ *
+ * `bun build --compile` keeps each bundled module's *build-time* `__dirname`,
+ * so a binary built here and copied elsewhere would happily read the build
+ * machine's repo — appearing to work right up until it's on a different
+ * computer. Looking next to the executable first fixes that; running
+ * `node dist` falls through to the repo layout, because nothing named
+ * `frontend/dist` sits beside the node binary.
+ */
+export function findAssetDir(names: string[], override?: string): string | undefined {
+  const candidates = [
+    override,
+    // Packaged: unzipped next to the executable
+    ...names.map(name => resolve(dirname(process.execPath), name)),
+    // Repo or deploy tree, relative to the compiled backend in dist/
+    ...names.map(name => resolve(__dirname, '..', name)),
+  ].filter((c): c is string => c !== undefined);
+
+  return candidates.find(c => existsSync(c));
+}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',

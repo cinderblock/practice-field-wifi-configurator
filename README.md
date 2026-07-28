@@ -22,36 +22,53 @@ and provides:
   ([details](docs/robot-tester.md)), live logs, device discovery, robot
   telemetry, and a built-in support widget bridged to Slack
   ([details](docs/support.md))
+- **Guided setup** — a `/setup` wizard that live-checks a new host and
+  walks you through getting a field running (see below)
 
-## Quick Start
+## Setting Up a New Field
 
-> **Setting up a new practice field?** Follow
-> **[docs/getting-started.md](docs/getting-started.md)** — a linear
-> walkthrough from bare hardware to your first match.
+**Start it, then open `/setup` — the wizard walks you through the rest.**
+It checks the host as you go: required packages, which NIC carries the
+VLAN trunk, whether the radio answers, team VLANs, match audio (with a
+test sound), casting the scoreboard, and how to keep it running. Checks
+re-run every few seconds, so a step turns green the moment you fix it,
+and your answers are saved — stop partway, come back, and it resumes at
+the next unfinished step.
 
-For local development (works on any OS — no root, no radio, no VLANs):
-
-```bash
-bun install
-cp .env.example .env   # DRY_RUN=1 is already set
-```
-
-On a real field host, network management requires Linux and root:
+On a Linux host (network management needs Linux and root):
 
 ```bash
 sudo apt install iptables iputils-arping fping dnsmasq-base conntrack tcpdump
 sudo apt install alsa-utils dhcpcd5   # match audio + robot tester
+
 bun install
+bun run build
+sudo node dist                        # then open http://<host>:3000/setup
 ```
 
-Run the development servers in two terminals:
+That's a complete field — pFMS serves its own web interface, so no Caddy
+or nginx is required to get started. Add a reverse proxy later for HTTPS
+(casting the scoreboard needs it) and a friendly hostname.
+
+Prefer to read rather than click? **[docs/getting-started.md](docs/getting-started.md)**
+is the same ground as a linear checklist, from bare hardware to your
+first match. To run pFMS permanently — systemd or Docker — see
+**[docs/deployment.md](docs/deployment.md)**.
+
+### Development
+
+Works on any OS — no root, no radio, no VLANs:
 
 ```bash
+bun install
+cp .env.example .env           # DRY_RUN=1 is already set
+
 bun run dev                    # backend (http://localhost:3000)
-cd frontend && bun run dev     # frontend (http://localhost:5173, proxies the backend)
+cd frontend && bun run dev     # frontend (http://localhost:5173), in a second terminal
 ```
 
-Useful scripts:
+`DRY_RUN` logs network operations instead of performing them. Without it,
+starting on a non-Linux host exits immediately with an explanation.
 
 ```bash
 bun run typecheck   # Type-check both backend and frontend
