@@ -1,0 +1,43 @@
+# pFMS via Docker Compose.
+#
+# Read docs/deployment.md before using this — the host-network and NET_ADMIN
+# requirements are not optional, and the trunk interface name below almost
+# certainly needs changing.
+#
+#   docker compose up -d
+services:
+  pfms:
+    build: .
+    image: pfms
+    container_name: pfms
+
+    # pFMS configures the HOST's VLANs, bridges, iptables rules and routes.
+    # An isolated network namespace would give it a private sandbox to
+    # configure, and robots would never be reachable.
+    network_mode: host
+    cap_add:
+      - NET_ADMIN # ip link/addr, iptables, routing tables
+      - NET_RAW # arping, tcpdump (robot telemetry capture)
+
+    # Otherwise the field doesn't come back after a reboot.
+    restart: unless-stopped
+
+    volumes:
+      # Setup answers, admin passphrase, API keys, match history, usage data.
+      - ./data:/app/data
+      # Match audio: /dev/snd plus the host's ALSA config, so the field
+      # speaker works. Drop both if you don't need sound.
+      - /dev/snd:/dev/snd
+    devices:
+      - /dev/snd
+
+    environment:
+      # Everything here can also be set from the setup UI once it's running,
+      # which stores it in data/setup-config.json and takes precedence.
+      WEBSOCKET_PORT: 9005
+      VLAN_INTERFACE: eno1 # ← the NIC carrying your VLAN trunk
+      FMS_ENDPOINT: 'true'
+      TRUSTED_PROXIES: 127.0.0.1,::1
+      # RADIO_URL: http://10.0.100.2
+      # TEST_INTERFACE: eth1
+      # MDNS_REFLECTOR: 'true'

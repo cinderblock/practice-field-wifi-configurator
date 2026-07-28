@@ -12,6 +12,7 @@ start. These guides go deeper:
 | Doc                                      | Covers                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [getting-started.md](getting-started.md) | **New deployment walkthrough**: hardware, switch/VLAN, firmware, install, first match       |
+| [deployment.md](deployment.md)           | Keeping it running: systemd vs Docker, and the trade-offs                                   |
 | [setup.md](setup.md)                     | Installation, production deployment, systemd, update script, reverse proxy, external access |
 | [configuration.md](configuration.md)     | Environment variable reference, persistence files, trusted proxies                          |
 | [match-system.md](match-system.md)       | Match lifecycle, ready check, E-Stop/A-Stop, match window, audio, history                   |

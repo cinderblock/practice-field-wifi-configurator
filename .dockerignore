@@ -1,0 +1,40 @@
+# Keep the build context small, and — more importantly — stop the host's
+# node_modules from being copied over the one installed inside the image.
+# Native modules built for the host OS would silently break the container.
+node_modules
+frontend/node_modules
+dist
+frontend/dist
+
+.git
+.github
+.claude
+.vscode
+
+# Local state and secrets — never bake these into an image.
+.env
+*.json.bak
+setup-config.json
+admin-auth.json
+api-keys.json
+external-access.json
+slack-config.json
+saved-teams.json
+active-config.json
+staged-config.json
+audio-config.json
+match-history.json
+usage-data.json
+deploy-announced.json
+support-issues.json
+support-chats.json
+data/
+
+# Radio firmware is downloaded at runtime.
+firmware/
+
+plans/
+samples/
+scripts.local/
+debug.log
+*.log

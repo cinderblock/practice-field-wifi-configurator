@@ -154,6 +154,10 @@ That's the minimum. Everything else is optional — see
 
 ## 6. Run it as a service
 
+> Prefer containers? [deployment.md](deployment.md) covers the Docker path
+> instead — same requirements, different packaging. The rest of this step
+> is the systemd route.
+
 Create the deploy tree that the update script writes into (**nothing
 creates this for you**, and `update.sh` fails without it):
 

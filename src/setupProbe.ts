@@ -15,13 +15,13 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { platform } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SOUND_NAMES } from './matchAudio.js';
 import { isValidRawRadioUpdate, translateRadioUpdate } from './types.js';
 import { detectFirmwareMode } from './startupChecks.js';
 import { createBackend, createDryRunBackend, type NetworkBackend } from './node-ip/index.js';
-import type { SetupCheck, SetupProbeState, SetupStepId, SetupStep } from './types.js';
+import type { SetupCheck, SetupProbeState, SetupStepId, SetupStep, DeploymentMode } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -444,6 +444,136 @@ async function probeScoreboard(videoProxyTarget: string | undefined, castVerifie
   return checks;
 }
 
+const SYSTEMD_UNIT = '/etc/systemd/system/practice-field-management-system.service';
+
+/** Are we inside a container right now? */
+function detectContainer(): string | null {
+  if (existsSync('/.dockerenv')) return 'Docker';
+  if (process.env.container) return process.env.container;
+  try {
+    const cgroup = readFileSync('/proc/1/cgroup', 'utf8');
+    if (cgroup.includes('docker')) return 'Docker';
+    if (cgroup.includes('containerd')) return 'containerd';
+    if (cgroup.includes('lxc')) return 'LXC';
+  } catch {
+    // No /proc (or not readable) — not a container we can identify
+  }
+  return null;
+}
+
+/**
+ * How this install survives a reboot. Both supported modes need the host's
+ * network namespace and NET_ADMIN, so the interesting question isn't "which is
+ * better" but "is the one you picked actually set up".
+ */
+async function probeDeployment(mode: DeploymentMode | undefined): Promise<SetupCheck[]> {
+  const checks: SetupCheck[] = [];
+
+  const container = detectContainer();
+  const hasSystemd = existsSync('/run/systemd/system');
+
+  checks.push(
+    pass(
+      'runtime',
+      'Running as',
+      container
+        ? `A ${container} container${hasSystemd ? '' : ' (no systemd inside, as expected)'}`
+        : hasSystemd
+          ? 'A normal process on a systemd host'
+          : 'A normal process (no systemd detected)',
+    ),
+  );
+
+  if (!mode) {
+    checks.push(
+      warn(
+        'mode',
+        'Deployment method',
+        container
+          ? "You're in a container, so Docker is probably what you want — but nothing is recorded yet."
+          : 'Not chosen yet. Pick systemd (simplest on a dedicated field host) or Docker (keeps dependencies self-contained).',
+        'Choose a deployment method in this step',
+      ),
+    );
+    return checks;
+  }
+
+  checks.push(pass('mode', 'Deployment method', mode === 'docker' ? 'Docker' : 'systemd service'));
+
+  if (mode === 'systemd') {
+    if (!hasSystemd) {
+      checks.push(
+        fail(
+          'unit',
+          'Service unit',
+          'systemd was chosen but this host is not running systemd.',
+          'Pick Docker instead, or run on a systemd host',
+        ),
+      );
+      return checks;
+    }
+
+    if (!existsSync(SYSTEMD_UNIT)) {
+      checks.push(
+        fail(
+          'unit',
+          'Service unit',
+          `${SYSTEMD_UNIT} does not exist, so pFMS will not come back after a reboot.`,
+          'Install the unit from docs/deployment.md, then: sudo systemctl enable --now practice-field-management-system',
+        ),
+      );
+      return checks;
+    }
+
+    // Best-effort: the unit can exist without being enabled for boot.
+    try {
+      const { stdout } = await execFileAsync('systemctl', ['is-enabled', 'practice-field-management-system']);
+      const enabled = stdout.trim();
+      checks.push(
+        enabled === 'enabled'
+          ? pass('unit', 'Service unit', 'Installed and enabled — it will start on boot')
+          : warn(
+              'unit',
+              'Service unit',
+              `Unit is installed but "${enabled}" — it will not start on boot.`,
+              'sudo systemctl enable practice-field-management-system',
+            ),
+      );
+    } catch {
+      checks.push(warn('unit', 'Service unit', 'Unit file exists; could not determine whether it is enabled'));
+    }
+
+    return checks;
+  }
+
+  // Docker
+  if (!container) {
+    checks.push(
+      warn(
+        'container',
+        'Container',
+        'Docker was chosen, but this process is not running in a container. The walkthrough will show you how to build and run the image.',
+        'See docs/deployment.md',
+      ),
+    );
+    return checks;
+  }
+
+  checks.push(pass('container', 'Container', `Running inside ${container}`));
+  // Restart policy lives on the host side of the container boundary; there is
+  // no honest way to read it from in here, so say so rather than guess.
+  checks.push(
+    warn(
+      'restart-policy',
+      'Restart policy',
+      'A container cannot see its own restart policy. Make sure it was started with --restart unless-stopped (or restart: unless-stopped in compose), or the field will not come back after a reboot.',
+      'docker inspect -f "{{.HostConfig.RestartPolicy.Name}}" pfms',
+    ),
+  );
+
+  return checks;
+}
+
 // ── Assembly ────────────────────────────────────────────────────────
 
 const STEP_LABELS: Record<SetupStepId, { label: string; blurb: string }> = {
@@ -454,6 +584,7 @@ const STEP_LABELS: Record<SetupStepId, { label: string; blurb: string }> = {
   teamVlans: { label: 'Team VLANs', blurb: 'Are the per-station networks in place?' },
   audio: { label: 'Match audio', blurb: 'Will the field speaker actually make noise?' },
   scoreboard: { label: 'Scoreboard', blurb: 'Casting scores to a TV, and an optional video feed.' },
+  deployment: { label: 'Deployment', blurb: 'Keep it running: systemd service or Docker.' },
 };
 
 /** Worst status wins, so a step reads as failed if anything in it failed. */
@@ -472,6 +603,7 @@ export interface SetupProbeOptions {
   /** Human confirmations the wizard has recorded — checks can't prove these. */
   audioVerified?: boolean;
   castVerified?: boolean;
+  deploymentMode?: DeploymentMode;
 }
 
 /** Run every probe once and return a full report. */
@@ -487,7 +619,7 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     warn(id, label, `Not available on ${os} — pFMS manages networking on Linux only`),
   ];
 
-  const [host, interfaces, fieldControl, radio, teamVlans, audio, scoreboard] = await Promise.all([
+  const [host, interfaces, fieldControl, radio, teamVlans, audio, scoreboard, deployment] = await Promise.all([
     probeHost(),
     net ? probeInterfaces(net, opts.vlanInterface) : unavailable('selected', 'Trunk interface'),
     net ? probeFieldControl(net, opts.vlanInterface, opts.fmsAddress) : unavailable('address', 'Field control address'),
@@ -496,6 +628,7 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     net ? probeTeamVlans(net, opts.vlanInterface) : unavailable('vlans', 'Team VLANs'),
     probeAudio(opts.audioVerified ?? false),
     probeScoreboard(opts.videoProxyTarget, opts.castVerified ?? false),
+    probeDeployment(opts.deploymentMode),
   ]);
 
   const byId: [SetupStepId, SetupCheck[]][] = [
@@ -506,6 +639,7 @@ export async function runSetupProbe(opts: SetupProbeOptions): Promise<SetupProbe
     ['teamVlans', teamVlans],
     ['audio', audio],
     ['scoreboard', scoreboard],
+    ['deployment', deployment],
   ];
 
   const steps: SetupStep[] = byId.map(([id, checks]) => ({

@@ -48,7 +48,9 @@ const envWins = resumed.resolveSetting('fmsAddress', 'PFMS_TEST_FMS_ADDRESS');
 check('env is used when nothing is stored', envWins.value === '10.0.100.5' && envWins.source === 'env');
 
 // ── Skipping counts as finishing, so the wizard can complete ────────
-for (const step of ['fieldControl', 'radio', 'teamVlans', 'audio'] as const) resumed.markStep(step, 'done');
+for (const step of ['fieldControl', 'radio', 'teamVlans', 'audio', 'deployment'] as const) {
+  resumed.markStep(step, 'done');
+}
 check('still incomplete with one step left', !resumed.isComplete());
 resumed.markStep('scoreboard', 'skipped');
 check('a skipped step does not block completion', resumed.isComplete());

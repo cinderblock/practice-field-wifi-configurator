@@ -203,6 +203,7 @@ export const SetupStepOrder = [
   'teamVlans',
   'audio',
   'scoreboard',
+  'deployment',
 ] as const;
 
 export type SetupStepId = (typeof SetupStepOrder)[number];
@@ -213,8 +214,13 @@ export interface SetupStepProgress {
   at?: number;
 }
 
+/** How the operator wants pFMS to keep running across reboots. */
+export type DeploymentMode = 'systemd' | 'docker';
+
 /** Settings the wizard persists. Each one overrides its env-var equivalent. */
 export interface SetupSettings {
+  /** Chosen way to run pFMS permanently — drives which walkthrough is shown. */
+  deploymentMode?: DeploymentMode;
   vlanInterface?: string;
   radioUrl?: string;
   fmsAddress?: string;

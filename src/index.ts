@@ -1,3 +1,6 @@
+// MUST come first: exits with a readable message on an unsupported platform
+// before networkManager tries to build a network backend at module load.
+import './platformGuard.js';
 import RadioManager from './radioManager.js';
 import { runSyslogServer } from './runSyslogServer.js';
 import { setupWebSocket } from './websocketServer.js';

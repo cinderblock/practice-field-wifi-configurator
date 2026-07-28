@@ -113,6 +113,36 @@ origin, which the server can't determine reliably. The wizard checks
 `window.isSecureContext` client-side; the probe covers the server-side half
 (video proxy reachability).
 
+## Further requirements (user, 2026-07-27, second pass)
+
+- The wizard should offer **Docker or systemd** as deployment paths, and
+  walk through whichever is chosen.
+- **Error early on Windows** until a Windows networking layer exists.
+
+### Resulting design
+
+**Platform guard.** `src/platformGuard.ts` is imported _first_ by
+`index.ts` — before `networkManager` builds a platform backend at module
+load — and exits 78 with an actionable message on a non-Linux host. It
+deliberately does not fire for `DRY_RUN` (development on any OS keeps
+working) or for CLI commands like `--clear-config`, which never touch the
+network. Before this, Windows produced a raw
+`node-ip: platform "win32" is not supported` stack trace from deep inside
+an import, with no hint that DRY_RUN existed.
+
+**Deployment step** (last in the order — you make it permanent once it
+works). Detects whether it's running in a container (`/.dockerenv`,
+`$container`, `/proc/1/cgroup`) and whether systemd is present, then
+checks the chosen mode is actually set up: unit installed _and enabled_
+for systemd, container running for Docker. A container cannot read its own
+restart policy, so that's surfaced as a reminder with the
+`docker inspect` command rather than a guess.
+
+**Both modes need host networking and NET_ADMIN**, since pFMS configures
+the host's VLANs, bridges, iptables and routes. There is no useful
+isolated-network deployment, and the docs say so plainly rather than
+letting someone discover it with robots on the field.
+
 ## Decisions
 
 1. **New `/setup` page, not a rewrite of `/admin`.** `/admin` is 54 KB of
@@ -155,9 +185,21 @@ origin, which the server can't determine reliably. The wizard checks
     runnable (`node dist/cli.js --clear-config`) and imports almost
     nothing. Making that backend lazy is a worthwhile follow-up: it would
     also make the app importable for testing off-Linux.
+- **A3. Platform guard + deployment step** — ✅ `src/platformGuard.ts`,
+  `probeDeployment()`, `Dockerfile`, `docker-compose.yml`,
+  `.dockerignore`, `docs/deployment.md`. Verified: Windows now exits 78
+  with a readable message instead of an import stack trace, and
+  `DRY_RUN=1` still boots and serves `/health` on Windows.
+  - **Docker is unverified** — no Docker on the authoring machine, so the
+    image has never been built. Static review caught one real bug that
+    would have broken it (`COPY . .` copying the host's Windows-built
+    `node_modules` over the installed one — fixed with `.dockerignore`).
+    The first real `docker compose up` should be treated as debugging.
+  - Still worth doing: make `networkManager`'s backend lazy so the app is
+    importable off-Linux for tests.
 - **B. `/setup` page** — renders A's output as live step cards, with the
-  per-step actions: pick a NIC, play a test sound, confirm the cast worked.
-  Still needs the WS broadcast wiring from A.
+  per-step actions: pick a NIC, play a test sound, confirm the cast worked,
+  choose systemd vs Docker. Still needs the WS broadcast wiring from A.
 - **C. Mutations** — apply-from-UI for field-control IP, VLAN creation,
   radio config, env file write.
 - **D. Standalone binary** — embed assets, serve statics, `bun build
