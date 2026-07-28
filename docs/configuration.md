@@ -14,11 +14,12 @@ service restart — no `systemctl daemon-reload` needed.
 
 ## Core
 
-| Variable         | Default             | Description                                                                    |
-| ---------------- | ------------------- | ------------------------------------------------------------------------------ |
-| `WEBSOCKET_PORT` | `3000`              | Port for the WebSocket + HTTP server. The reference deployment runs on `9005`. |
-| `RADIO_URL`      | `http://10.0.100.2` | URL for the radio management API                                               |
-| `DRY_RUN`        | _(unset)_           | Set to any value to disable network operations (log-only mode for development) |
+| Variable         | Default             | Description                                                                                                                                |
+| ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WEBSOCKET_PORT` | `3000`              | Port for the WebSocket + HTTP server. The reference deployment runs on `9005`.                                                             |
+| `RADIO_URL`      | `http://10.0.100.2` | URL for the radio management API                                                                                                           |
+| `WEB_ROOT`       | `frontend/dist`     | Built frontend the backend serves itself. Point elsewhere, or at a missing directory, to disable static serving and let a proxy handle it. |
+| `DRY_RUN`        | _(unset)_           | Set to any value to disable network operations (log-only mode for development)                                                             |
 
 ## Networking
 

@@ -109,6 +109,8 @@ import type { MatchHistoryStore } from './matchHistoryStore.js';
 import type { UsageTracker } from './usageTracker.js';
 import type { HostnameResolver } from './hostnameResolver.js';
 import type { SetupConfigStore } from './setupConfigStore.js';
+import { createStaticHandler } from './staticServer.js';
+import { resolve } from 'node:path';
 import {
   setRoutePreference,
   clearRoutePreference,
@@ -207,6 +209,14 @@ export function setupWebSocket(
 
   const serverStartTime = Date.now();
 
+  // Resolved relative to the compiled backend (dist/), so it works the same
+  // from a checkout, a deploy tree, or inside the container image.
+  const staticHandler = createStaticHandler({
+    webRoot: process.env.WEB_ROOT ?? resolve(__dirname, '..', 'frontend', 'dist'),
+    soundsDir: resolve(__dirname, '..', 'sounds'),
+  });
+  if (staticHandler) console.log('Serving the built frontend — no separate web server required');
+
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // Try registered HTTP handlers first (e.g. scoring API)
     if (httpHandlers) {
@@ -225,6 +235,11 @@ export function setupWebSocket(
       res.end(JSON.stringify({ phase: state.phase }));
       return;
     }
+
+    // Built frontend + sounds, so `node dist` alone serves a working field.
+    // Last in the chain: API routes above always win, and in development
+    // there's no build to serve so this is a no-op and Vite handles it.
+    if (staticHandler?.(req, res)) return;
 
     // CORS headers for unhandled routes
     res.setHeader('Access-Control-Allow-Origin', '*');

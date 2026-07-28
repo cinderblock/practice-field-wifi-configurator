@@ -109,14 +109,25 @@ preferences across restarts — robots stay connected and laptops keep
 their routing preferences. `systemctl restart` performs a full cleanup.
 See [Graceful Reload](internals.md#graceful-reload).
 
-### Reverse Proxy
+### Reverse Proxy _(optional)_
+
+**The backend serves the built frontend and `sounds/` itself**, so
+`http://<host>:<WEBSOCKET_PORT>` is a working field with no proxy at all.
+It applies the same URL rules described below — clean URLs get `.html`,
+team-number URLs go to the team control page — so both paths behave
+identically.
+
+Add a proxy for TLS (casting needs a secure origin), a friendly hostname,
+or the internal/external split. Set `WEB_ROOT` to override where the
+backend looks for the built frontend, or point it at a directory that
+doesn't exist to disable static serving entirely.
 
 The frontend is a multi-page Vite build: each page is its own HTML file
-(`admin.html`, `scores.html`, …), so the proxy maps clean URLs with
-`try_files {path} {path}.html`, and team-number URLs (`/1234`,
-`/1234-Bot`) rewrite to `control.html` (the team control page). `/ws` and
-`/api/*` proxy to the backend port (`WEBSOCKET_PORT`, `9005` in the
-examples below).
+(`admin.html`, `scores.html`, …), so a proxy serving the files directly
+maps clean URLs with `try_files {path} {path}.html`, and team-number URLs
+(`/1234`, `/1234-Bot`) rewrite to `control.html`. `/ws` and `/api/*`
+proxy to the backend port (`WEBSOCKET_PORT`, `9005` in the examples
+below).
 
 #### Caddy
 

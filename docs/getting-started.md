@@ -183,21 +183,23 @@ routes so robots stay connected. `restart` does a full cleanup.
 
 ---
 
-## 7. Put a web server in front
+## 7. Put a web server in front _(optional)_
 
-The frontend is a multi-page build, so the proxy needs to map clean URLs
-to `.html` files and rewrite team-number URLs to the team control page.
-Copy a config from [setup.md](setup.md#reverse-proxy).
+**You can skip this.** pFMS serves the built frontend and the match sounds
+itself, so browsing to `http://<host>:9005` already gives you a working
+field. Add a reverse proxy when you want:
 
-Two things to get right:
+- **HTTPS** — required to cast the scoreboard to a TV (see below), and
+  for a friendly hostname instead of a port number.
+- **The internal/external split** — showing outside visitors a public-only
+  page. See [External Access](setup.md#external-access).
 
-- **Serve the same directory `update.sh` writes to** —
-  `/opt/practice-field-management-system/internal`, not your git
-  checkout's `frontend/dist`. Otherwise updates never appear.
-- **Sounds** are served from the web root
-  (`/sounds/*.wav`) and only get there via `update.sh`. If you deploy by
-  hand, copy `sounds/` into the web root yourself, or browsers will be
-  silent while the field speaker still works.
+If you do add one, point it at the backend port and let it proxy
+everything; copy a config from [setup.md](setup.md#reverse-proxy). Serving
+the static files from the proxy instead also works, but then you own two
+copies of them — and the classic failure is serving a stale directory so
+updates never appear, or missing `sounds/` so browsers are silent while
+the field speaker works fine.
 
 If you want to cast the scoreboard to a TV, `/scores` **must be served
 over HTTPS** — the Google Cast SDK requires a secure origin. That means a
