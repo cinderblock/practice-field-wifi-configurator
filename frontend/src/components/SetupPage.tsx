@@ -96,7 +96,7 @@ function StepActions({ step }: { step: SetupStepId }) {
         placeholder="eno1"
         defaultValue={settings?.vlanInterface ?? ''}
         onBlur={e => sendUpdateSetupSettings({ vlanInterface: e.target.value || undefined })}
-        helperText="The NIC carrying VLANs 10–60. Saved when you click away."
+        helperText="The NIC carrying VLANs 10–60. Saved when you click away; restart pFMS for it to take effect."
         sx={{ maxWidth: 360 }}
       />
     );
@@ -344,6 +344,11 @@ export function SetupPage() {
       <Typography color="text.secondary">
         Work down the list. Checks re-run every few seconds, so a step turns green as soon as you fix it. Your answers
         are saved — you can stop here and come back.
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        pFMS configures the host&apos;s VLAN interfaces, bridges and addresses itself, so most steps are about telling
+        it what it&apos;s working with rather than running commands. The trunk interface and radio URL are read at
+        startup — restart pFMS after changing them.
       </Typography>
 
       <Box sx={{ my: 2 }}>

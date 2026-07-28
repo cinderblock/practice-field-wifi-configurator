@@ -245,12 +245,16 @@ async function probeFieldControl(
     ];
   }
 
+  // Deliberately not offering `ip addr add` here: pFMS assigns this itself at
+  // startup (checkInterfaceIps). If it's missing, the cause is upstream — the
+  // wrong interface, no root, or the app hasn't restarted since the interface
+  // was chosen — and adding it by hand would just paper over that.
   return [
     fail(
       'address',
       'Field control address',
-      `${fmsAddress} is not configured on ${vlanInterface}. The backend adds it at startup; if it's still missing, startup hasn't got that far or the interface is wrong.`,
-      `ip addr add ${fmsAddress}/24 dev ${vlanInterface}`,
+      `${fmsAddress} is not on ${vlanInterface}. pFMS adds this itself at startup, so if it's missing the interface is probably wrong, pFMS isn't running as root, or it hasn't been restarted since the trunk interface was chosen.`,
+      `Check the trunk interface above, then restart pFMS`,
     ),
   ];
 }
@@ -316,11 +320,14 @@ async function probeTeamVlans(net: NetworkBackend, vlanInterface: string | undef
     const bridges = interfaces.filter(i => i.name.startsWith('br-slot'));
 
     if (subs.length === 0 && bridges.length === 0) {
+      // Nothing to do by hand here — pFMS creates every sub-interface, bridge
+      // and membership itself whenever a station config is committed.
       return [
         warn(
           'vlans',
           'Team VLANs',
-          'No team VLAN interfaces yet — these are created automatically when a team is assigned to a station.',
+          'None yet. pFMS creates these itself — assign a team to a station from the home page and they appear.',
+          'Assign a team to a station',
         ),
       ];
     }

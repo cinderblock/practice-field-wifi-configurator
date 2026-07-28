@@ -236,9 +236,34 @@ letting someone discover it with robots on the field.
   - Assets ship _beside_ the binary rather than embedded, for the same
     reason. ~116 MB, Windows target actually run; Linux targets compile
     but are unexercised.
-- **C. Mutations** — apply-from-UI for field-control IP, VLAN creation,
-  radio config, env file write. Still outstanding: the wizard currently
-  tells you the command, it doesn't run it.
+- **C. Mutations — mostly cancelled as redundant.** ✅ scoped down after
+  the user pointed out the app already does the VLAN work.
+
+  The original plan had the wizard apply the field-control IP and create
+  team VLANs. Both are things **pFMS already does itself**:
+  - `checkInterfaceIps` (`startupChecks.ts:89-95`) _adds_ `10.0.100.5/24`
+    to the trunk interface at startup when it's missing.
+  - `updateNetworkConfig` (`networkManager.ts:177-180`) creates every VLAN
+    sub-interface, bridge and membership, and brings them up, for all six
+    stations whenever a station config is committed.
+
+  Building either into the wizard would have duplicated that — two code
+  paths racing to configure the same host, and a "fix" button that hides
+  the real cause when it fails. The probe now says so instead: the
+  field-control check no longer offers `ip addr add` (the honest causes
+  are wrong interface, not root, or not restarted since the interface
+  changed), and the team-VLAN check points at assigning a team.
+
+  **Gap this exposed, now fixed:** the wizard persisted `vlanInterface`
+  and `radioUrl`, but `index.ts` only ever read them from the
+  environment — so saving them in the UI did nothing. They're now read
+  from the setup config first, with env as the seed. Because both are
+  read once at startup, the UI says a restart is needed, rather than
+  pretending it applied. Verified by `scripts/test-setup-precedence.ts`,
+  which boots the real backend twice and checks which radio URL it used.
+
+  Genuinely still missing (small): a "restart pFMS" action so a changed
+  trunk interface can be applied without a terminal.
 
 ## Things not to do
 

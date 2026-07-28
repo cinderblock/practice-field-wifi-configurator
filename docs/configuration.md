@@ -106,6 +106,15 @@ remain the seed for a fresh install and still own everything the wizard
 doesn't manage, so an existing deployment is unaffected until someone uses
 the wizard. The UI shows which source a value came from.
 
+`VLAN_INTERFACE` and `RADIO_URL` are read **once at startup**, so changing
+them in the setup UI takes effect on the next restart.
+
+Note that pFMS configures the host's networking itself — it assigns the
+field-control address to the trunk interface at startup, and creates every
+VLAN sub-interface and bridge when a station config is committed. The
+setup UI reports on that rather than duplicating it, so there is nothing
+to apply by hand.
+
 To start setup over:
 
 ```bash

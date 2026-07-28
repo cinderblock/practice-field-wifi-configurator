@@ -85,8 +85,16 @@ if (keepNetworkFlagExists) rmSync(KEEP_NETWORK_FLAG, { force: true });
 const KeepNetwork = keepNetworkFlagExists || process.env.KEEP_NETWORK === 'true';
 
 // Configuration
-const RadioUrl = process.env.RADIO_URL || 'http://10.0.100.2'; // Probably don't need to override this
-const VlanInterface = process.env.VLAN_INTERFACE; // e.g., 'eno1', 'eth2', or undefined
+// Settings saved in the setup wizard win over the environment; env stays the
+// seed for a fresh install. Loaded here, at module scope, because these are
+// read once at startup — which is also why changing them in the UI only takes
+// effect on the next restart.
+const setupConfigStore = new SetupConfigStore();
+
+// resolveSetting() is the single precedence rule (saved value, then env), so
+// it's also what the tests exercise — see scripts/test-setup-config.ts.
+const RadioUrl = setupConfigStore.resolveSetting('radioUrl', 'RADIO_URL').value ?? 'http://10.0.100.2';
+const VlanInterface = setupConfigStore.resolveSetting('vlanInterface', 'VLAN_INTERFACE').value; // 'eno1', or undefined
 const StartFMS = process.env.FMS_ENDPOINT === 'true';
 // Experimental: stations whose DS gets the TCP station-assignment reply even
 // outside a match ("slot1,slot2" or "all") — for testing whether a TCP-only
@@ -240,7 +248,6 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize saved team store (server-side WiFi credential persistence)
   const savedTeamStore = new SavedTeamStore();
-  const setupConfigStore = new SetupConfigStore();
 
   // Initialize scoring engine and API key store
   const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;

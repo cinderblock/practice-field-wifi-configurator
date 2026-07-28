@@ -47,6 +47,27 @@ process.env.PFMS_TEST_FMS_ADDRESS = '10.0.100.5';
 const envWins = resumed.resolveSetting('fmsAddress', 'PFMS_TEST_FMS_ADDRESS');
 check('env is used when nothing is stored', envWins.value === '10.0.100.5' && envWins.source === 'env');
 
+// These two are exactly how src/index.ts resolves them at startup, so this
+// covers the real code path rather than a parallel copy of the rule.
+process.env.RADIO_URL = 'http://10.99.99.99';
+resumed.updateSettings({ radioUrl: 'http://10.88.88.88' });
+check(
+  'radio URL: saved setting beats the env var (as index.ts resolves it)',
+  (resumed.resolveSetting('radioUrl', 'RADIO_URL').value ?? 'http://10.0.100.2') === 'http://10.88.88.88',
+);
+
+resumed.updateSettings({ radioUrl: undefined });
+check(
+  'radio URL: falls back to env once the setting is cleared',
+  resumed.resolveSetting('radioUrl', 'RADIO_URL').value === 'http://10.99.99.99',
+);
+
+delete process.env.RADIO_URL;
+check(
+  'radio URL: falls back to the built-in default',
+  (resumed.resolveSetting('radioUrl', 'RADIO_URL').value ?? 'http://10.0.100.2') === 'http://10.0.100.2',
+);
+
 // ── Skipping counts as finishing, so the wizard can complete ────────
 for (const step of ['fieldControl', 'radio', 'teamVlans', 'audio', 'deployment'] as const) {
   resumed.markStep(step, 'done');
