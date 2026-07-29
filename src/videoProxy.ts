@@ -11,17 +11,31 @@ import { IncomingMessage, ServerResponse } from 'http';
  * between the browser and the stream server over UDP (DTLS-encrypted), so the
  * proxy carries a few small SDP exchanges per viewer, not video.
  *
- * The target is fixed by the environment, never taken from the request, so
- * this is not an open proxy. Externally, Caddy's forward_auth already gates
- * /api/* paths to cookie-authenticated clients.
+ * The target comes from configuration, never from the request, so this is not
+ * an open proxy — and the setup UI only accepts private/loopback addresses for
+ * it. Externally, Caddy's forward_auth already gates /api/* paths to
+ * cookie-authenticated clients.
  */
 
 const PREFIX = '/api/video-proxy/';
 
+/**
+ * Resolves the stream server. Injected by index.ts so a target saved in the
+ * setup UI wins over the environment — without this the wizard accepted a
+ * value, showed the check pass, and the proxy still answered 503.
+ */
+export type VideoProxyTargetResolver = () => string | undefined;
+
+let resolveTarget: VideoProxyTargetResolver = () => process.env.VIDEO_PROXY_TARGET;
+
+export function setVideoProxyTargetResolver(resolver: VideoProxyTargetResolver): void {
+  resolveTarget = resolver;
+}
+
 export function handleVideoProxy(req: IncomingMessage, res: ServerResponse): boolean {
   if (!req.url?.startsWith(PREFIX)) return false;
 
-  const target = process.env.VIDEO_PROXY_TARGET;
+  const target = resolveTarget();
   if (!target) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'VIDEO_PROXY_TARGET is not configured on the server' }));

@@ -61,6 +61,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { maybeRunCli } from './cli.js';
 import { SetupConfigStore } from './setupConfigStore.js';
 import { scoringRequiresKey } from './httpApiUtils.js';
+import { setVideoProxyTargetResolver } from './videoProxy.js';
 import { runSetupProbe } from './setupProbe.js';
 import { existsSync, rmSync } from 'node:fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -249,6 +250,10 @@ const RadioClearTimezone = process.env.RADIO_CLEAR_TIMEZONE;
 
   // Initialize saved team store (server-side WiFi credential persistence)
   const savedTeamStore = new SavedTeamStore();
+
+  // A stream server saved in the setup UI wins over the environment, and is
+  // read per-request so it applies without a restart.
+  setVideoProxyTargetResolver(() => setupConfigStore.get().settings.videoProxyTarget ?? process.env.VIDEO_PROXY_TARGET);
 
   // Initialize scoring engine and API key store
   const ScoringAutoRegisterLimit = Number(process.env.SCORING_AUTO_REGISTER_LIMIT) || 1;

@@ -29,8 +29,19 @@ bun install
 
 bun run build
 
-DEPLOY_BASE=/opt/practice-field-management-system
-SERVICE=practice-field-management-system.service
+DEPLOY_BASE=${PFMS_DEPLOY_BASE:-/opt/practice-field-management-system}
+SERVICE=${PFMS_SERVICE:-practice-field-management-system.service}
+ENV_FILE=${PFMS_ENV_FILE:-/etc/pfms/environment}
+
+# The health check below decides whether a match is running, so it has to hit
+# the port the service actually listens on. Read it from the service's own
+# environment file rather than assuming — a mismatch used to fail silently:
+# curl got nothing, the phase read as "unknown", the match guard never engaged,
+# and the deploy reloaded straight through a live match.
+if [ -z "$WEBSOCKET_PORT" ] && [ -r "$ENV_FILE" ]; then
+  WEBSOCKET_PORT=$(sed -n 's/^[[:space:]]*WEBSOCKET_PORT[[:space:]]*=[[:space:]]*\([0-9]\{1,5\}\).*/\1/p' "$ENV_FILE" | tail -n1)
+fi
+PORT=${WEBSOCKET_PORT:-3000}
 
 echo "Deploying to $DEPLOY_BASE"
 
@@ -45,7 +56,7 @@ cp frontend/src/public.html $DEPLOY_BASE/public/index.html
 
 # Helper: get the current match phase from the backend
 get_match_phase() {
-  curl -sf http://localhost:9005/health 2>/dev/null \
+  curl -sf "http://localhost:$PORT/health" 2>/dev/null \
     | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).phase' 2>/dev/null \
     || echo "unknown"
 }
