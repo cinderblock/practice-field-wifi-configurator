@@ -118,8 +118,10 @@ The [`docs/`](docs/README.md) directory has the full documentation:
 - [Backend internals](docs/internals.md) — startup, config flow, graceful
   reload, telemetry
 
-Known technical debt lives in [ISSUES.md](ISSUES.md); in-flight task notes
-live in [`plans/`](plans/).
+Recent changes are in [CHANGELOG.md](CHANGELOG.md) — start there if you're
+upgrading, since the resume countdown and setup auth changes affect
+existing fields. Known technical debt lives in [ISSUES.md](ISSUES.md);
+in-flight task notes live in [`plans/`](plans/).
 
 ## Project Structure
 
